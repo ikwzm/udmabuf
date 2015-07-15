@@ -52,6 +52,7 @@
 #include <linux/pagemap.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
+#include <linux/version.h>
 #include <asm/page.h>
 #include <asm/byteorder.h>
 
@@ -60,6 +61,12 @@
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define UDMABUF_DEBUG       1
 #define SYNC_ENABLE         1
+
+#if     (LINUX_VERSION_CODE >= 0x030B00)
+#define USE_DEV_GROUPS      1
+#else
+#define USE_DEV_GROUPS      0
+#endif
 
 #if     (UDMABUF_DEBUG == 1)
 #define UDMABUF_DEBUG_CHECK(this,debug) (this->debug)
@@ -118,7 +125,7 @@ static ssize_t udmabuf_set_ ## __attr_name(struct device *dev, struct device_att
     unsigned long value;  \
     struct udmabuf_driver_data* this = dev_get_drvdata(dev);                 \
     if (0 != mutex_lock_interruptible(&this->sem)){return -ERESTARTSYS;}     \
-    if (0 != (status = strict_strtoul(buf, 10, &value))) {     goto failed;} \
+    if (0 != (status = kstrtoul(buf, 10, &value))){            goto failed;} \
     if ((value < __min) || (__max < value)) {status = -EINVAL; goto failed;} \
     if (0 != (status = __pre_action )) {                       goto failed;} \
     this->__attr_name = value;                                               \
@@ -152,6 +159,32 @@ static struct device_attribute udmabuf_device_attrs[] = {
   __ATTR_NULL,
 };
 
+
+#if (USE_DEV_GROUPS == 1)
+
+static struct attribute *udmabuf_attrs[] = {
+  &(udmabuf_device_attrs[0].attr),
+  &(udmabuf_device_attrs[1].attr),
+#if (SYNC_ENABLE == 1)
+  &(udmabuf_device_attrs[2].attr),
+#endif
+#if ((UDMABUF_DEBUG == 1) && (SYNC_ENABLE == 1))
+  &(udmabuf_device_attrs[3].attr),
+#endif
+  NULL
+};
+static struct attribute_group  udmabuf_attr_group = {
+  .attrs = udmabuf_attrs
+};
+static struct attribute_group* udmabuf_attr_groups[] = {
+  &udmabuf_attr_group,
+  NULL
+};
+
+#define SET_SYS_CLASS_ATTRIBUTES(sys_class) {(sys_class)->dev_groups = udmabuf_attr_groups; }
+#else
+#define SET_SYS_CLASS_ATTRIBUTES(sys_class) {(sys_class)->dev_attrs  = udmabuf_device_attrs;}
+#endif
 
 #if (SYNC_ENABLE == 1)
 /**
@@ -641,7 +674,7 @@ static int __init udmabuf_module_init(void)
         udmabuf_sys_class = NULL;
         goto failed;
     }
-    udmabuf_sys_class->dev_attrs = udmabuf_device_attrs;
+    SET_SYS_CLASS_ATTRIBUTES(udmabuf_sys_class);
 
     CREATE_UDMABUF_DRIVER(0);
     CREATE_UDMABUF_DRIVER(1);
