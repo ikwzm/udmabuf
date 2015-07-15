@@ -17,7 +17,7 @@ udmabufのバッファの大きさやデバイスのマイナー番号は、デ�
 ### 対応プラットフォーム###
 
 
-* OS : Linux Kernel Version 3.6
+* OS : Linux Kernel Version 3.6 - 3.8 (私が動作を確認したのは 3.8です).
 
 * CPU: ARM(ZYNQ)
 
