@@ -61,7 +61,7 @@ zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
 
-アンインストールするに rmmod を使います。
+アンインストールするには rmmod を使います。
 
 ```
 zynq$ rmmod udmabuf   
@@ -264,15 +264,15 @@ int check_buf(unsigned char* buf, unsigned int size)
   </tr>
   <tr>
     <td>2</td>
-    <td align="right">2.284[sec]</td>
-    <td align="right">11.418[sec]</td>
-    <td align="right">22.826[sec]</td>
+    <td align="right">1.655[sec]</td>
+    <td align="right">8.391[sec]</td>
+    <td align="right">16.587[sec]</td>
   </tr>
   <tr>
     <td>3</td>
-    <td align="right">2.282[sec]</td>
-    <td align="right">11.409[sec]</td>
-    <td align="right">22.827[sec]</td>
+    <td align="right">1.661[sec]</td>
+    <td align="right">8.396[sec]</td>
+    <td align="right">16.584[sec]</td>
   </tr>
 </table>
 
