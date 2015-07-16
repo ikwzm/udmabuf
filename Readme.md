@@ -19,13 +19,17 @@ udmabufのバッファの大きさやデバイスのマイナー番号は、デ�
 
 * OS : Linux Kernel Version 3.6 - 3.8 (私が動作を確認したのは 3.8です).
 
-* CPU: ARM(ZYNQ)
+* CPU: ARM Cortex-A9 (ZYNQ)
 
 
 ### 構成###
 
 
-![構成](./udmabuf1.jpg)
+
+![図1 構成](./udmabuf1.jpg)
+
+
+
 
 ## 使い方##
 
@@ -35,13 +39,16 @@ udmabufのバッファの大きさやデバイスのマイナー番号は、デ�
 
 次のようなMakefileを用意しています。
 
-```
-obj-m : udmabuf.o   
-all:   
-	make -C /usr/src/kernel M=$(PWD) modules   
-clean:   
+
+```Makefile:Makefile
+obj-m : udmabuf.o
+all:
+	make -C /usr/src/kernel M=$(PWD) modules
+clean:
 	make -C /usr/src/kernel M=$(PWD) clean
 ```
+
+
 
 
 
@@ -50,23 +57,27 @@ clean:
 
 insmod でudmabufのカーネルドライバをロードします。この際に引数を渡すことによりDMAバッファを確保してデバイスドライバを作成します。insmod の引数で作成できるDMAバッファはudmabuf0、udmabuf1、udmabuf2、udmabuf3の最大４つです。
 
-```
+
+```Shell
 zynq$ insmod udmabuf.ko udmabuf0=1048576
-udmabuf udmabuf0: driver installed   
-udmabuf udmabuf0: major number   = 248   
-udmabuf udmabuf0: minor number   = 0   
-udmabuf udmabuf0: phys address   = 0x1e900000   
+udmabuf udmabuf0: driver installed
+udmabuf udmabuf0: major number   = 248
+udmabuf udmabuf0: minor number   = 0
+udmabuf udmabuf0: phys address   = 0x1e900000
 udmabuf udmabuf0: buffer size    = 1048576
-zynq$ ls -la /dev/udmabuf0   
+zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
 
+
 アンインストールするには rmmod を使います。
 
-```
-zynq$ rmmod udmabuf   
+
+```Shell
+zynq$ rmmod udmabuf
 udmabuf udmabuf0: driver uninstalled
 ```
+
 
 
 
@@ -76,13 +87,16 @@ udmabuf udmabuf0: driver uninstalled
 
 udmabufはinsmod の引数でDMAバッファを用意する以外に、Linuxのカーネルが起動時に読み込むdevicetreeファイルによってDMAバッファを用意する方法があります。devicetreeファイルに次のようなエントリを追加しておけば、insmod でロードする際に自動的にDMAバッファを確保してデバイスドライバを作成します。
 
-```devcetree.dts
-		udmabuf0@devicetree {   
-			compatible = "ikwzm,udmabuf-0.10.a";   
-			minor-number = <0>;   
-			size = <0x00100000>;   
-		};   
+
+```devicetree:devicetree.dts
+		udmabuf0@devicetree {
+			compatible = "ikwzm,udmabuf-0.10.a";
+			minor-number = <0>;
+			size = <0x00100000>;
+		};
+
 ```
+
 
 
 
@@ -91,16 +105,20 @@ sizeでDMAバッファの容量をバイト数で指定します。
 minor-number でudmabufのマイナー番号を指定します。マイナー番号は0から31までつけることができます。ただし、insmodの引数の方が優先され、マイナー番号がかち合うとdevicetreeで指定した方が失敗します。
 
 
-```
+
+
+```Shell
 zynq$ insmod udmabuf.ko
-udmabuf udmabuf0: driver installed   
-udmabuf udmabuf0: major number   = 248   
-udmabuf udmabuf0: minor number   = 0   
-udmabuf udmabuf0: phys address   = 0x1e900000   
+udmabuf udmabuf0: driver installed
+udmabuf udmabuf0: major number   = 248
+udmabuf udmabuf0: minor number   = 0
+udmabuf udmabuf0: phys address   = 0x1e900000
 udmabuf udmabuf0: buffer size    = 1048576
-zynq$ ls -la /dev/udmabuf0   
+zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
+
+
 
 
 
@@ -121,52 +139,62 @@ udmabufをinsmodでカーネルにロードすると、次のようなデバイ�
 
 /dev/udmabuf[0-31]はmmapでユーザー空間にマッピングする際に使用します。
 
+
 ```C:udmabuf_test.c
-	if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {   
-		buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0)   
-		/* ここでbufに読み書きする処理を行う */   
-		close(fd);   
-	}   
+    if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0)
+        /* ここでbufに読み書きする処理を行う */
+        close(fd);
+    }
+
 ```
 
 
 /sys/class/udmabuf/udmabuf[0-31]/phys_addr はDMAバッファの物理アドレスが読めます。
 
+
 ```C:udmabuf_test.c
-	unsigned char  attr[1024];   
-	unsigned long  phys_addr;   
-	if ((fd  = open("/sys/class/udmabuf/udmabuf0/phys_addr", O_RDONLY)) != -1) {   
-		read(fd, attr, 1024);   
-		sscanf(attr, "%x", &phys_addr);   
-		close(fd);   
-	}   
+    unsigned char  attr[1024];
+    unsigned long  phys_addr;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/phys_addr", O_RDONLY)) != -1) {
+        read(fd, attr, 1024);
+        sscanf(attr, "%x", &phys_addr);
+        close(fd);
+    }
+
 ```
 
 
 /sys/class/udmabuf/udmabuf[0-31]/size はDMAバッファのサイズが読めます。
 
+
 ```C:udmabuf_test.c
-	unsigned char  attr[1024];   
-	unsigned int   buf_size;   
-	if ((fd  = open("/sys/class/udmabuf/udmabuf0/size", O_RDONLY)) != -1) {   
-		read(fd, attr, 1024);   
-		sscanf(attr, "%d", &buf_size);   
-		close(fd);   
-	}   
+    unsigned char  attr[1024];
+    unsigned int   buf_size;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/size", O_RDONLY)) != -1) {
+        read(fd, attr, 1024);
+        sscanf(attr, "%d", &buf_size);
+        close(fd);
+    }
+
 ```
+
+
 
 
 /sys/class/udmabuf/udmabuf[0-31]/sync_mode はudmabufをopenする際にO_SYNCを指定した場合の動作を指定します。
 
+
 ```C:udmabuf_test.c
-	unsigned char  attr[1024];   
-	unsigned long  sync_mode = 2;   
-	if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_mode", O_WRONLY)) != -1) {   
-		sprintf(attr, "%d", sync_mode);   
-		write(fd, attr, strlen(attr));   
-		close(fd);   
-	}
+    unsigned char  attr[1024];
+    unsigned long  sync_mode = 2;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
+        sprintf(attr, "%d", sync_mode);
+        write(fd, attr, strlen(attr));
+        close(fd);
+    }
 ```
+
 
 O_SYNCおよびキャッシュの設定に関しては次の節で説明します。
 
@@ -182,14 +210,17 @@ CPUは通常キャッシュを通じてメインメモリ上のDMAバッファ�
 
 ハードウェアでコヒーレンシを保証できない場合、別の方法でコヒーレンシを保証しなければなりません。udmabufでは単純にCPUがDMAバッファへのアクセスする際はCPUキャッシュを無効にすることでコヒーレンシを保証しています。CPUキャッシュを無効にする場合は、udmabufをopenする際にO_SYNCフラグを設定します。
 
+
 ```C:udmabuf_test.c
-	/* CPUキャッシュを無効にする場合はO_SYNCをつけてopen する */   
-	if ((fd  = open("/dev/udmabuf0", O_RDWR | O_SYNC)) != -1) {   
-		buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0)   
-		/* ここでbufに読み書きする処理を行う */   
-		close(fd);   
-	}   
+    /* CPUキャッシュを無効にする場合はO_SYNCをつけてopen する */
+    if ((fd  = open("/dev/udmabuf0", O_RDWR | O_SYNC)) != -1) {
+        buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0)
+        /* ここでbufに読み書きする処理を行う */
+        close(fd);
+    }
+
 ```
+
 
 O_SYNCフラグを設定した場合のキャッシュの振る舞いはsync_modeで設定します。sync_modeには次の値が設定できます。
 
@@ -205,29 +236,32 @@ O_SYNCフラグを設定した場合のキャッシュの振る舞いはsync_mod
 
 参考までに、CPUキャッシュを有効/無効にした場合の次のようなプログラムを実行した際の処理時間を示します。
 
+
 ```C:udmabuf_test.c
-int check_buf(unsigned char* buf, unsigned int size)   
-{   
-    int m = 256;   
-    int n = 10;   
-    int i, k;   
-    int error_count = 0;   
-    while(--n > 0) {   
-      for(i = 0; i < size; i = i + m) {   
-        m = (i+256 < size) ? 256 : (size-i);   
-        for(k = 0; k < m; k++) {   
-          buf[i+k] = (k & 0xFF);   
-        }   
-        for(k = 0; k < m; k++) {   
-          if (buf[i+k] != (k & 0xFF)) {   
-            error_count++;   
-          }   
-        }   
-      }   
-    }   
-    return error_count;   
-}   
+int check_buf(unsigned char* buf, unsigned int size)
+{
+    int m = 256;
+    int n = 10;
+    int i, k;
+    int error_count = 0;
+    while(--n > 0) {
+      for(i = 0; i < size; i = i + m) {
+        m = (i+256 < size) ? 256 : (size-i);
+        for(k = 0; k < m; k++) {
+          buf[i+k] = (k & 0xFF);
+        }
+        for(k = 0; k < m; k++) {
+          if (buf[i+k] != (k & 0xFF)) {
+            error_count++;
+          }
+        }
+      }
+    }
+    return error_count;
+}
+
 ```
+
 
 
 
