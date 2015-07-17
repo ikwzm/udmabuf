@@ -142,7 +142,7 @@ udmabufをinsmodでカーネルにロードすると、次のようなデバイ�
 
 ```C:udmabuf_test.c
     if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
-        buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0)
+        buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
         /* ここでbufに読み書きする処理を行う */
         close(fd);
     }
@@ -214,7 +214,7 @@ CPUは通常キャッシュを通じてメインメモリ上のDMAバッファ�
 ```C:udmabuf_test.c
     /* CPUキャッシュを無効にする場合はO_SYNCをつけてopen する */
     if ((fd  = open("/dev/udmabuf0", O_RDWR | O_SYNC)) != -1) {
-        buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0)
+        buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
         /* ここでbufに読み書きする処理を行う */
         close(fd);
     }
