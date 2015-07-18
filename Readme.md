@@ -259,14 +259,22 @@ int check_buf(unsigned char* buf, unsigned int size)
     }
     return error_count;
 }
+int clear_buf(unsigned char* buf, unsigned int size)
+{
+    int n = 100;
+    int error_count = 0;
+    while(--n > 0) {
+      memset((void*)buf, 0, size);
+    }
+    return error_count;
+}
 
 ```
 
 
-
-
 <table border="2">
   <tr>
+    <td align="center" rowspan="2">プログラム</td>
     <td align="center" rowspan="2">O_SYNC</td>
     <td align="center" rowspan="2">sync_mode</td>
     <td align="center" colspan="3">DMAバッファのサイズ</td>
@@ -277,6 +285,7 @@ int check_buf(unsigned char* buf, unsigned int size)
     <td align="center">10MByte</td>
   </tr>
   <tr>
+    <td rowspan="5">check_buf</td>
     <td>無</td>
     <td>-</td>
     <td align="right">0.437[sec]</td>
@@ -307,6 +316,39 @@ int check_buf(unsigned char* buf, unsigned int size)
     <td align="right">1.661[sec]</td>
     <td align="right">8.396[sec]</td>
     <td align="right">16.584[sec]</td>
+  </tr>
+  <tr>
+    <td rowspan="5">clear_buf</td>
+    <td>無</td>
+    <td>-</td>
+    <td align="right">0.667[sec]</td>
+    <td align="right">0.363[sec]</td>
+    <td align="right">0.716[sec]</td>
+  </tr>
+  <tr>
+    <td rowspan="4">有</td>
+    <td>0</td>
+    <td align="right">0.671[sec]</td>
+    <td align="right">0.362[sec]</td>
+    <td align="right">0.716[sec]</td>
+  </tr>
+  <tr>
+    <td>1</td>
+    <td align="right">0.914[sec]</td>
+    <td align="right">4.564[sec]</td>
+    <td align="right">9.128[sec]</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td align="right">0.622[sec]</td>
+    <td align="right">0.310[sec]</td>
+    <td align="right">0.621[sec]</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td align="right">0.616[sec]</td>
+    <td align="right">0.311[sec]</td>
+    <td align="right">0.620[sec]</td>
   </tr>
 </table>
 

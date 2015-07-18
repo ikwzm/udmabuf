@@ -40,6 +40,16 @@ int check_buf(unsigned char* buf, unsigned int size)
     return error_count;
 }
 
+int clear_buf(unsigned char* buf, unsigned int size)
+{
+    int n = 100;
+    int error_count = 0;
+    while(--n > 0) {
+      memset((void*)buf, 0, size);
+    }
+    return error_count;
+}
+
 void main()
 {
     int            fd;
@@ -79,6 +89,7 @@ void main()
     printf("phys_addr=0x%x\n", phys_addr);
     printf("size=%d\n", buf_size);
 
+    printf("check_buf()\n", buf_size);
     if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
       buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
       gettimeofday(&start_time, NULL);
@@ -147,6 +158,80 @@ void main()
       buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
       gettimeofday(&start_time, NULL);
       error_count = check_buf(buf, buf_size);
+      gettimeofday(&end_time  , NULL);
+      print_diff_time(start_time, end_time);
+      close(fd);
+    }
+
+    printf("memset()\n", buf_size);
+    if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
+      buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+      gettimeofday(&start_time, NULL);
+      error_count = clear_buf(buf, buf_size);
+      gettimeofday(&end_time  , NULL);
+      print_diff_time(start_time, end_time);
+      close(fd);
+    }
+
+    sync_mode = 0;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
+      sprintf(attr, "%d", sync_mode);
+      write(fd, attr, strlen(attr));
+      close(fd);
+    }
+    printf("sync_mode=%d\n", sync_mode);
+    if ((fd  = open("/dev/udmabuf0", O_RDWR | O_SYNC)) != -1) {
+      buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+      gettimeofday(&start_time, NULL);
+      error_count = clear_buf(buf, buf_size);
+      gettimeofday(&end_time  , NULL);
+      print_diff_time(start_time, end_time);
+      close(fd);
+    }
+
+    sync_mode = 1;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
+      sprintf(attr, "%d", sync_mode);
+      write(fd, attr, strlen(attr));
+      close(fd);
+    }
+    printf("sync_mode=%d\n", sync_mode);
+    if ((fd  = open("/dev/udmabuf0", O_RDWR | O_SYNC)) != -1) {
+      buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+      gettimeofday(&start_time, NULL);
+      error_count = clear_buf(buf, buf_size);
+      gettimeofday(&end_time  , NULL);
+      print_diff_time(start_time, end_time);
+      close(fd);
+    }
+
+    sync_mode = 2;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
+      sprintf(attr, "%d", sync_mode);
+      write(fd, attr, strlen(attr));
+      close(fd);
+    }
+    printf("sync_mode=%d\n", sync_mode);
+    if ((fd  = open("/dev/udmabuf0", O_RDWR | O_SYNC)) != -1) {
+      buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+      gettimeofday(&start_time, NULL);
+      error_count = clear_buf(buf, buf_size);
+      gettimeofday(&end_time  , NULL);
+      print_diff_time(start_time, end_time);
+      close(fd);
+    }
+
+    sync_mode = 3;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
+      sprintf(attr, "%d", sync_mode);
+      write(fd, attr, strlen(attr));
+      close(fd);
+    }
+    printf("sync_mode=%d\n", sync_mode);
+    if ((fd  = open("/dev/udmabuf0", O_RDWR | O_SYNC)) != -1) {
+      buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+      gettimeofday(&start_time, NULL);
+      error_count = clear_buf(buf, buf_size);
       gettimeofday(&end_time  , NULL);
       print_diff_time(start_time, end_time);
       close(fd);
