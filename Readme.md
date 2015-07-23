@@ -1,20 +1,37 @@
-# udmabuf(User space mappable DMA Buffer)#
+# udmabuf(User space mappable DMA Buffer)
 
 
-## はじめに##
+## はじめに
 
 
-### udmabufとは###
+### udmabufとは
 
 
-udmabuf はLinux のカーネル空間に連続したメモリ領域をDMAバッファとして確保し、ユーザー空間からmmapでアクセス可能にするためのデバイスドライバです。主にUIO(User space I/O)を使ってユーザー空間でデバイスドライバを動かす場合のDMAバッファを提供します。
+udmabuf はLinux のカーネル空間に連続したメモリ領域をDMAバッファとして確保し、ユーザー空間からアクセス可能にするためのデバイスドライバです。主にUIO(User space I/O)を使ってユーザー空間でデバイスドライバを動かす場合のDMAバッファを提供します。
 
-ユーザー空間でudmabufを利用する際は、/dev/udmabuf0をopenしてmmapすると、ユーザー空間からDMAバッファにアクセスすることが出来ます。openする際にO_SYNCフラグをセットすることによりCPUキャッシュを無効にすることが出来ます。また、/sys/class/udmabuf/udmabuf0/phys_addr を読むことにより、DMAバッファの物理空間上のアドレスを知ることが出来ます。
+ユーザー空間でudmabufで確保したDMAバッファを利用する際は、デバイスファイル(/dev/udmabuf0など)をopen()して、mmap()でユーザー空間にマッピングするか、read()またはwrite()で行います。
 
-udmabufのバッファの大きさやデバイスのマイナー番号は、デバイスドライバのロード時(insmodによるロードなど)に指定できます。またプラットフォームによってはデバイスツリーに記述しておくこともできます。
+openする際にO_SYNCフラグをセットすることによりCPUキャッシュを無効にすることが出来ます。
+
+/sys/class/udmabuf/udmabuf0/phys_addr を読むことにより、DMAバッファの物理空間上のアドレスを知ることが出来ます。
+
+udmabufのDMAバッファの大きさやデバイスのマイナー番号は、デバイスドライバのロード時(insmodによるロードなど)に指定できます。またプラットフォームによってはデバイスツリーに記述しておくこともできます。
 
 
-### 対応プラットフォーム###
+### 構成
+
+
+
+![図1 構成](./udmabuf1.jpg "図1 構成")
+
+図1 構成
+
+<br />
+
+
+
+
+### 対応プラットフォーム
 
 
 * OS : Linux Kernel Version 3.6 - 3.8 (私が動作を確認したのは 3.8です).
@@ -22,19 +39,11 @@ udmabufのバッファの大きさやデバイスのマイナー番号は、デ�
 * CPU: ARM Cortex-A9 (ZYNQ)
 
 
-### 構成###
+
+## 使い方
 
 
-
-![図1 構成](./udmabuf1.jpg)
-
-
-
-
-## 使い方##
-
-
-### コンパイル###
+### コンパイル
 
 
 次のようなMakefileを用意しています。
@@ -52,7 +61,7 @@ clean:
 
 
 
-### インストール###
+### インストール
 
 
 insmod でudmabufのカーネルドライバをロードします。この際に引数を渡すことによりDMAバッファを確保してデバイスドライバを作成します。insmod の引数で作成できるDMAバッファはudmabuf0、udmabuf1、udmabuf2、udmabuf3の最大４つです。
@@ -82,7 +91,7 @@ udmabuf udmabuf0: driver uninstalled
 
 
 
-### デバイスツリーによる設定###
+### デバイスツリーによる設定
 
 
 udmabufはinsmod の引数でDMAバッファを用意する以外に、Linuxのカーネルが起動時に読み込むdevicetreeファイルによってDMAバッファを用意する方法があります。devicetreeファイルに次のようなエントリを追加しておけば、insmod でロードする際に自動的にDMAバッファを確保してデバイスドライバを作成します。
@@ -122,7 +131,7 @@ crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 
 
 
-### デバイスファイル###
+### デバイスファイル
 
 
 udmabufをinsmodでカーネルにロードすると、次のようなデバイスファイルが作成されます。
@@ -137,7 +146,7 @@ udmabufをinsmodでカーネルにロードすると、次のようなデバイ�
 
 
 
-/dev/udmabuf[0-31]はmmapでユーザー空間にマッピングする際に使用します。
+/dev/udmabuf[0-31]はmmap()を使って、ユーザー空間にマッピングするか、read()、write()を使ってバッファにアクセスする際に使用します。
 
 
 ```C:udmabuf_test.c
@@ -148,6 +157,27 @@ udmabufをinsmodでカーネルにロードすると、次のようなデバイ�
     }
 
 ```
+
+
+また、ddコマンド等でにデバイスファイルを指定することにより、shellから直接リードライトすることも出来ます。
+
+
+```Shell
+zynq$ dd if=/dev/urandom of=/dev/udmabuf0 bs=4096 count=1024
+1024+0 records in
+1024+0 records out
+4194304 bytes (4.2 MB) copied, 3.07516 s, 1.4 MB/s
+```
+
+
+```Shell
+zynq$dd if=/dev/udmabuf4 of=random.bin
+8192+0 records in
+8192+0 records out
+4194304 bytes (4.2 MB) copied, 0.173866 s, 24.1 MB/s
+```
+
+
 
 
 /sys/class/udmabuf/udmabuf[0-31]/phys_addr はDMAバッファの物理アドレスが読めます。
@@ -201,7 +231,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 
 
 
-### DMAバッファとCPUキャッシュのコヒーレンシ###
+### DMAバッファとCPUキャッシュのコヒーレンシ
 
 
 CPUは通常キャッシュを通じてメインメモリ上のDMAバッファにアクセスしますが、アクセラレータは直接メインメモリ上のDMAバッファにアクセスします。その際、問題になるのはCPUのキャッシュとメインメモリとのコヒーレンシ(内容の一貫性)です。
@@ -226,11 +256,19 @@ O_SYNCフラグを設定した場合のキャッシュの振る舞いはsync_mod
 
 * sync_mode=0:  常にCPUキャッシュが有効。つまりO_SYNCフラグの有無にかかわらず常にCPUキャッシュは有効になります。
 
-* sync_mode=1: O_SYNCフラグが設定された場合、CPUキャッシュを無効にします。
+* sync_mode=1: O_SYNCフラグが設定された場合、CPUキャッシュを無効にします。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
 
-* sync_mode=2: O_SYNCフラグが設定された場合、CPUがDMAバッファに書き込む際、ライトコンバインします。ライトコンバインとは、基本的にはCPUキャッシュは無効ですが、複数の書き込みをまとめて行うことで若干性能が向上します。
+* sync_mode=2: O_SYNCフラグが設定された場合、CPUがDMAバッファに書き込む際、ライトコンバインします。ライトコンバインとは、基本的にはCPUキャッシュは無効ですが、複数の書き込みをまとめて行うことで若干性能が向上します。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
 
-* sync_mode=3: O_SYNCフラグが設定された場合、DMAコヒーレンシモードにします。といっても、DMAコヒーレンシモードに関してはまだよく分かっていません。
+* sync_mode=3: O_SYNCフラグが設定された場合、DMAコヒーレンシモードにします。といっても、DMAコヒーレンシモードに関してはまだよく分かっていません。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
+
+* sync_mode=4:  常にCPUキャッシュが有効。つまりO_SYNCフラグの有無にかかわらず常にCPUキャッシュは有効になります。
+
+* sync_mode=5: O_SYNCフラグの有無にかかわらずCPUキャッシュを無効にします。
+
+* sync_mode=6: O_SYNCフラグの有無にかかわらず、CPUがDMAバッファに書き込む際、ライトコンバインします。
+
+* sync_mode=7: O_SYNCフラグの有無にかかわらず、DMAコヒーレンシモードにします。
 
 
 
@@ -274,9 +312,8 @@ int clear_buf(unsigned char* buf, unsigned int size)
 
 <table border="2">
   <tr>
-    <td align="center" rowspan="2">プログラム</td>
-    <td align="center" rowspan="2">O_SYNC</td>
     <td align="center" rowspan="2">sync_mode</td>
+    <td align="center" rowspan="2">O_SYNC</td>
     <td align="center" colspan="3">DMAバッファのサイズ</td>
   </tr>
   <tr>
@@ -285,70 +322,225 @@ int clear_buf(unsigned char* buf, unsigned int size)
     <td align="center">10MByte</td>
   </tr>
   <tr>
-    <td rowspan="5">check_buf</td>
+    <td rowspan="2">0</td>
     <td>無</td>
-    <td>-</td>
     <td align="right">0.437[sec]</td>
     <td align="right">2.171[sec]</td>
-    <td align="right">4.375[sec]</td>
+    <td align="right">4.340[sec]</td>
   </tr>
   <tr>
-    <td rowspan="4">有</td>
-    <td>0</td>
+    <td>有</td>
+    <td align="right">0.437[sec]</td>
+    <td align="right">2.171[sec]</td>
+    <td align="right">4.340[sec]</td>
+  </tr>
+  <tr>
+    <td rowspan="2">1</td>
+    <td>無</td>
     <td align="right">0.434[sec]</td>
-    <td align="right">2.169[sec]</td>
-    <td align="right">4.338[sec]</td>
+    <td align="right">2.179[sec]</td>
+    <td align="right">4.337[sec]</td>
   </tr>
   <tr>
-    <td>1</td>
+    <td>有</td>
     <td align="right">2.283[sec]</td>
     <td align="right">11.414[sec]</td>
     <td align="right">22.830[sec]</td>
   </tr>
   <tr>
-    <td>2</td>
+    <td rowspan="2">2</td>
+    <td>無</td>
+    <td align="right">0.434[sec]</td>
+    <td align="right">2.169[sec]</td>
+    <td align="right">4.337[sec]</td>
+  </tr>
+  <tr>
+    <td>有</td>
+    <td align="right">1.616[sec]</td>
+    <td align="right">8.262[sec]</td>
+    <td align="right">16.562[sec]</td>
+  </tr>
+  <tr>
+    <td rowspan="2">3</td>
+    <td>無</td>
+    <td align="right">0.434[sec]</td>
+    <td align="right">2.169[sec]</td>
+    <td align="right">4.337[sec]</td>
+  </tr>
+  <tr>
+    <td>有</td>
+    <td align="right">1.600[sec]</td>
+    <td align="right">8.391[sec]</td>
+    <td align="right">16.587[sec]</td>
+  </tr>
+  <tr>
+    <td rowspan="2">4</td>
+    <td>無</td>
+    <td align="right">0.437[sec]</td>
+    <td align="right">2.171[sec]</td>
+    <td align="right">4.337[sec]</td>
+  </tr>
+  <tr>
+    <td>有</td>
+    <td align="right">0.437[sec]</td>
+    <td align="right">2.171[sec]</td>
+    <td align="right">4.337[sec]</td>
+  </tr>
+  <tr>
+    <td rowspan="2">5</td>
+    <td>無</td>
+    <td align="right">2.283[sec]</td>
+    <td align="right">11.414[sec]</td>
+    <td align="right">22.809[sec]</td>
+  </tr>
+  <tr>
+    <td>有</td>
+    <td align="right">2.283[sec]</td>
+    <td align="right">11.414[sec]</td>
+    <td align="right">22.840[sec]</td>
+  </tr>
+  <tr>
+    <td rowspan="2">6</td>
+    <td>無</td>
     <td align="right">1.655[sec]</td>
     <td align="right">8.391[sec]</td>
     <td align="right">16.587[sec]</td>
   </tr>
   <tr>
-    <td>3</td>
-    <td align="right">1.661[sec]</td>
-    <td align="right">8.396[sec]</td>
-    <td align="right">16.584[sec]</td>
+    <td>有</td>
+    <td align="right">1.655[sec]</td>
+    <td align="right">8.391[sec]</td>
+    <td align="right">16.587[sec]</td>
   </tr>
   <tr>
-    <td rowspan="5">clear_buf</td>
+    <td rowspan="2">7</td>
     <td>無</td>
-    <td>-</td>
-    <td align="right">0.667[sec]</td>
-    <td align="right">0.363[sec]</td>
-    <td align="right">0.716[sec]</td>
+    <td align="right">1.655[sec]</td>
+    <td align="right">8.391[sec]</td>
+    <td align="right">16.587[sec]</td>
   </tr>
   <tr>
-    <td rowspan="4">有</td>
-    <td>0</td>
-    <td align="right">0.671[sec]</td>
+    <td>有</td>
+    <td align="right">1.655[sec]</td>
+    <td align="right">8.391[sec]</td>
+    <td align="right">16.587[sec]</td>
+  </tr>
+</table>
+
+<table border="2">
+  <tr>
+    <td align="center" rowspan="2">sync_mode</td>
+    <td align="center" rowspan="2">O_SYNC</td>
+    <td align="center" colspan="3">DMAバッファのサイズ</td>
+  </tr>
+  <tr>
+    <td align="center">1MByte</td>
+    <td align="center">5MByte</td>
+    <td align="center">10MByte</td>
+  </tr>
+  <tr>
+    <td rowspan="2">0</td>
+    <td>無</td>
+    <td align="right">0.067[sec]</td>
+    <td align="right">0.359[sec]</td>
+    <td align="right">0.713[sec]</td>
+  </tr>
+  <tr>
+    <td>有</td>
+    <td align="right">0.067[sec]</td>
     <td align="right">0.362[sec]</td>
     <td align="right">0.716[sec]</td>
   </tr>
   <tr>
-    <td>1</td>
-    <td align="right">0.914[sec]</td>
-    <td align="right">4.564[sec]</td>
-    <td align="right">9.128[sec]</td>
+    <td rowspan="2">1</td>
+    <td>無</td>
+    <td align="right">0.067[sec]</td>
+    <td align="right">0.362[sec]</td>
+    <td align="right">0.718[sec]</td>
   </tr>
   <tr>
-    <td>2</td>
-    <td align="right">0.622[sec]</td>
+    <td>有</td>
+    <td align="right">0.912[sec]</td>
+    <td align="right">4.563[sec]</td>
+    <td align="right">9.126[sec]</td>
+  </tr>
+  <tr>
+    <td rowspan="2">2</td>
+    <td>無</td>
+    <td align="right">0.068[sec]</td>
+    <td align="right">0.360[sec]</td>
+    <td align="right">0.721[sec]</td>
+  </tr>
+  <tr>
+    <td>有</td>
+    <td align="right">0.063[sec]</td>
+    <td align="right">0.310[sec]</td>
+    <td align="right">0.620[sec]</td>
+  </tr>
+  <tr>
+    <td rowspan="2">3</td>
+    <td>無</td>
+    <td align="right">0.068[sec]</td>
+    <td align="right">0.361[sec]</td>
+    <td align="right">0.715[sec]</td>
+  </tr>
+  <tr>
+    <td>有</td>
+    <td align="right">0.062[sec]</td>
+    <td align="right">0.310[sec]</td>
+    <td align="right">0.620[sec]</td>
+  </tr>
+  <tr>
+    <td rowspan="2">4</td>
+    <td>無</td>
+    <td align="right">0.068[sec]</td>
+    <td align="right">0.360[sec]</td>
+    <td align="right">0.718[sec]</td>
+  </tr>
+  <tr>
+    <td>有</td>
+    <td align="right">0.067[sec]</td>
+    <td align="right">0.360[sec]</td>
+    <td align="right">0.710[sec]</td>
+  </tr>
+  <tr>
+    <td rowspan="2">5</td>
+    <td>無</td>
+    <td align="right">0.913[sec]</td>
+    <td align="right">4.562[sec]</td>
+    <td align="right">9.126[sec]</td>
+  </tr>
+  <tr>
+    <td>有</td>
+    <td align="right">0.913[sec]</td>
+    <td align="right">4.562[sec]</td>
+    <td align="right">9.126[sec]</td>
+  </tr>
+  <tr>
+    <td rowspan="2">6</td>
+    <td>無</td>
+    <td align="right">0.062[sec]</td>
+    <td align="right">0.310[sec]</td>
+    <td align="right">0.618[sec]</td>
+  </tr>
+  <tr>
+    <td>有</td>
+    <td align="right">0.062[sec]</td>
+    <td align="right">0.310[sec]</td>
+    <td align="right">0.619[sec]</td>
+  </tr>
+  <tr>
+    <td rowspan="2">7</td>
+    <td>無</td>
+    <td align="right">0.062[sec]</td>
+    <td align="right">0.310[sec]</td>
+    <td align="right">0.620[sec]</td>
+  </tr>
+  <tr>
+    <td>有</td>
+    <td align="right">0.062[sec]</td>
     <td align="right">0.310[sec]</td>
     <td align="right">0.621[sec]</td>
-  </tr>
-  <tr>
-    <td>3</td>
-    <td align="right">0.616[sec]</td>
-    <td align="right">0.311[sec]</td>
-    <td align="right">0.620[sec]</td>
   </tr>
 </table>
 

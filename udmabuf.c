@@ -101,10 +101,12 @@ struct udmabuf_driver_data {
 /**
  *
  */
-#define SYNC_INVALID       (0)
-#define SYNC_NONCACHED     (1)
-#define SYNC_WRITECOMBINE  (2)
-#define SYNC_DMACOHERENT   (3)
+#define SYNC_INVALID       (0x00)
+#define SYNC_NONCACHED     (0x01)
+#define SYNC_WRITECOMBINE  (0x02)
+#define SYNC_DMACOHERENT   (0x03)
+#define SYNC_MODE_MASK     (0x03)
+#define SYNC_ALWAYS        (0x04)
 
 #define DEF_ATTR_SHOW(__attr_name, __format, __value) \
 static ssize_t udmabuf_show_ ## __attr_name(struct device *dev, struct device_attribute *attr, char *buf) \
@@ -140,7 +142,7 @@ DEF_ATTR_SHOW(size      , "%d\n"   , this->size      );
 DEF_ATTR_SHOW(phys_addr , "0x%lx\n", (long unsigned int)this->phys_addr);
 #if (SYNC_ENABLE == 1)
 DEF_ATTR_SHOW(sync_mode , "%d\n"   , this->sync_mode );
-DEF_ATTR_SET( sync_mode            , 0, 3, 0, 0      );
+DEF_ATTR_SET( sync_mode            , 0, 7, 0, 0      );
 #endif
 #if ((UDMABUF_DEBUG == 1) && (SYNC_ENABLE == 1))
 DEF_ATTR_SHOW(debug_vma , "%d\n"   , this->debug_vma );
@@ -305,8 +307,8 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
     vma->vm_ops           = &udmabuf_driver_vm_ops;
     vma->vm_private_data  = this;
  /* vma->vm_flags        |= VM_RESERVED; */
-    if (file->f_flags & O_SYNC) {
-        switch (this->sync_mode) {
+    if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS)) {
+        switch (this->sync_mode & SYNC_MODE_MASK) {
             case SYNC_NONCACHED : 
                 vma->vm_flags    |= VM_IO;
                 vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
@@ -331,6 +333,100 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
 }
 
 /**
+ * udmabuf_driver_file_read() - The is the driver read function.
+ * @file:	Pointer to the file structure.
+ * @buff:	Pointer to the user buffer.
+ * @count:	The number of bytes to be written.
+ * @ppos:	Pointer to the offset value
+ * returns:	Success or error status.
+ */
+static ssize_t udmabuf_driver_file_read(struct file* file, char __user* buff, size_t count, loff_t* ppos)
+{
+    struct udmabuf_driver_data* this      = file->private_data;
+    int                         result    = 0;
+    size_t                      xfer_size;
+    dma_addr_t                  phys_addr;
+    void*                       virt_addr;
+
+    if (mutex_lock_interruptible(&this->sem))
+        return -ERESTARTSYS;
+
+    if (*ppos >= this->size) {
+        result = 0;
+        goto return_unlock;
+    }
+
+    phys_addr = this->phys_addr + *ppos;
+    virt_addr = this->virt_addr + *ppos;
+    xfer_size = (*ppos + count >= this->size) ? this->size - *ppos : count;
+
+#if (SYNC_ENABLE == 1)
+    if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
+        dma_sync_single_for_cpu(this->device, phys_addr, xfer_size, DMA_FROM_DEVICE);
+#endif
+
+    copy_to_user(buff, virt_addr, xfer_size);
+
+#if (SYNC_ENABLE == 1)
+    if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
+        dma_sync_single_for_device(this->device, phys_addr, xfer_size, DMA_FROM_DEVICE);
+#endif
+
+    *ppos += xfer_size;
+    result = xfer_size;
+ return_unlock:
+    mutex_unlock(&this->sem);
+    return result;
+}
+
+/**
+ * udmabuf_driver_file_write() - The is the driver write function.
+ * @file:	Pointer to the file structure.
+ * @buff:	Pointer to the user buffer.
+ * @count:	The number of bytes to be written.
+ * @ppos:	Pointer to the offset value
+ * returns:	Success or error status.
+ */
+static ssize_t udmabuf_driver_file_write(struct file* file, const char __user* buff, size_t count, loff_t* ppos)
+{
+    struct udmabuf_driver_data* this      = file->private_data;
+    int                         result    = 0;
+    size_t                      xfer_size;
+    dma_addr_t                  phys_addr;
+    void*                       virt_addr;
+
+    if (mutex_lock_interruptible(&this->sem))
+        return -ERESTARTSYS;
+
+    if (*ppos >= this->size) {
+        result = 0;
+        goto return_unlock;
+    }
+
+    phys_addr = this->phys_addr + *ppos;
+    virt_addr = this->virt_addr + *ppos;
+    xfer_size = (*ppos + count >= this->size) ? this->size - *ppos : count;
+
+#if (SYNC_ENABLE == 1)
+    if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
+        dma_sync_single_for_cpu(this->device, phys_addr, xfer_size, DMA_TO_DEVICE);
+#endif
+
+    copy_from_user(virt_addr, buff, xfer_size);
+
+#if (SYNC_ENABLE == 1)
+    if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
+        dma_sync_single_for_device(this->device, phys_addr, xfer_size, DMA_TO_DEVICE);
+#endif
+
+    *ppos += xfer_size;
+    result = xfer_size;
+ return_unlock:
+    mutex_unlock(&this->sem);
+    return result;
+}
+
+/**
  *
  */
 static const struct file_operations udmabuf_driver_file_ops = {
@@ -338,6 +434,8 @@ static const struct file_operations udmabuf_driver_file_ops = {
     .open    = udmabuf_driver_file_open,
     .release = udmabuf_driver_file_release,
     .mmap    = udmabuf_driver_file_mmap,
+    .read    = udmabuf_driver_file_read,
+    .write   = udmabuf_driver_file_write,
 };
 
 /**
