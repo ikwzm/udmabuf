@@ -310,6 +310,8 @@ int clear_buf(unsigned char* buf, unsigned int size)
 ```
 
 
+表-1　checkbufの測定結果
+
 <table border="2">
   <tr>
     <td align="center" rowspan="2">sync_mode</td>
@@ -426,6 +428,8 @@ int clear_buf(unsigned char* buf, unsigned int size)
     <td align="right">16.587[sec]</td>
   </tr>
 </table>
+
+表-2　clearbufの測定結果
 
 <table border="2">
   <tr>
