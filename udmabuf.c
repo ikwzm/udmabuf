@@ -178,7 +178,7 @@ static struct attribute *udmabuf_attrs[] = {
 static struct attribute_group  udmabuf_attr_group = {
   .attrs = udmabuf_attrs
 };
-static struct attribute_group* udmabuf_attr_groups[] = {
+static const struct attribute_group* udmabuf_attr_groups[] = {
   &udmabuf_attr_group,
   NULL
 };
@@ -345,6 +345,7 @@ static ssize_t udmabuf_driver_file_read(struct file* file, char __user* buff, si
     struct udmabuf_driver_data* this      = file->private_data;
     int                         result    = 0;
     size_t                      xfer_size;
+    size_t                      remain_size;
     dma_addr_t                  phys_addr;
     void*                       virt_addr;
 
@@ -365,7 +366,10 @@ static ssize_t udmabuf_driver_file_read(struct file* file, char __user* buff, si
         dma_sync_single_for_cpu(this->device, phys_addr, xfer_size, DMA_FROM_DEVICE);
 #endif
 
-    copy_to_user(buff, virt_addr, xfer_size);
+    if ((remain_size = copy_to_user(buff, virt_addr, xfer_size)) != 0) {
+        result = 0;
+        goto return_unlock;
+    }
 
 #if (SYNC_ENABLE == 1)
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
@@ -392,6 +396,7 @@ static ssize_t udmabuf_driver_file_write(struct file* file, const char __user* b
     struct udmabuf_driver_data* this      = file->private_data;
     int                         result    = 0;
     size_t                      xfer_size;
+    size_t                      remain_size;
     dma_addr_t                  phys_addr;
     void*                       virt_addr;
 
@@ -412,7 +417,10 @@ static ssize_t udmabuf_driver_file_write(struct file* file, const char __user* b
         dma_sync_single_for_cpu(this->device, phys_addr, xfer_size, DMA_TO_DEVICE);
 #endif
 
-    copy_from_user(virt_addr, buff, xfer_size);
+    if ((remain_size = copy_from_user(virt_addr, buff, xfer_size)) != 0) {
+        result = 0;
+        goto return_unlock;
+    }
 
 #if (SYNC_ENABLE == 1)
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
