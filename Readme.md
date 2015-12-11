@@ -145,6 +145,19 @@ udmabufをinsmodでカーネルにロードすると、次のようなデバイ�
 
 * /sys/class/udmabuf/udmabuf[0-31]/sync_mode
 
+* /sys/class/udmabuf/udmabuf[0-31]/sync_offset
+
+* /sys/class/udmabuf/udmabuf[0-31]/sync_size
+
+* /sys/class/udmabuf/udmabuf[0-31]/sync_direction
+
+* /sys/class/udmabuf/udmabuf[0-31]/sync_owner
+
+* /sys/class/udmabuf/udmabuf[0-31]/sync_for_cpu
+
+* /sys/class/udmabuf/udmabuf[0-31]/sync_for_device
+
+### 　/dev/udmabuf
 
 
 /dev/udmabuf[0-31]はmmap()を使って、ユーザー空間にマッピングするか、read()、write()を使ってバッファにアクセスする際に使用します。
@@ -181,6 +194,10 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
 
 
 
+
+### 　phys_addr
+
+
 /sys/class/udmabuf/udmabuf[0-31]/phys_addr はDMAバッファの物理アドレスが読めます。
 
 
@@ -194,6 +211,12 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
     }
 
 ```
+
+
+
+
+
+### 　size
 
 
 /sys/class/udmabuf/udmabuf[0-31]/size はDMAバッファのサイズが読めます。
@@ -211,6 +234,10 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
 ```
 
 
+
+
+
+### 　sync_mode
 
 
 /sys/class/udmabuf/udmabuf[0-31]/sync_mode はudmabufをopenする際にO_SYNCを指定した場合の動作を指定します。
@@ -232,14 +259,187 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 
 
 
-## DMAバッファとCPUキャッシュのコヒーレンシ
+### 　sync_offset
+
+
+/sys/class/udmabuf/udmabuf[0-31]/sync_offset は udmabufのキャッシュ制御を手動で行う際のバッファの範囲の先頭を指定します。
+
+
+```C:udmabuf_test.c
+    unsigned char  attr[1024];
+    unsigned long  sync_offset = 0x00000000;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_offset", O_WRONLY)) != -1) {
+        sprintf(attr, "%d", sync_offset);
+        write(fd, attr, strlen(attr));
+        close(fd);
+    }
+```
+
+
+手動でキャッシュを制御する方法は次の節で説明します。
+
+
+
+
+### 　sync_size
+
+
+/sys/class/udmabuf/udmabuf[0-31]/sync_size は udmabufのキャッシュ制御を手動で行う際のバッファの範囲のサイズを指定します。
+
+
+```C:udmabuf_test.c
+    unsigned char  attr[1024];
+    unsigned long  sync_size = 1024;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_size", O_WRONLY)) != -1) {
+        sprintf(attr, "%d", sync_size);
+        write(fd, attr, strlen(attr));
+        close(fd);
+    }
+```
+
+
+手動でキャッシュを制御する方法は次の節で説明します。
+
+
+
+
+### 　sync_direction
+
+
+/sys/class/udmabuf/udmabuf[0-31]/sync_direction は udmabufのキャッシュ制御を手動で行う際のDMAの方向を指定します。
+
+0: DMA_BIDIRECTIONALを指定します。
+
+1: DMA_TO_DEVICEを指定します。
+
+2: DMA_FROM_DEVICEを指定します。
+
+
+```C:udmabuf_test.c
+    unsigned char  attr[1024];
+    unsigned long  sync_direction = 1;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_direction", O_WRONLY)) != -1) {
+        sprintf(attr, "%d", sync_direction);
+        write(fd, attr, strlen(attr));
+        close(fd);
+    }
+```
+
+
+手動でキャッシュを制御する方法は次の節で説明します。
+
+
+
+
+### 　sync_owner
+
+
+/sys/class/udmabuf/udmabuf[0-31]/sync_owner は udmabufのキャッシュ制御を手動で行った際に、現在のバッファのオーナーがCPUかDEVICEを読み取ります。
+
+
+```C:udmabuf_test.c
+    unsigned char  attr[1024];
+    int sync_owner;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_owner", O_RDONLY)) != -1) {
+        read(fd, attr, 1024);
+        sscanf(attr, "%x", &sync_owner);
+        close(fd);
+    }
+
+```
+
+
+手動でキャッシュを制御する方法は次の節で説明します。
+
+
+
+
+### 　sync_for_cpu
+
+
+/sys/class/udmabuf/udmabuf[0-31]/sync_for_cpu はudmabufのキャッシュ制御を手動で行う際に、このデバイスドライバに1を書き込むことでバッファのオーナーをCPUにします。その際、sync_directionがDMA_FROM_DEVICEだった時、sync_offsetとsync_size で指定された領域のCPUキャッシュが無効化されます。
+
+
+```C:udmabuf_test.c
+    unsigned char  attr[1024];
+    unsigned long  sync_for_cpu = 1;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_for_cpu", O_WRONLY)) != -1) {
+        sprintf(attr, "%d", sync_for_cpu);
+        write(fd, attr, strlen(attr));
+        close(fd);
+    }
+```
+
+
+手動でキャッシュを制御する方法は次の節で説明します。
+
+
+
+
+### 　sync_for_device
+
+
+/sys/class/udmabuf/udmabuf[0-31]/sync_for_deviceはudmabufのキャッシュ制御を手動で行う際に、このデバイスドライバに1を書き込むことでバッファのオーナーをDEVICEにします。その際、sync_directionがDMA_TO_DEVICEだった時、sync_offsetとsync_size で指定された領域のCPUキャッシュがフラッシュされます。
+
+
+```C:udmabuf_test.c
+    unsigned char  attr[1024];
+    unsigned long  sync_for_device = 1;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_for_device", O_WRONLY)) != -1) {
+        sprintf(attr, "%d", sync_for_device);
+        write(fd, attr, strlen(attr));
+        close(fd);
+    }
+```
+
+
+手動でキャッシュを制御する方法は次の節で説明します。
+
+
+
+
+# DMAバッファとCPUキャッシュのコヒーレンシ
 
 
 CPUは通常キャッシュを通じてメインメモリ上のDMAバッファにアクセスしますが、アクセラレータは直接メインメモリ上のDMAバッファにアクセスします。その際、問題になるのはCPUのキャッシュとメインメモリとのコヒーレンシ(内容の一貫性)です。
 
+
+
+## ハードウェアでコヒーレンシを保証できる場合
+
+
 ハードウェアでコヒーレンシを保証できる場合、CPUキャッシュを有効にしても問題はありません。例えばZYNQにはACP(Accelerator Coherency Port)があり、アクセラレータ側がこのPortを通じてメインメモリにアクセスする場合は、ハードウェアによってCPUキャッシュとメインメモリとのコヒーレンシが保証できます。
 
-ハードウェアでコヒーレンシを保証できない場合、別の方法でコヒーレンシを保証しなければなりません。udmabufでは単純にCPUがDMAバッファへのアクセスする際はCPUキャッシュを無効にすることでコヒーレンシを保証しています。CPUキャッシュを無効にする場合は、udmabufをopenする際にO_SYNCフラグを設定します。
+ハードウェアでコヒーレンシを保証できる場合は、CPUキャッシュを有効にすることでCPUからのアクセスを高速に行うことができます。CPUキャッシュを有効にする場合は、O_SYNCフラグを設定せずにudmabufをopen してください。
+
+
+```C:udmabuf_test.c
+    /* CPUキャッシュを有効にする場合はO_SYNCをつけずにopen する */
+    if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+        /* ここでbufに読み書きする処理を行う */
+        close(fd);
+    }
+
+```
+
+
+ハードウェアでコヒーレンシを保証できる場合は、次の項で説明するようCPUキャッシュを手動で制御する必要はありません。
+
+
+
+
+## ハードウェアでコヒーレンシを保証できない場合
+
+
+ハードウェアでコヒーレンシを保証できない場合、別の方法でコヒーレンシを保証しなければなりません。udmabufでは、CPUキャッシュを無効にする方法と、CPUキャッシュを有効にしたまま手動でCPUキャッシュをフラッシュ/無効化する方法を用意しています。
+
+
+
+### 　CPUキャッシュを無効にする方法
+
+
+CPUキャッシュを無効にする場合は、udmabufをopenする際にO_SYNCフラグを設定します。
 
 
 ```C:udmabuf_test.c
@@ -548,5 +748,46 @@ int clear_buf(unsigned char* buf, unsigned int size)
     <td align="right">0.621[sec]</td>
   </tr>
 </table>
+
+
+
+
+### 　CPUキャッシュを有効にしたまま手動でCPUキャッシュを制御する方法
+
+
+CPUキャッシュを有効にする場合は、O_SYNCフラグを設定せずにudmabufをopen します。
+
+
+```C:udmabuf_test.c
+    /* CPUキャッシュを有効にする場合はO_SYNCをつけずにopen する */
+    if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+        /* ここでbufに読み書きする処理を行う */
+        close(fd);
+    }
+
+```
+
+
+
+
+アクセラレーターと共有するバッファの範囲をsync_offsetとsync_sizeで指定します。sync_offsetはmmap()で確保した先頭アドレスからのオフセット値を指定します。sync_sizeはバッファの大きさをバイト数で指定します。
+
+アクセラレータがバッファからデータを読むだけの場合は、sync_direction に1(=DMA_TO_DEVICE)を指定します。
+
+アクセラレータがバッファにデータを書き込むだけの場合は、sync_direction に2(=DMA_FROM_DEVICE)を指定します。
+
+アクセラレータがバッファにデータを読み書き両方行う場合は、sync_direction に0(=DMA_BIDIRECTIONAL)を指定します。
+
+
+
+以上の設定の後、CPUがバッファにアクセスする前に sync_for_cpu に1を書いてバッファのオーナーをCPUにします。この際、sync_direction が2か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュを無効化(Invalidiate)します。一度この操作を行ってバッファのオーナーをCPUにした後は、アクセラレーターがバッファをアクセスしないようにしなければなりません。
+
+
+
+アクセラレータがバッファにアクセスする前にsync_for_deviceに1を書いてバッファのオーナーをデバイスにします。この際、sync_directionが1か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュをフラッシュします。一度この操作を行ってバッファのオーナーをアクセラレーターにした後は、CPUがこのバッファをアクセスしてはいけません。
+
+
+
 
 
