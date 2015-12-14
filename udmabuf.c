@@ -92,6 +92,12 @@ struct udmabuf_driver_data {
     dma_addr_t           phys_addr;
 #if (SYNC_ENABLE == 1)
     int                  sync_mode;
+    int                  sync_offset;
+    size_t               sync_size;
+    int                  sync_direction;
+    bool                 sync_owner;
+    int                  sync_for_cpu;
+    int                  sync_for_device;
 #endif
 #if ((UDMABUF_DEBUG == 1) && (SYNC_ENABLE == 1))
     bool                 debug_vma;
@@ -108,6 +114,51 @@ struct udmabuf_driver_data {
 #define SYNC_MODE_MASK     (0x03)
 #define SYNC_ALWAYS        (0x04)
 
+#if (SYNC_ENABLE == 1)
+/**
+ * udmabuf_sync_for_cpu() - call dma_sync_single_for_cpu()
+ * returns:	Success(0)
+ */
+static int udmabuf_sync_for_cpu(struct udmabuf_driver_data* this)
+{
+    if (this->sync_for_cpu) {
+        dma_addr_t phys_addr = this->phys_addr + this->sync_offset;
+        enum dma_data_direction direction;
+        switch(this->sync_direction) {
+            case 1 : direction = DMA_TO_DEVICE    ; break;
+            case 2 : direction = DMA_FROM_DEVICE  ; break;
+            default: direction = DMA_BIDIRECTIONAL; break;
+        }
+        dma_sync_single_for_cpu(this->device, phys_addr, this->sync_size, direction);
+        this->sync_for_cpu = 0;
+        this->sync_owner   = 0;
+    }
+    return 0;
+}
+#endif
+#if (SYNC_ENABLE == 1)
+/**
+ * udmabuf_sync_for_device() - call dma_sync_single_for_device()
+ * returns:	Success(0)
+ */
+static int udmabuf_sync_for_device(struct udmabuf_driver_data* this)
+{
+    if (this->sync_for_device) {
+        dma_addr_t phys_addr = this->phys_addr + this->sync_offset;
+        enum dma_data_direction direction;
+        switch(this->sync_direction) {
+            case 1 : direction = DMA_TO_DEVICE    ; break;
+            case 2 : direction = DMA_FROM_DEVICE  ; break;
+            default: direction = DMA_BIDIRECTIONAL; break;
+        }
+        dma_sync_single_for_device(this->device, phys_addr, this->sync_size, direction);
+        this->sync_for_device = 0;
+        this->sync_owner      = 1;
+    }
+    return 0;
+}
+#endif
+
 #define DEF_ATTR_SHOW(__attr_name, __format, __value) \
 static ssize_t udmabuf_show_ ## __attr_name(struct device *dev, struct device_attribute *attr, char *buf) \
 {                                                            \
@@ -120,6 +171,8 @@ static ssize_t udmabuf_show_ ## __attr_name(struct device *dev, struct device_at
     return status;                                           \
 }
 
+static inline int NO_ACTION(struct udmabuf_driver_data* this){return 0;}
+
 #define DEF_ATTR_SET(__attr_name, __min, __max, __pre_action, __post_action) \
 static ssize_t udmabuf_set_ ## __attr_name(struct device *dev, struct device_attribute *attr, const char *buf, size_t size) \
 { \
@@ -129,34 +182,51 @@ static ssize_t udmabuf_set_ ## __attr_name(struct device *dev, struct device_att
     if (0 != mutex_lock_interruptible(&this->sem)){return -ERESTARTSYS;}     \
     if (0 != (status = kstrtoul(buf, 10, &value))){            goto failed;} \
     if ((value < __min) || (__max < value)) {status = -EINVAL; goto failed;} \
-    if (0 != (status = __pre_action )) {                       goto failed;} \
+    if (0 != (status = __pre_action(this)))       {            goto failed;} \
     this->__attr_name = value;                                               \
-    if (0 != (status = __post_action)) {                       goto failed;} \
+    if (0 != (status = __post_action(this)))      {            goto failed;} \
     status = size;                                                           \
   failed:                                                                    \
     mutex_unlock(&this->sem);                                                \
     return status;                                                           \
 }
 
-DEF_ATTR_SHOW(size      , "%d\n"   , this->size      );
-DEF_ATTR_SHOW(phys_addr , "0x%lx\n", (long unsigned int)this->phys_addr);
+DEF_ATTR_SHOW(size           , "%d\n"   , this->size                              );
+DEF_ATTR_SHOW(phys_addr      , "0x%lx\n", (long unsigned int)this->phys_addr      );
 #if (SYNC_ENABLE == 1)
-DEF_ATTR_SHOW(sync_mode , "%d\n"   , this->sync_mode );
-DEF_ATTR_SET( sync_mode            , 0, 7, 0, 0      );
+DEF_ATTR_SHOW(sync_mode      , "%d\n"   , this->sync_mode                         );
+DEF_ATTR_SET( sync_mode                 , 0, 7, NO_ACTION, NO_ACTION              );
+DEF_ATTR_SHOW(sync_offset    , "0x%lx\n", (long unsigned int)this->sync_offset    );
+DEF_ATTR_SET( sync_offset               , 0, 0xFFFFFFFF, NO_ACTION, NO_ACTION     );
+DEF_ATTR_SHOW(sync_size      , "%d\n"   , this->sync_size                         );
+DEF_ATTR_SET( sync_size                 , 0, 0xFFFFFFFF, NO_ACTION, NO_ACTION     );
+DEF_ATTR_SHOW(sync_direction , "%d\n"   , this->sync_direction                    );
+DEF_ATTR_SET( sync_direction            , 0, 3, NO_ACTION, NO_ACTION              );
+DEF_ATTR_SHOW(sync_owner     , "%d\n"   , this->sync_owner                        );
+DEF_ATTR_SHOW(sync_for_cpu   , "%d\n"   , this->sync_for_cpu                      );
+DEF_ATTR_SET( sync_for_cpu              , 0, 1, NO_ACTION, udmabuf_sync_for_cpu   );
+DEF_ATTR_SHOW(sync_for_device, "%d\n"   , this->sync_for_device                   );
+DEF_ATTR_SET( sync_for_device           , 0, 1, NO_ACTION, udmabuf_sync_for_device);
 #endif
 #if ((UDMABUF_DEBUG == 1) && (SYNC_ENABLE == 1))
-DEF_ATTR_SHOW(debug_vma , "%d\n"   , this->debug_vma );
-DEF_ATTR_SET( debug_vma            , 0, 1, 0, 0      );
+DEF_ATTR_SHOW(debug_vma      , "%d\n"   , this->debug_vma                         );
+DEF_ATTR_SET( debug_vma                 , 0, 1, NO_ACTION, NO_ACTION              );
 #endif
 
 static struct device_attribute udmabuf_device_attrs[] = {
-  __ATTR(size      , 0644, udmabuf_show_size      , NULL),
-  __ATTR(phys_addr , 0644, udmabuf_show_phys_addr , NULL),
+  __ATTR(size           , 0444, udmabuf_show_size            , NULL                       ),
+  __ATTR(phys_addr      , 0444, udmabuf_show_phys_addr       , NULL                       ),
 #if (SYNC_ENABLE == 1)
-  __ATTR(sync_mode , 0644, udmabuf_show_sync_mode , udmabuf_set_sync_mode),
+  __ATTR(sync_mode      , 0664, udmabuf_show_sync_mode       , udmabuf_set_sync_mode      ),
+  __ATTR(sync_offset    , 0664, udmabuf_show_sync_offset     , udmabuf_set_sync_offset    ),
+  __ATTR(sync_size      , 0664, udmabuf_show_sync_size       , udmabuf_set_sync_size      ),
+  __ATTR(sync_direction , 0664, udmabuf_show_sync_direction  , udmabuf_set_sync_direction ),
+  __ATTR(sync_owner     , 0664, udmabuf_show_sync_owner      , NULL                       ),
+  __ATTR(sync_for_cpu   , 0664, udmabuf_show_sync_for_cpu    , udmabuf_set_sync_for_cpu   ),
+  __ATTR(sync_for_device, 0664, udmabuf_show_sync_for_device , udmabuf_set_sync_for_device),
 #endif
 #if ((UDMABUF_DEBUG == 1) && (SYNC_ENABLE == 1))
-  __ATTR(debug_vma , 0644, udmabuf_show_debug_vma , udmabuf_set_debug_vma),
+  __ATTR(debug_vma      , 0664, udmabuf_show_debug_vma       , udmabuf_set_debug_vma      ),
 #endif
   __ATTR_NULL,
 };
@@ -169,9 +239,15 @@ static struct attribute *udmabuf_attrs[] = {
   &(udmabuf_device_attrs[1].attr),
 #if (SYNC_ENABLE == 1)
   &(udmabuf_device_attrs[2].attr),
+  &(udmabuf_device_attrs[3].attr),
+  &(udmabuf_device_attrs[4].attr),
+  &(udmabuf_device_attrs[5].attr),
+  &(udmabuf_device_attrs[6].attr),
+  &(udmabuf_device_attrs[7].attr),
+  &(udmabuf_device_attrs[8].attr),
 #endif
 #if ((UDMABUF_DEBUG == 1) && (SYNC_ENABLE == 1))
-  &(udmabuf_device_attrs[3].attr),
+  &(udmabuf_device_attrs[9].attr),
 #endif
   NULL
 };
@@ -190,7 +266,7 @@ static const struct attribute_group* udmabuf_attr_groups[] = {
 
 #if (SYNC_ENABLE == 1)
 /**
- * udmabuf_driver_vma_open() - The is the driver open function.
+ * udmabuf_driver_vma_open() - This is the driver open function.
  * @vma:        Pointer to the vm area structure.
  * returns:	Success or error status.
  */
@@ -204,7 +280,7 @@ static void udmabuf_driver_vma_open(struct vm_area_struct* vma)
 
 #if (SYNC_ENABLE == 1)
 /**
- * udmabuf_driver_vma_close() - The is the driver close function.
+ * udmabuf_driver_vma_close() - This is the driver close function.
  * @vma:        Pointer to the vm area structure.
  * returns:	Success or error status.
  */
@@ -218,7 +294,7 @@ static void udmabuf_driver_vma_close(struct vm_area_struct* vma)
 
 #if (SYNC_ENABLE == 1)
 /**
- * udmabuf_driver_vma_fault() - The is the driver nopage function.
+ * udmabuf_driver_vma_fault() - This is the driver nopage function.
  * @vma:        Pointer to the vm area structure.
  * @vfm:        Pointer to the vm fault structure.
  * returns:	Success or error status.
@@ -261,7 +337,7 @@ static const struct vm_operations_struct udmabuf_driver_vm_ops = {
 #endif
 
 /**
- * udmabuf_driver_file_open() - The is the driver open function.
+ * udmabuf_driver_file_open() - This is the driver open function.
  * @inode:	Pointer to the inode structure of this device.
  * @file:	Pointer to the file structure.
  * returns:	Success or error status.
@@ -279,7 +355,7 @@ static int udmabuf_driver_file_open(struct inode *inode, struct file *file)
 }
 
 /**
- * udmabuf_driver_file_release() - The is the driver release function.
+ * udmabuf_driver_file_release() - This is the driver release function.
  * @inode:	Pointer to the inode structure of this device.
  * @file:	Pointer to the file structure.
  * returns:	Success.
@@ -294,7 +370,7 @@ static int udmabuf_driver_file_release(struct inode *inode, struct file *file)
 }
 
 /**
- * udmabuf_driver_file_mmap() - The is the driver memory map function.
+ * udmabuf_driver_file_mmap() - This is the driver memory map function.
  * @file:	Pointer to the file structure.
  * @vma:        Pointer to the vm area structure.
  * returns:	Success.
@@ -333,7 +409,7 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
 }
 
 /**
- * udmabuf_driver_file_read() - The is the driver read function.
+ * udmabuf_driver_file_read() - This is the driver read function.
  * @file:	Pointer to the file structure.
  * @buff:	Pointer to the user buffer.
  * @count:	The number of bytes to be written.
@@ -384,7 +460,7 @@ static ssize_t udmabuf_driver_file_read(struct file* file, char __user* buff, si
 }
 
 /**
- * udmabuf_driver_file_write() - The is the driver write function.
+ * udmabuf_driver_file_write() - This is the driver write function.
  * @file:	Pointer to the file structure.
  * @buff:	Pointer to the user buffer.
  * @count:	The number of bytes to be written.
@@ -513,18 +589,24 @@ static struct udmabuf_driver_data* udmabuf_driver_create(int minor, unsigned int
      * make this->device_number and this->size
      */
     {
-        this->device_number = MKDEV(MAJOR(udmabuf_device_number), minor);
-        this->size          = size;
-        this->alloc_size    = ((size + ((1 << PAGE_SHIFT) - 1)) >> PAGE_SHIFT) << PAGE_SHIFT;
+        this->device_number   = MKDEV(MAJOR(udmabuf_device_number), minor);
+        this->size            = size;
+        this->alloc_size      = ((size + ((1 << PAGE_SHIFT) - 1)) >> PAGE_SHIFT) << PAGE_SHIFT;
     }
 #if (SYNC_ENABLE == 1)
     {
-        this->sync_mode     = SYNC_NONCACHED;
+        this->sync_mode       = SYNC_NONCACHED;
+        this->sync_offset     = 0;
+        this->sync_size       = size;
+        this->sync_direction  = 0;
+        this->sync_owner      = 0;
+        this->sync_for_cpu    = 0;
+        this->sync_for_device = 0;
     }
 #endif
 #if ((UDMABUF_DEBUG == 1) && (SYNC_ENABLE == 1))
     {
-        this->debug_vma     = 0;
+        this->debug_vma       = 0;
     }
 #endif
     /*
