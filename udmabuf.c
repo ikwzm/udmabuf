@@ -116,8 +116,8 @@ struct udmabuf_driver_data {
 
 #if (SYNC_ENABLE == 1)
 /**
- * udmabuf_sync_for_cpu() - call dma_sync_single_for_cpu() for udmabuf_set_sync_for_cpu()
- * returns:	Success or error status.
+ * udmabuf_sync_for_cpu() - call dma_sync_single_for_cpu()
+ * returns:	Success(0)
  */
 static int udmabuf_sync_for_cpu(struct udmabuf_driver_data* this)
 {
@@ -138,8 +138,8 @@ static int udmabuf_sync_for_cpu(struct udmabuf_driver_data* this)
 #endif
 #if (SYNC_ENABLE == 1)
 /**
- * udmabuf_sync_for_device() - call dma_sync_single_for_device() for udmabuf_set_sync_for_device()
- * returns:	Success or error status.
+ * udmabuf_sync_for_device() - call dma_sync_single_for_device()
+ * returns:	Success(0)
  */
 static int udmabuf_sync_for_device(struct udmabuf_driver_data* this)
 {
@@ -214,19 +214,19 @@ DEF_ATTR_SET( debug_vma                 , 0, 1, NO_ACTION, NO_ACTION            
 #endif
 
 static struct device_attribute udmabuf_device_attrs[] = {
-  __ATTR(size           , 0644, udmabuf_show_size            , NULL                       ),
-  __ATTR(phys_addr      , 0644, udmabuf_show_phys_addr       , NULL                       ),
+  __ATTR(size           , 0444, udmabuf_show_size            , NULL                       ),
+  __ATTR(phys_addr      , 0444, udmabuf_show_phys_addr       , NULL                       ),
 #if (SYNC_ENABLE == 1)
-  __ATTR(sync_mode      , 0644, udmabuf_show_sync_mode       , udmabuf_set_sync_mode      ),
-  __ATTR(sync_offset    , 0644, udmabuf_show_sync_offset     , udmabuf_set_sync_offset    ),
-  __ATTR(sync_size      , 0644, udmabuf_show_sync_size       , udmabuf_set_sync_size      ),
-  __ATTR(sync_direction , 0644, udmabuf_show_sync_direction  , udmabuf_set_sync_direction ),
-  __ATTR(sync_owner     , 0644, udmabuf_show_sync_owner      , NULL                       ),
-  __ATTR(sync_for_cpu   , 0644, udmabuf_show_sync_for_cpu    , udmabuf_set_sync_for_cpu   ),
-  __ATTR(sync_for_device, 0644, udmabuf_show_sync_for_device , udmabuf_set_sync_for_device),
+  __ATTR(sync_mode      , 0664, udmabuf_show_sync_mode       , udmabuf_set_sync_mode      ),
+  __ATTR(sync_offset    , 0664, udmabuf_show_sync_offset     , udmabuf_set_sync_offset    ),
+  __ATTR(sync_size      , 0664, udmabuf_show_sync_size       , udmabuf_set_sync_size      ),
+  __ATTR(sync_direction , 0664, udmabuf_show_sync_direction  , udmabuf_set_sync_direction ),
+  __ATTR(sync_owner     , 0664, udmabuf_show_sync_owner      , NULL                       ),
+  __ATTR(sync_for_cpu   , 0664, udmabuf_show_sync_for_cpu    , udmabuf_set_sync_for_cpu   ),
+  __ATTR(sync_for_device, 0664, udmabuf_show_sync_for_device , udmabuf_set_sync_for_device),
 #endif
 #if ((UDMABUF_DEBUG == 1) && (SYNC_ENABLE == 1))
-  __ATTR(debug_vma      , 0644, udmabuf_show_debug_vma       , udmabuf_set_debug_vma      ),
+  __ATTR(debug_vma      , 0664, udmabuf_show_debug_vma       , udmabuf_set_debug_vma      ),
 #endif
   __ATTR_NULL,
 };
