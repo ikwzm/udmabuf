@@ -157,7 +157,7 @@ udmabufをinsmodでカーネルにロードすると、次のようなデバイ�
 
 * /sys/class/udmabuf/udmabuf[0-31]/sync_for_device
 
-### 　/dev/udmabuf
+### /dev/udmabuf
 
 
 /dev/udmabuf[0-31]はmmap()を使って、ユーザー空間にマッピングするか、read()、write()を使ってバッファにアクセスする際に使用します。
@@ -195,7 +195,7 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
 
 
 
-### 　phys_addr
+### phys_addr
 
 
 /sys/class/udmabuf/udmabuf[0-31]/phys_addr はDMAバッファの物理アドレスが読めます。
@@ -216,7 +216,7 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
 
 
 
-### 　size
+### size
 
 
 /sys/class/udmabuf/udmabuf[0-31]/size はDMAバッファのサイズが読めます。
@@ -237,7 +237,7 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
 
 
 
-### 　sync_mode
+### sync_mode
 
 
 /sys/class/udmabuf/udmabuf[0-31]/sync_mode はudmabufをopenする際にO_SYNCを指定した場合の動作を指定します。
@@ -259,7 +259,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 
 
 
-### 　sync_offset
+### sync_offset
 
 
 /sys/class/udmabuf/udmabuf[0-31]/sync_offset は udmabufのキャッシュ制御を手動で行う際のバッファの範囲の先頭を指定します。
@@ -281,7 +281,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 
 
 
-### 　sync_size
+### sync_size
 
 
 /sys/class/udmabuf/udmabuf[0-31]/sync_size は udmabufのキャッシュ制御を手動で行う際のバッファの範囲のサイズを指定します。
@@ -303,7 +303,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 
 
 
-### 　sync_direction
+### sync_direction
 
 
 /sys/class/udmabuf/udmabuf[0-31]/sync_direction は udmabufのキャッシュ制御を手動で行う際のDMAの方向を指定します。
@@ -331,7 +331,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 
 
 
-### 　sync_owner
+### sync_owner
 
 
 /sys/class/udmabuf/udmabuf[0-31]/sync_owner は udmabufのキャッシュ制御を手動で行った際に、現在のバッファのオーナーがCPUかDEVICEを読み取ります。
@@ -354,7 +354,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 
 
 
-### 　sync_for_cpu
+### sync_for_cpu
 
 
 /sys/class/udmabuf/udmabuf[0-31]/sync_for_cpu はudmabufのキャッシュ制御を手動で行う際に、このデバイスドライバに1を書き込むことでバッファのオーナーをCPUにします。その際、sync_directionがDMA_FROM_DEVICEだった時、sync_offsetとsync_size で指定された領域のCPUキャッシュが無効化されます。
@@ -376,7 +376,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 
 
 
-### 　sync_for_device
+### sync_for_device
 
 
 /sys/class/udmabuf/udmabuf[0-31]/sync_for_deviceはudmabufのキャッシュ制御を手動で行う際に、このデバイスドライバに1を書き込むことでバッファのオーナーをDEVICEにします。その際、sync_directionがDMA_TO_DEVICEだった時、sync_offsetとsync_size で指定された領域のCPUキャッシュがフラッシュされます。
@@ -424,7 +424,9 @@ CPUは通常キャッシュを通じてメインメモリ上のDMAバッファ�
 ```
 
 
-ハードウェアでコヒーレンシを保証できる場合は、次の項で説明するようCPUキャッシュを手動で制御する必要はありません。
+
+
+ハードウェアでコヒーレンシを保証できる場合は、次の項で説明するようなCPUキャッシュを手動で制御する必要はありません。
 
 
 
@@ -436,7 +438,7 @@ CPUは通常キャッシュを通じてメインメモリ上のDMAバッファ�
 
 
 
-### 　CPUキャッシュを無効にする方法
+### CPUキャッシュを無効にする方法
 
 
 CPUキャッシュを無効にする場合は、udmabufをopenする際にO_SYNCフラグを設定します。
@@ -752,7 +754,7 @@ int clear_buf(unsigned char* buf, unsigned int size)
 
 
 
-### 　CPUキャッシュを有効にしたまま手動でCPUキャッシュを制御する方法
+### CPUキャッシュを有効にしたまま手動でCPUキャッシュを制御する方法
 
 
 CPUキャッシュを有効にする場合は、O_SYNCフラグを設定せずにudmabufをopen します。
@@ -771,7 +773,7 @@ CPUキャッシュを有効にする場合は、O_SYNCフラグを設定せず�
 
 
 
-アクセラレーターと共有するバッファの範囲をsync_offsetとsync_sizeで指定します。sync_offsetはmmap()で確保した先頭アドレスからのオフセット値を指定します。sync_sizeはバッファの大きさをバイト数で指定します。
+アクセラレーターと共有するバッファの範囲をsync_offsetとsync_sizeで指定します。sync_offsetはmmap()で確保した先頭アドレスからのオフセット値を指定します。sync_sizeは共有するバッファの大きさをバイト数で指定します。
 
 アクセラレータがバッファからデータを読むだけの場合は、sync_direction に1(=DMA_TO_DEVICE)を指定します。
 
