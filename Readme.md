@@ -12,7 +12,7 @@ udmabuf はLinux のカーネル空間に連続したメモリ領域をDMAバッ
 
 ユーザー空間でudmabufで確保したDMAバッファを利用する際は、デバイスファイル(/dev/udmabuf0など)をopen()して、mmap()でユーザー空間にマッピングするか、read()またはwrite()で行います。
 
-openする際にO_SYNCフラグをセットすることによりCPUキャッシュを無効にすることが出来ます。
+openする際にO_SYNCフラグをセットすることによりCPUキャッシュを無効にすることが出来ます。また、CPUキャッシュを有効にした状態で、CPUキャッシュのフラッシュとインヴァリディエートを行うことが出来ます。
 
 /sys/class/udmabuf/udmabuf0/phys_addr を読むことにより、DMAバッファの物理空間上のアドレスを知ることが出来ます。
 
@@ -35,7 +35,7 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
 ## 対応プラットフォーム
 
 
-* OS : Linux Kernel Version 3.6 - 3.8 (私が動作を確認したのは 3.8です).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18(私が動作を確認したのは3.18です).
 
 * CPU: ARM Cortex-A9 (ZYNQ)
 
