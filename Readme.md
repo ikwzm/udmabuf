@@ -357,7 +357,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_for_cpu
 
 
-/sys/class/udmabuf/udmabuf[0-31]/sync_for_cpu はudmabufのキャッシュ制御を手動で行う際に、このデバイスドライバに1を書き込むことでバッファのオーナーをCPUにします。その際、sync_directionがDMA_FROM_DEVICEだった時、sync_offsetとsync_size で指定された領域のCPUキャッシュが無効化されます。
+/sys/class/udmabuf/udmabuf[0-31]/sync_for_cpu はudmabufのキャッシュ制御を手動で行う際、このデバイスドライバに1を書き込むことでバッファのオーナーをCPUにします。その際、sync_directionが2(=DMA_FROM_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュが無効化されます。
 
 
 ```C:udmabuf_test.c
@@ -379,7 +379,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_for_device
 
 
-/sys/class/udmabuf/udmabuf[0-31]/sync_for_deviceはudmabufのキャッシュ制御を手動で行う際に、このデバイスドライバに1を書き込むことでバッファのオーナーをDEVICEにします。その際、sync_directionがDMA_TO_DEVICEだった時、sync_offsetとsync_size で指定された領域のCPUキャッシュがフラッシュされます。
+/sys/class/udmabuf/udmabuf[0-31]/sync_for_deviceはudmabufのキャッシュ制御を手動で行う際、このデバイスドライバに1を書き込むことでバッファのオーナーをDEVICEにします。その際、sync_directionが1(=DMA_TO_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュがフラッシュされます。
 
 
 ```C:udmabuf_test.c
