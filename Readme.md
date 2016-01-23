@@ -80,6 +80,16 @@ crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
 
 
+パーミッションがrootのみ読み書き可能になっています。ロード時にパーミッションを変更したい場合は、/etc/udev/rules.d/99-udmabuf.rules というファイルを作成し、以下の内容を書いておきます。
+
+
+```rules:99-udmabuf.rules
+KERNEL=="udmabuf[0-9]*", GROUP="root", MODE="0666"
+```
+
+
+
+
 アンインストールするには rmmod を使います。
 
 
