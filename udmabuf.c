@@ -1,6 +1,6 @@
 /*********************************************************************************
  *
- *       Copyright (C) 2015 Ichiro Kawazome
+ *       Copyright (C) 2015-2016 Ichiro Kawazome
  *       All rights reserved.
  * 
  *       Redistribution and use in source and binary forms, with or without
@@ -230,7 +230,6 @@ static struct device_attribute udmabuf_device_attrs[] = {
 #endif
   __ATTR_NULL,
 };
-
 
 #if (USE_DEV_GROUPS == 1)
 
@@ -887,4 +886,5 @@ module_exit(udmabuf_module_exit);
 
 MODULE_AUTHOR("ikwzm");
 MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("Dual BSD/GPL");
+
