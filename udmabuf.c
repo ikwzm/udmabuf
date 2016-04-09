@@ -563,13 +563,14 @@ static void    udmabuf_device_minor_number_free(int num)
 /**
  * udmabuf_driver_create() -  Create call for the device.
  *
+ * @name:       device name or NULL
  * @minor:	minor_number or -1
  * @size:	buffer size
  * Returns device driver strcutre pointer
  *
  * It does all the memory allocation and registration for the device.
  */
-static struct udmabuf_driver_data* udmabuf_driver_create(int minor, unsigned int size)
+static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, int minor, unsigned int size)
 {
     struct udmabuf_driver_data* this     = NULL;
     unsigned int                done     = 0;
@@ -631,11 +632,19 @@ static struct udmabuf_driver_data* udmabuf_driver_create(int minor, unsigned int
      * register /sys/class/udmabuf/udmabuf[0..n]
      */
     {
-        this->device = device_create(udmabuf_sys_class,
-                                     NULL,
-                                     this->device_number,
-                                     (void *)this,
-                                     DEVICE_NAME_FORMAT, MINOR(this->device_number));
+        if (name == NULL) {
+            this->device = device_create(udmabuf_sys_class,
+                                         NULL,
+                                         this->device_number,
+                                         (void *)this,
+                                         DEVICE_NAME_FORMAT, MINOR(this->device_number));
+        } else {
+            this->device = device_create(udmabuf_sys_class,
+                                         NULL,
+                                         this->device_number,
+                                         (void *)this,
+                                         name);
+        }
         if (IS_ERR_OR_NULL(this->device)) {
             this->device = NULL;
             goto failed;
@@ -649,7 +658,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(int minor, unsigned int
     {
         this->virt_addr = dma_alloc_coherent(this->device, this->alloc_size, &this->phys_addr, GFP_KERNEL);
         if (IS_ERR_OR_NULL(this->virt_addr)) {
-            dev_err(this->device, "dma_alloc_coherent() failed\n");
+            printk(KERN_ERR "dma_alloc_coherent() failed\n");
             this->virt_addr = NULL;
             goto failed;
         }
@@ -662,7 +671,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(int minor, unsigned int
         cdev_init(&this->cdev, &udmabuf_driver_file_ops);
         this->cdev.owner = THIS_MODULE;
         if (cdev_add(&this->cdev, this->device_number, 1) != 0) {
-            dev_err(this->device, "cdev_add() failed\n");
+            printk(KERN_ERR "cdev_add() failed\n");
             goto failed;
         }
         done |= DONE_CHRDEV_ADD;
@@ -726,6 +735,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     int          retval = 0;
     unsigned int size   = 0;
     int          minor_number = -1;
+    const char*  device_name;
 
     dev_info(&pdev->dev, "driver probe start.\n");
     /*
@@ -750,10 +760,23 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
         minor_number = (status == 0) ? number : -1;
     }
     /*
+     * get device name
+     */
+    {
+        device_name = of_get_property(pdev->dev.of_node, "device-name", NULL);
+        
+        if (IS_ERR_OR_NULL(device_name)) {
+            if (minor_number < 0)
+                device_name = dev_name(&pdev->dev);
+            else
+                device_name = NULL;
+        }
+    }
+    /*
      * create (udmabuf_driver_data*)this.
      */
     {
-        struct udmabuf_driver_data* driver_data = udmabuf_driver_create(minor_number, size);
+        struct udmabuf_driver_data* driver_data = udmabuf_driver_create(device_name, minor_number, size);
         if (IS_ERR_OR_NULL(driver_data)) {
             dev_err(&pdev->dev, "driver create fail.\n");
             retval = PTR_ERR(driver_data);
@@ -831,7 +854,7 @@ struct udmabuf_driver_data* udmabuf_driver[4] = {NULL,NULL,NULL,NULL};
 
 #define CREATE_UDMABUF_DRIVER(__num)                                                      \
     if (udmabuf ## __num > 0) {                                                           \
-        udmabuf_driver[__num] = udmabuf_driver_create(__num, udmabuf ## __num);           \
+        udmabuf_driver[__num] = udmabuf_driver_create(NULL, __num, udmabuf ## __num);     \
         if (IS_ERR_OR_NULL(udmabuf_driver[__num])) {                                      \
             udmabuf_driver[__num] = NULL;                                                 \
             printk(KERN_ERR "%s: couldn't create udmabuf%d driver\n", DRIVER_NAME, __num);\

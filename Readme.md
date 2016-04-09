@@ -35,7 +35,8 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
 ## 対応プラットフォーム
 
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18(私が動作を確認したのは3.18です).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4   
+(私が動作を確認したのは3.18と4.4です).
 
 * CPU: ARM Cortex-A9 (ZYNQ)
 
@@ -100,8 +101,6 @@ udmabuf udmabuf0: driver uninstalled
 
 
 
-
-
 ## デバイスツリーによる設定
 
 
@@ -109,8 +108,9 @@ udmabufはinsmod の引数でDMAバッファを用意する以外に、Linuxの�
 
 
 ```devicetree:devicetree.dts
-		udmabuf0@devicetree {
+		udmabuf@0x00 {
 			compatible = "ikwzm,udmabuf-0.10.a";
+			device-name = "udmabuf0";
 			minor-number = <0>;
 			size = <0x00100000>;
 		};
@@ -118,11 +118,17 @@ udmabufはinsmod の引数でDMAバッファを用意する以外に、Linuxの�
 ```
 
 
-
-
 sizeでDMAバッファの容量をバイト数で指定します。
 
-minor-number でudmabufのマイナー番号を指定します。マイナー番号は0から31までつけることができます。ただし、insmodの引数の方が優先され、マイナー番号がかち合うとdevicetreeで指定した方が失敗します。
+device-nameでデバイス名を指定します。
+
+minor-number でudmabufのマイナー番号を指定します。マイナー番号は0から255までつけることができます。ただし、insmodの引数の方が優先され、マイナー番号がかち合うとdevicetreeで指定した方が失敗します。minor-numberが省略された場合、空いているマイナー番号が割り当てられます。
+
+デバイス名は次のように決まります。
+
+1. device-nameが指定されていた場合は、 device-name。
+2. device-nameが省略されていて、かつminor-numberが指定されていた場合は、sprintf("udmabuf%d", minor-number)。
+3. device-nameが省略されていて、かつminor-numberも省略されていた場合は、devicetree のエントリー名(例ではudmabuf@0x00)。
 
 
 
@@ -145,32 +151,23 @@ crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ## デバイスファイル
 
 
-udmabufをinsmodでカーネルにロードすると、次のようなデバイスファイルが作成されます。
+udmabufをinsmodでカーネルにロードすると、次のようなデバイスファイルが作成されます。\<device-name\>には、前節で説明したデバイス名が入ります。
 
-* /dev/udmabuf[0-31]
+* /dev/\<device-name\>
+* /sys/class/udmabuf/\<device-name\>/phys_addr
+* /sys/class/udmabuf/\<device-name\>/size
+* /sys/class/udmabuf/\<device-name\>/sync_mode
+* /sys/class/udmabuf/\<device-name\>/sync_offset
+* /sys/class/udmabuf/\<device-name\>/sync_size
+* /sys/class/udmabuf/\<device-name\>/sync_direction
+* /sys/class/udmabuf/\<device-name\>/sync_owner
+* /sys/class/udmabuf/\<device-name\>/sync_for_cpu
+* /sys/class/udmabuf/\<device-name\>/sync_for_device
 
-* /sys/class/udmabuf/udmabuf[0-31]/phys_addr
-
-* /sys/class/udmabuf/udmabuf[0-31]/size
-
-* /sys/class/udmabuf/udmabuf[0-31]/sync_mode
-
-* /sys/class/udmabuf/udmabuf[0-31]/sync_offset
-
-* /sys/class/udmabuf/udmabuf[0-31]/sync_size
-
-* /sys/class/udmabuf/udmabuf[0-31]/sync_direction
-
-* /sys/class/udmabuf/udmabuf[0-31]/sync_owner
-
-* /sys/class/udmabuf/udmabuf[0-31]/sync_for_cpu
-
-* /sys/class/udmabuf/udmabuf[0-31]/sync_for_device
-
-### /dev/udmabuf
+### /dev/\<device-name\>
 
 
-/dev/udmabuf[0-31]はmmap()を使って、ユーザー空間にマッピングするか、read()、write()を使ってバッファにアクセスする際に使用します。
+/dev/\<device-name\>はmmap()を使って、ユーザー空間にマッピングするか、read()、write()を使ってバッファにアクセスする際に使用します。
 
 
 ```C:udmabuf_test.c
@@ -208,7 +205,7 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
 ### phys_addr
 
 
-/sys/class/udmabuf/udmabuf[0-31]/phys_addr はDMAバッファの物理アドレスが読めます。
+/sys/class/udmabuf/\<device-name\>/phys_addr はDMAバッファの物理アドレスが読めます。
 
 
 ```C:udmabuf_test.c
@@ -229,7 +226,7 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
 ### size
 
 
-/sys/class/udmabuf/udmabuf[0-31]/size はDMAバッファのサイズが読めます。
+/sys/class/udmabuf/\<device-name\>/size はDMAバッファのサイズが読めます。
 
 
 ```C:udmabuf_test.c
@@ -250,7 +247,7 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
 ### sync_mode
 
 
-/sys/class/udmabuf/udmabuf[0-31]/sync_mode はudmabufをopenする際にO_SYNCを指定した場合の動作を指定します。
+/sys/class/udmabuf/\<device-name\>/sync_mode はudmabufをopenする際にO_SYNCを指定した場合の動作を指定します。
 
 
 ```C:udmabuf_test.c
@@ -272,7 +269,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_offset
 
 
-/sys/class/udmabuf/udmabuf[0-31]/sync_offset は udmabufのキャッシュ制御を手動で行う際のバッファの範囲の先頭を指定します。
+/sys/class/udmabuf/\<device-name\>/sync_offset は udmabufのキャッシュ制御を手動で行う際のバッファの範囲の先頭を指定します。
 
 
 ```C:udmabuf_test.c
@@ -294,7 +291,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_size
 
 
-/sys/class/udmabuf/udmabuf[0-31]/sync_size は udmabufのキャッシュ制御を手動で行う際のバッファの範囲のサイズを指定します。
+/sys/class/udmabuf/\<device-name\>/sync_size は udmabufのキャッシュ制御を手動で行う際のバッファの範囲のサイズを指定します。
 
 
 ```C:udmabuf_test.c
@@ -316,7 +313,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_direction
 
 
-/sys/class/udmabuf/udmabuf[0-31]/sync_direction は udmabufのキャッシュ制御を手動で行う際のDMAの方向を指定します。
+/sys/class/udmabuf/\<device-name\>/sync_direction は udmabufのキャッシュ制御を手動で行う際のDMAの方向を指定します。
 
 0: DMA_BIDIRECTIONALを指定します。
 
@@ -344,7 +341,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_owner
 
 
-/sys/class/udmabuf/udmabuf[0-31]/sync_owner は udmabufのキャッシュ制御を手動で行った際に、現在のバッファのオーナーがCPUかDEVICEを読み取ります。
+/sys/class/udmabuf/\<device-name\>/sync_owner は udmabufのキャッシュ制御を手動で行った際に、現在のバッファのオーナーがCPUかDEVICEを読み取ります。
 
 
 ```C:udmabuf_test.c
@@ -367,7 +364,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_for_cpu
 
 
-/sys/class/udmabuf/udmabuf[0-31]/sync_for_cpu はudmabufのキャッシュ制御を手動で行う際、このデバイスドライバに1を書き込むことでバッファのオーナーをCPUにします。その際、sync_directionが2(=DMA_FROM_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュが無効化されます。
+/sys/class/udmabuf/\<device-name\>/sync_for_cpu はudmabufのキャッシュ制御を手動で行う際、このデバイスドライバに1を書き込むことでバッファのオーナーをCPUにします。その際、sync_directionが2(=DMA_FROM_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュが無効化されます。
 
 
 ```C:udmabuf_test.c
@@ -389,7 +386,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_for_device
 
 
-/sys/class/udmabuf/udmabuf[0-31]/sync_for_deviceはudmabufのキャッシュ制御を手動で行う際、このデバイスドライバに1を書き込むことでバッファのオーナーをDEVICEにします。その際、sync_directionが1(=DMA_TO_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュがフラッシュされます。
+/sys/class/udmabuf/\<device-name\>/sync_for_deviceはudmabufのキャッシュ制御を手動で行う際、このデバイスドライバに1を書き込むことでバッファのオーナーをDEVICEにします。その際、sync_directionが1(=DMA_TO_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュがフラッシュされます。
 
 
 ```C:udmabuf_test.c
@@ -468,19 +465,12 @@ CPUキャッシュを無効にする場合は、udmabufをopenする際にO_SYNC
 O_SYNCフラグを設定した場合のキャッシュの振る舞いはsync_modeで設定します。sync_modeには次の値が設定できます。
 
 * sync_mode=0:  常にCPUキャッシュが有効。つまりO_SYNCフラグの有無にかかわらず常にCPUキャッシュは有効になります。
-
 * sync_mode=1: O_SYNCフラグが設定された場合、CPUキャッシュを無効にします。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
-
 * sync_mode=2: O_SYNCフラグが設定された場合、CPUがDMAバッファに書き込む際、ライトコンバインします。ライトコンバインとは、基本的にはCPUキャッシュは無効ですが、複数の書き込みをまとめて行うことで若干性能が向上します。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
-
 * sync_mode=3: O_SYNCフラグが設定された場合、DMAコヒーレンシモードにします。といっても、DMAコヒーレンシモードに関してはまだよく分かっていません。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
-
 * sync_mode=4:  常にCPUキャッシュが有効。つまりO_SYNCフラグの有無にかかわらず常にCPUキャッシュは有効になります。
-
 * sync_mode=5: O_SYNCフラグの有無にかかわらずCPUキャッシュを無効にします。
-
 * sync_mode=6: O_SYNCフラグの有無にかかわらず、CPUがDMAバッファに書き込む際、ライトコンバインします。
-
 * sync_mode=7: O_SYNCフラグの有無にかかわらず、DMAコヒーレンシモードにします。
 
 
