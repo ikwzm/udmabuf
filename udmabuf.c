@@ -55,10 +55,12 @@
 #include <linux/version.h>
 #include <asm/page.h>
 #include <asm/byteorder.h>
+#include <asm/bitops.h>
 
 
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
+#define DEVICE_MAX_NUM      256
 #define UDMABUF_DEBUG       1
 #define SYNC_ENABLE         1
 
@@ -522,41 +524,46 @@ static const struct file_operations udmabuf_driver_file_ops = {
 };
 
 /**
- * udmabuf_device_minor_number_bitmap
+ * udmabuf_device_minor_number_allocator
  */
-static u32  udmabuf_device_minor_number_bitmap = 0;
-static int  udmabuf_device_minor_number_check(int num)
+DECLARE_BITMAP(udmabuf_device_minor_number_bitmap, DEVICE_MAX_NUM);
+struct mutex   udmabuf_device_minor_number_bitmap_mutex;
+static void    udmabuf_device_minor_number_allocator_initilize(void)
 {
-    if (num >= 32) {
-        return 0;
-    } else {
-        u32 mask = (1 << num);
-        if (udmabuf_device_minor_number_bitmap & mask)
-            return 0;
-        else 
-            return 1;
-    }
+    mutex_init(&udmabuf_device_minor_number_bitmap_mutex);
+    memset(&udmabuf_device_minor_number_bitmap, 0, sizeof(udmabuf_device_minor_number_bitmap));
 }
-static int  udmabuf_device_minor_number_allocate(int num)
-{
-    if (udmabuf_device_minor_number_check(num) == 0) {
-        return -1;
-    } else {
-        u32 mask = (1 << num);
-        udmabuf_device_minor_number_bitmap |= mask;
-        return 0;
-    }
+static int     udmabuf_device_minor_number_allocate(int num)
+{   int status;
+    mutex_lock(&udmabuf_device_minor_number_bitmap_mutex);
+    status = (0 == test_and_set_bit(num, udmabuf_device_minor_number_bitmap)) ? 0 : -1;
+    mutex_unlock(&udmabuf_device_minor_number_bitmap_mutex);
+    return status;
 }
-static void udmabuf_device_minor_number_free(int num)
+static int     udmabuf_device_minor_number_new(void)
 {
-    u32 mask = (1 << num);
-    udmabuf_device_minor_number_bitmap &= ~mask;
+    int num;
+    mutex_lock(&udmabuf_device_minor_number_bitmap_mutex);
+    num = find_first_zero_bit(udmabuf_device_minor_number_bitmap, DEVICE_MAX_NUM);
+    if ((0 <= num) && (num < DEVICE_MAX_NUM)) {
+        set_bit(num, udmabuf_device_minor_number_bitmap);
+    } else {
+        num = -1;
+    }
+    mutex_unlock(&udmabuf_device_minor_number_bitmap_mutex);
+    return num;
+}
+static void    udmabuf_device_minor_number_free(int num)
+{
+    mutex_lock(&udmabuf_device_minor_number_bitmap_mutex);
+    clear_bit(num, udmabuf_device_minor_number_bitmap);
+    mutex_unlock(&udmabuf_device_minor_number_bitmap_mutex);
 }
 
 /**
  * udmabuf_driver_create() -  Create call for the device.
  *
- * @minor:	minor_number
+ * @minor:	minor_number or -1
  * @size:	buffer size
  * Returns device driver strcutre pointer
  *
@@ -566,14 +573,26 @@ static struct udmabuf_driver_data* udmabuf_driver_create(int minor, unsigned int
 {
     struct udmabuf_driver_data* this     = NULL;
     unsigned int                done     = 0;
-    const unsigned int          DONE_CHRDEV_ADD    = (1 << 0);
-    const unsigned int          DONE_ALLOC_CMA     = (1 << 1);
-    const unsigned int          DONE_DEVICE_CREATE = (1 << 2);
+    const unsigned int          DONE_ALLOC_MINOR   = (1 << 0);
+    const unsigned int          DONE_CHRDEV_ADD    = (1 << 1);
+    const unsigned int          DONE_ALLOC_CMA     = (1 << 2);
+    const unsigned int          DONE_DEVICE_CREATE = (1 << 3);
     /*
      * alloc device_minor_number
      */
-    if (udmabuf_device_minor_number_allocate(minor) == -1) {
-        goto failed;
+    {
+        if ((0 <= minor) && (minor < DEVICE_MAX_NUM)) {
+            if (udmabuf_device_minor_number_allocate(minor) < 0) {
+                printk(KERN_ERR "invalid or conflict minor number %d.\n", minor);
+                goto failed;
+            }
+        } else {
+            if ((minor = udmabuf_device_minor_number_new()) < 0) {
+                printk(KERN_ERR "couldn't allocate minor number.\n");
+                goto failed;
+            }
+        }
+        done |= DONE_ALLOC_MINOR;
     }
     /*
      * create (udmabuf_driver_data*) this.
@@ -664,6 +683,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(int minor, unsigned int
     return this;
 
  failed:
+    if (done & DONE_ALLOC_MINOR  ) { udmabuf_device_minor_number_free(minor);}
     if (done & DONE_DEVICE_CREATE) { device_destroy(udmabuf_sys_class, this->device_number);}
     if (done & DONE_ALLOC_CMA    ) { dma_free_coherent(this->device, this->alloc_size, this->virt_addr, this->phys_addr);}
     if (done & DONE_CHRDEV_ADD   ) { cdev_del(&this->cdev); }
@@ -705,7 +725,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
 {
     int          retval = 0;
     unsigned int size   = 0;
-    unsigned int minor_number = 0;
+    int          minor_number = -1;
 
     dev_info(&pdev->dev, "driver probe start.\n");
     /*
@@ -725,17 +745,9 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
      */
     {
         int status;
-        status = of_property_read_u32(pdev->dev.of_node, "minor-number", &minor_number);
-        if (status != 0) {
-            dev_err(&pdev->dev, "invalid property minor number.\n");
-            retval = -ENODEV;
-            goto failed;
-        }
-        if (udmabuf_device_minor_number_check(minor_number) == 0) {
-            dev_err(&pdev->dev, "invalid or conflict minor number %d.\n", minor_number);
-            retval = -ENODEV;
-            goto failed;
-        }
+        unsigned int number;
+        status = of_property_read_u32(pdev->dev.of_node, "minor-number", &number);
+        minor_number = (status == 0) ? number : -1;
     }
     /*
      * create (udmabuf_driver_data*)this.
@@ -767,7 +779,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
 static int udmabuf_platform_driver_remove(struct platform_device *pdev)
 {
     struct udmabuf_driver_data* this   = dev_get_drvdata(&pdev->dev);
-    int                        retval = 0;
+    int                         retval = 0;
 
     if ((retval = udmabuf_driver_destroy(this)) != 0)
         return retval;
@@ -847,6 +859,8 @@ static int __init udmabuf_module_init(void)
 {
     int retval = 0;
 
+    udmabuf_device_minor_number_allocator_initilize();
+      
     retval = alloc_chrdev_region(&udmabuf_device_number, 0, 0, DRIVER_NAME);
     if (retval != 0) {
         printk(KERN_ERR "%s: couldn't allocate device major number\n", DRIVER_NAME);
