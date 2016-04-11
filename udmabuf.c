@@ -55,8 +55,7 @@
 #include <linux/version.h>
 #include <asm/page.h>
 #include <asm/byteorder.h>
-#include <asm/bitops.h>
-
+#include "minor_number_allocator.h"
 
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
@@ -526,39 +525,7 @@ static const struct file_operations udmabuf_driver_file_ops = {
 /**
  * udmabuf_device_minor_number_allocator
  */
-DECLARE_BITMAP(udmabuf_device_minor_number_bitmap, DEVICE_MAX_NUM);
-struct mutex   udmabuf_device_minor_number_bitmap_mutex;
-static void    udmabuf_device_minor_number_allocator_initilize(void)
-{
-    mutex_init(&udmabuf_device_minor_number_bitmap_mutex);
-    memset(&udmabuf_device_minor_number_bitmap, 0, sizeof(udmabuf_device_minor_number_bitmap));
-}
-static int     udmabuf_device_minor_number_allocate(int num)
-{   int status;
-    mutex_lock(&udmabuf_device_minor_number_bitmap_mutex);
-    status = (0 == test_and_set_bit(num, udmabuf_device_minor_number_bitmap)) ? 0 : -1;
-    mutex_unlock(&udmabuf_device_minor_number_bitmap_mutex);
-    return status;
-}
-static int     udmabuf_device_minor_number_new(void)
-{
-    int num;
-    mutex_lock(&udmabuf_device_minor_number_bitmap_mutex);
-    num = find_first_zero_bit(udmabuf_device_minor_number_bitmap, DEVICE_MAX_NUM);
-    if ((0 <= num) && (num < DEVICE_MAX_NUM)) {
-        set_bit(num, udmabuf_device_minor_number_bitmap);
-    } else {
-        num = -1;
-    }
-    mutex_unlock(&udmabuf_device_minor_number_bitmap_mutex);
-    return num;
-}
-static void    udmabuf_device_minor_number_free(int num)
-{
-    mutex_lock(&udmabuf_device_minor_number_bitmap_mutex);
-    clear_bit(num, udmabuf_device_minor_number_bitmap);
-    mutex_unlock(&udmabuf_device_minor_number_bitmap_mutex);
-}
+DECLARE_MINOR_NUMBER_ALLOCATOR(udmabuf_device, DEVICE_MAX_NUM);
 
 /**
  * udmabuf_driver_create() -  Create call for the device.
