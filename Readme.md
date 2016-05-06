@@ -2,7 +2,13 @@ udmabuf(User space mappable DMA Buffer)
 =======================================
 
 
+
+
+
+
+
 # はじめに
+
 
 
 ## udmabufとは
@@ -37,12 +43,11 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
 
 * OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4   
 (私が動作を確認したのは3.18と4.4です).
-
-* CPU: ARM Cortex-A9 (ZYNQ)
-
+* CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 
 
 # 使い方
+
 
 
 ## コンパイル
@@ -52,11 +57,18 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
 
 
 ```Makefile:Makefile
-obj-m : udmabuf.o
+ARCH            := arm
+KERNEL_SRC_DIR  ?= /lib/modules/$(shell uname -r)/build
+ifeq ($(shell uname -m | sed -e s/arm.*/arm/),arm)
+else
+ CROSS_COMPILE  ?= arm-linux-gnueabihf-
+endif
+obj-m := udmabuf.o
 all:
-	make -C /usr/src/kernel M=$(PWD) modules
+	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) modules
 clean:
-	make -C /usr/src/kernel M=$(PWD) clean
+	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) clean
+
 ```
 
 
@@ -163,6 +175,7 @@ udmabufをinsmodでカーネルにロードすると、次のようなデバイ�
 * /sys/class/udmabuf/\<device-name\>/sync_owner
 * /sys/class/udmabuf/\<device-name\>/sync_for_cpu
 * /sys/class/udmabuf/\<device-name\>/sync_for_device
+
 
 ### /dev/\<device-name\>
 
@@ -403,12 +416,11 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 手動でキャッシュを制御する方法は次の節で説明します。
 
 
-
-
 # DMAバッファとCPUキャッシュのコヒーレンシ
 
 
 CPUは通常キャッシュを通じてメインメモリ上のDMAバッファにアクセスしますが、アクセラレータは直接メインメモリ上のDMAバッファにアクセスします。その際、問題になるのはCPUのキャッシュとメインメモリとのコヒーレンシ(内容の一貫性)です。
+
 
 
 
@@ -442,6 +454,7 @@ CPUは通常キャッシュを通じてメインメモリ上のDMAバッファ�
 
 
 ハードウェアでコヒーレンシを保証できない場合、別の方法でコヒーレンシを保証しなければなりません。udmabufでは、CPUキャッシュを無効にする方法と、CPUキャッシュを有効にしたまま手動でCPUキャッシュをフラッシュ/無効化する方法を用意しています。
+
 
 
 
@@ -788,8 +801,4 @@ CPUキャッシュを有効にする場合は、O_SYNCフラグを設定せず�
 
 
 アクセラレータがバッファにアクセスする前にsync_for_deviceに1を書いてバッファのオーナーをデバイスにします。この際、sync_directionが1か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュをフラッシュします。一度この操作を行ってバッファのオーナーをアクセラレーターにした後は、CPUがこのバッファをアクセスしてはいけません。
-
-
-
-
 
