@@ -121,7 +121,7 @@ crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ## Device file
 
 When udmabuf is loaded into the kernel, the following device files are created.
-`\<device-name\>` is a placeholder for the device name described in the previous section.
+`<device-name>` is a placeholder for the device name described in the previous section.
 
 * /dev/\<device-name\>
 * /sys/class/udmabuf/\<device-name\>/phys_addr
@@ -137,7 +137,7 @@ When udmabuf is loaded into the kernel, the following device files are created.
 
 ### /dev/\<device-name\>
 
-`/dev/\<device-name\>` is used when `mmap()`-ed to the user space or accessed via `read()`/`write()`.
+`/dev/<device-name>` is used when `mmap()`-ed to the user space or accessed via `read()`/`write()`.
 
 ```C:udmabuf_test.c
     if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
@@ -166,7 +166,7 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
 
 ### phys_addr
 
-The physical address of a DMA buffer can be retrieved by reading `/sys/class/udmabuf/\<device-name\>/phys_addr`.
+The physical address of a DMA buffer can be retrieved by reading `/sys/class/udmabuf/<device-name>/phys_addr`.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -181,7 +181,7 @@ The physical address of a DMA buffer can be retrieved by reading `/sys/class/udm
 
 ### size
 
-The size of a DMA buffer can be retrieved by reading `/sys/class/udmabuf/\<device-name\>/size`.
+The size of a DMA buffer can be retrieved by reading `/sys/class/udmabuf/<device-name>/size`.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -196,7 +196,7 @@ The size of a DMA buffer can be retrieved by reading `/sys/class/udmabuf/\<devic
 
 ### sync_mode
 
-The device file `/sys/class/udmabuf/\<device-name\>/sync_mode`  is used to configure the behavior when udmabuf is opened with the `O_SYNC` flag.
+The device file `/sys/class/udmabuf/<device-name>/sync_mode`  is used to configure the behavior when udmabuf is opened with the `O_SYNC` flag.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -212,7 +212,7 @@ Details on `O_SYNC` and cache management will be described in the next section.
 
 ### sync_offset
 
-The device file `/sys/class/udmabuf/\<device-name\>/sync_offset` is used to specify the start address of a memory block of which cache is manually managed.
+The device file `/sys/class/udmabuf/<device-name>/sync_offset` is used to specify the start address of a memory block of which cache is manually managed.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -228,7 +228,7 @@ Details of manual cache management is described in the next section.
 
 ### sync_size
 
-The device file `/sys/class/udmabuf/\<device-name\>/sync_size` is used to specify the size of a memory block of which cache is manually managed.
+The device file `/sys/class/udmabuf/<device-name>/sync_size` is used to specify the size of a memory block of which cache is manually managed.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -244,7 +244,7 @@ Details of manual cache management is described in the next section.
 
 ### sync_direction
 
-The device file `/sys/class/udmabuf/\<device-name\>/sync_direction` is used to set the direction of DMA transfer to/from the DMA buffer of which cache is manually managed.
+The device file `/sys/class/udmabuf/<device-name>/sync_direction` is used to set the direction of DMA transfer to/from the DMA buffer of which cache is manually managed.
 
 - 0: sets DMA_BIDIRECTIONAL
 - 1: sets DMA_TO_DEVICE
@@ -264,7 +264,7 @@ Details of manual cache management is described in the next section.
 
 ### sync_owner
 
-The device file `/sys/class/udmabuf/\<device-name\>/sync_owner` reports the owner of the memory block in the manual cache management mode.
+The device file `/sys/class/udmabuf/<device-name>/sync_owner` reports the owner of the memory block in the manual cache management mode.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -281,7 +281,7 @@ Details of manual cache management is described in the next section.
 
 ### sync_for_cpu
 
-In the manual cache management mode, CPU can be the owner of the buffer by writing `1` to the device file `/sys/class/udmabuf/\<device-name\>/sync_for_cpu`. If `sync_direction` is 2(=DMA_FROM_DEVICE) or 0(=DMA_BIDIRECTIONAL), the write to the device file invalidates a cache specified by `sync_offset` and `sync_size`.
+In the manual cache management mode, CPU can be the owner of the buffer by writing `1` to the device file `/sys/class/udmabuf/<device-name>/sync_for_cpu`. If `sync_direction` is 2(=DMA_FROM_DEVICE) or 0(=DMA_BIDIRECTIONAL), the write to the device file invalidates a cache specified by `sync_offset` and `sync_size`.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -297,7 +297,7 @@ Details of manual cache management is described in the next section.
 
 ### sync_for_device
 
-In the manual cache management mode, DEVICE can be the owner of the buffer by writing `1` to the device file `/sys/class/udmabuf/\<device-name\>/sync_for_device`. If `sync_direction` is 1(=DMA_TO_DEVICE) or 0(=DMA_BIDIRECTIONAL), the write to the device file flushes a cache specified by `sync_offset` and `sync_size` (i.e. the cached data, if any, will be updated with data on DDR memory).
+In the manual cache management mode, DEVICE can be the owner of the buffer by writing `1` to the device file `/sys/class/udmabuf/<device-name>/sync_for_device`. If `sync_direction` is 1(=DMA_TO_DEVICE) or 0(=DMA_BIDIRECTIONAL), the write to the device file flushes a cache specified by `sync_offset` and `sync_size` (i.e. the cached data, if any, will be updated with data on DDR memory).
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -641,7 +641,7 @@ Table-2　The execution time of the sample program `clearbuf`
 </table>
 
 
-### Manual cache management with the CPU canche still being enabled
+### 2. Manual cache management with the CPU canche still being enabled
 
 As explained above, by opening udmabuf without specifying the `O_SYNC` flag, CPU cache can be left turned on.
 
@@ -662,4 +662,8 @@ To manualy manage cache coherency, users need to follow the
 2. Data transfer direction should be set to `sync_direction`. If the accelerator performs only read accesses to the memory area, `sync_direction` should be set to `1(=DMA_TO_DEVICE)`, and to `2(=DMA_FROM_DEVICE)` if only write accesses. 
 3. If the accelerator reads and writes data from/to the memory area, `sync_direction` should be set to `0(=DMA_BIDIRECTIONAL)`.
 
-Following the above configuration, `sync_for_cpu` and/or `sync_for_device` should be used to set the owner of the buffer specified by the above-mentioned offset and the size. When CPU accesses to the buffer, '1' should be written to `sync_for_cpu` to set CPU as the owner. Upon the write to `sync_for_cpu`, CPU cache is invalidated if `sync_direction` is `2(=DMA_FROM_DEVICE)` or `0(=DMA_BIDIRECTIONAL)`. Once CPU is becomes the owner of the buffer, the accelerator cannot access the buffer. On the other hand, when the accelerator needs to access the buffer, '1' should be written to `sync_for_device` to change owership of the buffer to the accelerator. Upon the write to `sync_for_device`, the CPU cache of the specified memory area is flushed using data on the main memory.
+Following the above configuration, `sync_for_cpu` and/or `sync_for_device` should be used to set the owner of the buffer specified by the above-mentioned offset and the size. 
+
+When CPU accesses to the buffer, '1' should be written to `sync_for_cpu` to set CPU as the owner. Upon the write to `sync_for_cpu`, CPU cache is invalidated if `sync_direction` is `2(=DMA_FROM_DEVICE)` or `0(=DMA_BIDIRECTIONAL)`. Once CPU is becomes the owner of the buffer, the accelerator cannot access the buffer. 
+
+On the other hand, when the accelerator needs to access the buffer, '1' should be written to `sync_for_device` to change owership of the buffer to the accelerator. Upon the write to `sync_for_device`, the CPU cache of the specified memory area is flushed using data on the main memory.
