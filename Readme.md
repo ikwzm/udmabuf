@@ -1,60 +1,39 @@
 udmabuf(User space mappable DMA Buffer)
 =======================================
 
+# Overview
 
+## Introduction of udmabuf
 
+udmabuf is a Linux device driver that allocates contiguous memory blocks in the kernel space as DMA buffers and makes them available from the user space. It is intended that these memory blocks are used as DMA buffers when a user application implements device driver in user space using UIO (User space I/O).
 
+A DMA buffer allocated by udmabuf can be accessed from the user space by opneing the device file (e.g. /dev/udmabuf0) and mapping to the user memory space, or using the read()/write() functions.
 
+CPU cache for the allocated DMA buffer can be disabled by setting the `O_SYNC` flag when opening the device file. It is also possible to flush or invalidate CPU cache while retaining CPU cache enabled.
 
+The physical address of a DMA buffer allocated by udmabuf can be obtained by reading `/sys/class/udmabuf/udmabuf0/phys_addr`.
 
-# はじめに
+The size of a DMA buffer and the device minor number can be specified when the device driver is loaded (e.g. when loaded via the `insmod` command). Some platforms allow to specify them in the device tree.
 
+## Architecture of udmabuf
 
+![Figure 1. Architecture ](./udmabuf1.jpg "Figure 1. Architecture")
 
-## udmabufとは
-
-
-udmabuf はLinux のカーネル空間に連続したメモリ領域をDMAバッファとして確保し、ユーザー空間からアクセス可能にするためのデバイスドライバです。主にUIO(User space I/O)を使ってユーザー空間でデバイスドライバを動かす場合のDMAバッファを提供します。
-
-ユーザー空間でudmabufで確保したDMAバッファを利用する際は、デバイスファイル(/dev/udmabuf0など)をopen()して、mmap()でユーザー空間にマッピングするか、read()またはwrite()で行います。
-
-openする際にO_SYNCフラグをセットすることによりCPUキャッシュを無効にすることが出来ます。また、CPUキャッシュを有効にした状態で、CPUキャッシュのフラッシュとインヴァリディエートを行うことが出来ます。
-
-/sys/class/udmabuf/udmabuf0/phys_addr を読むことにより、DMAバッファの物理空間上のアドレスを知ることが出来ます。
-
-udmabufのDMAバッファの大きさやデバイスのマイナー番号は、デバイスドライバのロード時(insmodによるロードなど)に指定できます。またプラットフォームによってはデバイスツリーに記述しておくこともできます。
-
-
-## 構成
-
-
-
-![図1 構成](./udmabuf1.jpg "図1 構成")
-
-図1 構成
+Figure 1. Architecture
 
 <br />
 
-
-
-
-## 対応プラットフォーム
-
+## Supported platforms
 
 * OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4   
-(私が動作を確認したのは3.18と4.4です).
+(the author tested on 3.18 and 4.4).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 
+# Usage
 
-# 使い方
+## Compile
 
-
-
-## コンパイル
-
-
-次のようなMakefileを用意しています。
-
+The following `Makefile` is included in the repository.
 
 ```Makefile:Makefile
 ARCH            := arm
@@ -71,15 +50,9 @@ clean:
 
 ```
 
+## Install
 
-
-
-
-## インストール
-
-
-insmod でudmabufのカーネルドライバをロードします。この際に引数を渡すことによりDMAバッファを確保してデバイスドライバを作成します。insmod の引数で作成できるDMAバッファはudmabuf0、udmabuf1、udmabuf2、udmabuf3の最大４つです。
-
+Load the udmabuf kernel driver using `insmod`. The size of a DMA buffer should be provided as an argument as follows. The device driver is created, and allocates a DMA buffer with the specified size. The maximum number of DMA buffers that can be allocated using `insmod` is 4 (udmabuf0/1/2/3).
 
 ```Shell
 zynq$ insmod udmabuf.ko udmabuf0=1048576
@@ -92,19 +65,13 @@ zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
 
-
-パーミッションがrootのみ読み書き可能になっています。ロード時にパーミッションを変更したい場合は、/etc/udev/rules.d/99-udmabuf.rules というファイルを作成し、以下の内容を書いておきます。
-
+In the above result, the device is only read/write accessible by root. If the permission needs to be changed at the load of the kernel module, create `/etc/udev/rules.d/99-udmabuf.rules` with the following content.
 
 ```rules:99-udmabuf.rules
 KERNEL=="udmabuf[0-9]*", GROUP="root", MODE="0666"
 ```
 
-
-
-
-アンインストールするには rmmod を使います。
-
+The module can be uninstalled by the `rmmod` command.
 
 ```Shell
 zynq$ rmmod udmabuf
@@ -113,11 +80,9 @@ udmabuf udmabuf0: driver uninstalled
 
 
 
-## デバイスツリーによる設定
+## Configuration via the device tree file
 
-
-udmabufはinsmod の引数でDMAバッファを用意する以外に、Linuxのカーネルが起動時に読み込むdevicetreeファイルによってDMAバッファを用意する方法があります。devicetreeファイルに次のようなエントリを追加しておけば、insmod でロードする際に自動的にDMAバッファを確保してデバイスドライバを作成します。
-
+In addition to the allocation via the `insmod` command and its arguments, DMA buffers can be allocated by specifying the size in the device tree file. When a device tree file contains an entry like the following, udmabuf will allocate buffers and create device drivers when loaded by `insmod`.
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
@@ -129,21 +94,17 @@ udmabufはinsmod の引数でDMAバッファを用意する以外に、Linuxの�
 
 ```
 
+The DMA buffer size can be specified via the `size` option.
 
-sizeでDMAバッファの容量をバイト数で指定します。
+The name of the device can be specified via the `device-name` option.
 
-device-nameでデバイス名を指定します。
+The `minor-number` option is used to set the minor number. The valid minor number range is 0 to 255. A minor number provided as `insmod` argument will has higher precedence, and when definition in the device tree has colliding number, creation of the device defined in the device tree will fail. When the minor number is not specified, udmabuf automatically assigns an appropriate one.
 
-minor-number でudmabufのマイナー番号を指定します。マイナー番号は0から255までつけることができます。ただし、insmodの引数の方が優先され、マイナー番号がかち合うとdevicetreeで指定した方が失敗します。minor-numberが省略された場合、空いているマイナー番号が割り当てられます。
+The device name is determined as follow:
 
-デバイス名は次のように決まります。
-
-1. device-nameが指定されていた場合は、 device-name。
-2. device-nameが省略されていて、かつminor-numberが指定されていた場合は、sprintf("udmabuf%d", minor-number)。
-3. device-nameが省略されていて、かつminor-numberも省略されていた場合は、devicetree のエントリー名(例ではudmabuf@0x00)。
-
-
-
+1. If `device-name` is specifed use `device-name`.
+2. If `device-name` is not present, and if `minor-number` is specified, `sprintf("udmabuf%d", minor-number)` is used.
+3. If `device-name` is not present, and if `minor-number` is not present, the entry name of the device tree is used (`udmabuf@0x00` in this example).
 
 ```Shell
 zynq$ insmod udmabuf.ko
@@ -157,13 +118,10 @@ crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
 
 
+## Device file
 
-
-
-## デバイスファイル
-
-
-udmabufをinsmodでカーネルにロードすると、次のようなデバイスファイルが作成されます。\<device-name\>には、前節で説明したデバイス名が入ります。
+When udmabuf is loaded into the kernel, the following device files are created.
+`<device-name>` is a placeholder for the device name described in the previous section.
 
 * /dev/\<device-name\>
 * /sys/class/udmabuf/\<device-name\>/phys_addr
@@ -179,22 +137,18 @@ udmabufをinsmodでカーネルにロードすると、次のようなデバイ�
 
 ### /dev/\<device-name\>
 
-
-/dev/\<device-name\>はmmap()を使って、ユーザー空間にマッピングするか、read()、write()を使ってバッファにアクセスする際に使用します。
-
+`/dev/<device-name>` is used when `mmap()`-ed to the user space or accessed via `read()`/`write()`.
 
 ```C:udmabuf_test.c
     if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
         buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-        /* ここでbufに読み書きする処理を行う */
+        /* Do some read/write access to buf */
         close(fd);
     }
 
 ```
 
-
-また、ddコマンド等でにデバイスファイルを指定することにより、shellから直接リードライトすることも出来ます。
-
+The device file can be directly read/written by specifying the device as the target of `dd` in the shell.
 
 ```Shell
 zynq$ dd if=/dev/urandom of=/dev/udmabuf0 bs=4096 count=1024
@@ -203,7 +157,6 @@ zynq$ dd if=/dev/urandom of=/dev/udmabuf0 bs=4096 count=1024
 4194304 bytes (4.2 MB) copied, 3.07516 s, 1.4 MB/s
 ```
 
-
 ```Shell
 zynq$dd if=/dev/udmabuf4 of=random.bin
 8192+0 records in
@@ -211,15 +164,9 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
 4194304 bytes (4.2 MB) copied, 0.173866 s, 24.1 MB/s
 ```
 
-
-
-
-
 ### phys_addr
 
-
-/sys/class/udmabuf/\<device-name\>/phys_addr はDMAバッファの物理アドレスが読めます。
-
+The physical address of a DMA buffer can be retrieved by reading `/sys/class/udmabuf/<device-name>/phys_addr`.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -232,15 +179,9 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
 
 ```
 
-
-
-
-
 ### size
 
-
-/sys/class/udmabuf/\<device-name\>/size はDMAバッファのサイズが読めます。
-
+The size of a DMA buffer can be retrieved by reading `/sys/class/udmabuf/<device-name>/size`.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -253,15 +194,9 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
 
 ```
 
-
-
-
-
 ### sync_mode
 
-
-/sys/class/udmabuf/\<device-name\>/sync_mode はudmabufをopenする際にO_SYNCを指定した場合の動作を指定します。
-
+The device file `/sys/class/udmabuf/<device-name>/sync_mode`  is used to configure the behavior when udmabuf is opened with the `O_SYNC` flag.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -273,17 +208,11 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
     }
 ```
 
-
-O_SYNCおよびキャッシュの設定に関しては次の節で説明します。
-
-
-
+Details on `O_SYNC` and cache management will be described in the next section.
 
 ### sync_offset
 
-
-/sys/class/udmabuf/\<device-name\>/sync_offset は udmabufのキャッシュ制御を手動で行う際のバッファの範囲の先頭を指定します。
-
+The device file `/sys/class/udmabuf/<device-name>/sync_offset` is used to specify the start address of a memory block of which cache is manually managed.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -295,17 +224,11 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
     }
 ```
 
-
-手動でキャッシュを制御する方法は次の節で説明します。
-
-
-
+Details of manual cache management is described in the next section.
 
 ### sync_size
 
-
-/sys/class/udmabuf/\<device-name\>/sync_size は udmabufのキャッシュ制御を手動で行う際のバッファの範囲のサイズを指定します。
-
+The device file `/sys/class/udmabuf/<device-name>/sync_size` is used to specify the size of a memory block of which cache is manually managed.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -317,23 +240,15 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
     }
 ```
 
-
-手動でキャッシュを制御する方法は次の節で説明します。
-
-
-
+Details of manual cache management is described in the next section.
 
 ### sync_direction
 
+The device file `/sys/class/udmabuf/<device-name>/sync_direction` is used to set the direction of DMA transfer to/from the DMA buffer of which cache is manually managed.
 
-/sys/class/udmabuf/\<device-name\>/sync_direction は udmabufのキャッシュ制御を手動で行う際のDMAの方向を指定します。
-
-0: DMA_BIDIRECTIONALを指定します。
-
-1: DMA_TO_DEVICEを指定します。
-
-2: DMA_FROM_DEVICEを指定します。
-
+- 0: sets DMA_BIDIRECTIONAL
+- 1: sets DMA_TO_DEVICE
+- 2: sets DMA_FROM_DEVICE
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -345,17 +260,11 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
     }
 ```
 
-
-手動でキャッシュを制御する方法は次の節で説明します。
-
-
-
+Details of manual cache management is described in the next section.
 
 ### sync_owner
 
-
-/sys/class/udmabuf/\<device-name\>/sync_owner は udmabufのキャッシュ制御を手動で行った際に、現在のバッファのオーナーがCPUかDEVICEを読み取ります。
-
+The device file `/sys/class/udmabuf/<device-name>/sync_owner` reports the owner of the memory block in the manual cache management mode.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -368,17 +277,11 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 
 ```
 
-
-手動でキャッシュを制御する方法は次の節で説明します。
-
-
-
+Details of manual cache management is described in the next section.
 
 ### sync_for_cpu
 
-
-/sys/class/udmabuf/\<device-name\>/sync_for_cpu はudmabufのキャッシュ制御を手動で行う際、このデバイスドライバに1を書き込むことでバッファのオーナーをCPUにします。その際、sync_directionが2(=DMA_FROM_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュが無効化されます。
-
+In the manual cache management mode, CPU can be the owner of the buffer by writing `1` to the device file `/sys/class/udmabuf/<device-name>/sync_for_cpu`. If `sync_direction` is 2(=DMA_FROM_DEVICE) or 0(=DMA_BIDIRECTIONAL), the write to the device file invalidates a cache specified by `sync_offset` and `sync_size`.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -390,17 +293,11 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
     }
 ```
 
-
-手動でキャッシュを制御する方法は次の節で説明します。
-
-
-
+Details of manual cache management is described in the next section.
 
 ### sync_for_device
 
-
-/sys/class/udmabuf/\<device-name\>/sync_for_deviceはudmabufのキャッシュ制御を手動で行う際、このデバイスドライバに1を書き込むことでバッファのオーナーをDEVICEにします。その際、sync_directionが1(=DMA_TO_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュがフラッシュされます。
-
+In the manual cache management mode, DEVICE can be the owner of the buffer by writing `1` to the device file `/sys/class/udmabuf/<device-name>/sync_for_device`. If `sync_direction` is 1(=DMA_TO_DEVICE) or 0(=DMA_BIDIRECTIONAL), the write to the device file flushes a cache specified by `sync_offset` and `sync_size` (i.e. the cached data, if any, will be updated with data on DDR memory).
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -412,84 +309,63 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
     }
 ```
 
+Details of manual cache management is described in the next section.
 
-手動でキャッシュを制御する方法は次の節で説明します。
+# Coherency of data on DMA buffer and CPU cache
 
+CPU usually accesses to a DMA buffer on the main memory using cache, and a hardware accelerator logic accesses to data stored in the DMA buffer on the main memory. In this situation, coherency between data stored on CPU cache and them on the main memory should be considered carefully.
 
-# DMAバッファとCPUキャッシュのコヒーレンシ
+## When the coherency is maintained by hardware
 
+When hardware assures the coherency, CPU cache can be turned on without additional treatment. For example, ZYNQ provides ACP (Accelerator Coherency Port), and the coherency is maintained by hardware as long as the accelerator accesses to the main memory via this port.
 
-CPUは通常キャッシュを通じてメインメモリ上のDMAバッファにアクセスしますが、アクセラレータは直接メインメモリ上のDMAバッファにアクセスします。その際、問題になるのはCPUのキャッシュとメインメモリとのコヒーレンシ(内容の一貫性)です。
-
-
-
-
-## ハードウェアでコヒーレンシを保証できる場合
-
-
-ハードウェアでコヒーレンシを保証できる場合、CPUキャッシュを有効にしても問題はありません。例えばZYNQにはACP(Accelerator Coherency Port)があり、アクセラレータ側がこのPortを通じてメインメモリにアクセスする場合は、ハードウェアによってCPUキャッシュとメインメモリとのコヒーレンシが保証できます。
-
-ハードウェアでコヒーレンシを保証できる場合は、CPUキャッシュを有効にすることでCPUからのアクセスを高速に行うことができます。CPUキャッシュを有効にする場合は、O_SYNCフラグを設定せずにudmabufをopen してください。
-
+In this case, accesses from CPU to the main memory can be fast by using CPU cache as usual. To enable CPU cache on the DMA buffer allocated by udmabuf, open udmabuf without specifying the `O_SYNC` flag.
 
 ```C:udmabuf_test.c
-    /* CPUキャッシュを有効にする場合はO_SYNCをつけずにopen する */
+    /* To enable CPU cache on the DMA buffer, */
+    /* open udmabuf without specifying the `O_SYNC` flag. */
     if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
         buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-        /* ここでbufに読み書きする処理を行う */
+        /* Read/write access to the buffer */
         close(fd);
     }
 
 ```
 
+The manual management of cache, described in the following section, will not be necessary when hardware maintains the coherency.
 
+## When hardware does not maintain the coherency
 
+To maintain coherency of data between CPU and the main memory, another coherency mechanism is necessary. udmabuf supports two different ways of coherency maintenance; one is to disable CPU cache, and the other is to involve manual cache flush/invalidation with CPU cache being enabled.
 
-ハードウェアでコヒーレンシを保証できる場合は、次の項で説明するようなCPUキャッシュを手動で制御する必要はありません。
+### 1. Disabling CPU cache
 
-
-
-
-## ハードウェアでコヒーレンシを保証できない場合
-
-
-ハードウェアでコヒーレンシを保証できない場合、別の方法でコヒーレンシを保証しなければなりません。udmabufでは、CPUキャッシュを無効にする方法と、CPUキャッシュを有効にしたまま手動でCPUキャッシュをフラッシュ/無効化する方法を用意しています。
-
-
-
-
-### CPUキャッシュを無効にする方法
-
-
-CPUキャッシュを無効にする場合は、udmabufをopenする際にO_SYNCフラグを設定します。
-
+To disable CPU cache of allocated DMA buffer, specify the `O_SYNC` flag when opening udmabuf.
 
 ```C:udmabuf_test.c
-    /* CPUキャッシュを無効にする場合はO_SYNCをつけてopen する */
+    /* To disable CPU cache on the DMA buffer, */
+    /* open udmabuf with the `O_SYNC` flag. */
     if ((fd  = open("/dev/udmabuf0", O_RDWR | O_SYNC)) != -1) {
         buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-        /* ここでbufに読み書きする処理を行う */
+        /* Read/write access to the buffer */
         close(fd);
     }
 
 ```
 
 
-O_SYNCフラグを設定した場合のキャッシュの振る舞いはsync_modeで設定します。sync_modeには次の値が設定できます。
+As listed below, `sync_mode` can be used to configure the cache behavior when the `O_SYNC` flag is present in `open()`:
 
-* sync_mode=0:  常にCPUキャッシュが有効。つまりO_SYNCフラグの有無にかかわらず常にCPUキャッシュは有効になります。
-* sync_mode=1: O_SYNCフラグが設定された場合、CPUキャッシュを無効にします。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
-* sync_mode=2: O_SYNCフラグが設定された場合、CPUがDMAバッファに書き込む際、ライトコンバインします。ライトコンバインとは、基本的にはCPUキャッシュは無効ですが、複数の書き込みをまとめて行うことで若干性能が向上します。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
-* sync_mode=3: O_SYNCフラグが設定された場合、DMAコヒーレンシモードにします。といっても、DMAコヒーレンシモードに関してはまだよく分かっていません。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
-* sync_mode=4:  常にCPUキャッシュが有効。つまりO_SYNCフラグの有無にかかわらず常にCPUキャッシュは有効になります。
-* sync_mode=5: O_SYNCフラグの有無にかかわらずCPUキャッシュを無効にします。
-* sync_mode=6: O_SYNCフラグの有無にかかわらず、CPUがDMAバッファに書き込む際、ライトコンバインします。
-* sync_mode=7: O_SYNCフラグの有無にかかわらず、DMAコヒーレンシモードにします。
+* sync_mode=0:  CPU cache is enabled regardless of the `O_SYNC` flag presense.
+* sync_mode=1: If `O_SYNC` is specified, CPU cache is disabled. If `O_SYNC` is not specified, CPU cache is enabled.
+* sync_mode=2: If `O_SYNC` is specified, CPU cache is diabled but CPU uses write-combine when writing data to DMA buffer improves performance by combining multiple write accesses. If `O_SYNC` is not specified, CPU cache is enabled.
+* sync_mode=3: If `O_SYNC` is specified, DMA coherency mode is used. If `O_SYNC` is not specified, CPU cache is enabled.
+* sync_mode=4:  CPU cache is enabled regardless of the `O_SYNC` flag presense. 
+* sync_mode=5: CPU cache is disabled regardless of the `O_SYNC` flag presense. 
+* sync_mode=6: CPU uses write-combine to write data to DMA buffer regardless of `O_SYNC` presence.
+* sync_mode=7: DMA coherency mode is used regardless of `O_SYNC` presence.
 
-
-
-参考までに、CPUキャッシュを有効/無効にした場合の次のようなプログラムを実行した際の処理時間を示します。
-
+As a practical example, the execution times of a sample program listed below were measured under several test conditions as presented in the table.
 
 ```C:udmabuf_test.c
 int check_buf(unsigned char* buf, unsigned int size)
@@ -526,13 +402,13 @@ int clear_buf(unsigned char* buf, unsigned int size)
 ```
 
 
-表-1　checkbufの測定結果
+Table-1　The execution time of the sample program `checkbuf`
 
 <table border="2">
   <tr>
     <td align="center" rowspan="2">sync_mode</td>
     <td align="center" rowspan="2">O_SYNC</td>
-    <td align="center" colspan="3">DMAバッファのサイズ</td>
+    <td align="center" colspan="3">DMA buffer size</td>
   </tr>
   <tr>
     <td align="center">1MByte</td>
@@ -541,117 +417,117 @@ int clear_buf(unsigned char* buf, unsigned int size)
   </tr>
   <tr>
     <td rowspan="2">0</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">0.437[sec]</td>
     <td align="right">2.171[sec]</td>
     <td align="right">4.340[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">0.437[sec]</td>
     <td align="right">2.171[sec]</td>
     <td align="right">4.340[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">1</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">0.434[sec]</td>
     <td align="right">2.179[sec]</td>
     <td align="right">4.337[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">2.283[sec]</td>
     <td align="right">11.414[sec]</td>
     <td align="right">22.830[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">2</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">0.434[sec]</td>
     <td align="right">2.169[sec]</td>
     <td align="right">4.337[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">1.616[sec]</td>
     <td align="right">8.262[sec]</td>
     <td align="right">16.562[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">3</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">0.434[sec]</td>
     <td align="right">2.169[sec]</td>
     <td align="right">4.337[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">1.600[sec]</td>
     <td align="right">8.391[sec]</td>
     <td align="right">16.587[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">4</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">0.437[sec]</td>
     <td align="right">2.171[sec]</td>
     <td align="right">4.337[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">0.437[sec]</td>
     <td align="right">2.171[sec]</td>
     <td align="right">4.337[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">5</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">2.283[sec]</td>
     <td align="right">11.414[sec]</td>
     <td align="right">22.809[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">2.283[sec]</td>
     <td align="right">11.414[sec]</td>
     <td align="right">22.840[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">6</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">1.655[sec]</td>
     <td align="right">8.391[sec]</td>
     <td align="right">16.587[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">1.655[sec]</td>
     <td align="right">8.391[sec]</td>
     <td align="right">16.587[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">7</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">1.655[sec]</td>
     <td align="right">8.391[sec]</td>
     <td align="right">16.587[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">1.655[sec]</td>
     <td align="right">8.391[sec]</td>
     <td align="right">16.587[sec]</td>
   </tr>
 </table>
 
-表-2　clearbufの測定結果
+Table-2　The execution time of the sample program `clearbuf`
 
 <table border="2">
   <tr>
     <td align="center" rowspan="2">sync_mode</td>
     <td align="center" rowspan="2">O_SYNC</td>
-    <td align="center" colspan="3">DMAバッファのサイズ</td>
+    <td align="center" colspan="3">DMA buffer size</td>
   </tr>
   <tr>
     <td align="center">1MByte</td>
@@ -660,104 +536,104 @@ int clear_buf(unsigned char* buf, unsigned int size)
   </tr>
   <tr>
     <td rowspan="2">0</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">0.067[sec]</td>
     <td align="right">0.359[sec]</td>
     <td align="right">0.713[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">0.067[sec]</td>
     <td align="right">0.362[sec]</td>
     <td align="right">0.716[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">1</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">0.067[sec]</td>
     <td align="right">0.362[sec]</td>
     <td align="right">0.718[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">0.912[sec]</td>
     <td align="right">4.563[sec]</td>
     <td align="right">9.126[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">2</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">0.068[sec]</td>
     <td align="right">0.360[sec]</td>
     <td align="right">0.721[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">0.063[sec]</td>
     <td align="right">0.310[sec]</td>
     <td align="right">0.620[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">3</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">0.068[sec]</td>
     <td align="right">0.361[sec]</td>
     <td align="right">0.715[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">0.062[sec]</td>
     <td align="right">0.310[sec]</td>
     <td align="right">0.620[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">4</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">0.068[sec]</td>
     <td align="right">0.360[sec]</td>
     <td align="right">0.718[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">0.067[sec]</td>
     <td align="right">0.360[sec]</td>
     <td align="right">0.710[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">5</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">0.913[sec]</td>
     <td align="right">4.562[sec]</td>
     <td align="right">9.126[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">0.913[sec]</td>
     <td align="right">4.562[sec]</td>
     <td align="right">9.126[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">6</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">0.062[sec]</td>
     <td align="right">0.310[sec]</td>
     <td align="right">0.618[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">0.062[sec]</td>
     <td align="right">0.310[sec]</td>
     <td align="right">0.619[sec]</td>
   </tr>
   <tr>
     <td rowspan="2">7</td>
-    <td>無</td>
+    <td>Not specified</td>
     <td align="right">0.062[sec]</td>
     <td align="right">0.310[sec]</td>
     <td align="right">0.620[sec]</td>
   </tr>
   <tr>
-    <td>有</td>
+    <td>Specified</td>
     <td align="right">0.062[sec]</td>
     <td align="right">0.310[sec]</td>
     <td align="right">0.621[sec]</td>
@@ -765,40 +641,29 @@ int clear_buf(unsigned char* buf, unsigned int size)
 </table>
 
 
+### 2. Manual cache management with the CPU canche still being enabled
 
-
-### CPUキャッシュを有効にしたまま手動でCPUキャッシュを制御する方法
-
-
-CPUキャッシュを有効にする場合は、O_SYNCフラグを設定せずにudmabufをopen します。
-
+As explained above, by opening udmabuf without specifying the `O_SYNC` flag, CPU cache can be left turned on.
 
 ```C:udmabuf_test.c
-    /* CPUキャッシュを有効にする場合はO_SYNCをつけずにopen する */
+    /* To enable CPU cache on the DMA buffer, */
+    /* open udmabuf without specifying the `O_SYNC` flag. */
     if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
         buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-        /* ここでbufに読み書きする処理を行う */
+        /* Read/write access to the buffer */
         close(fd);
     }
 
 ```
 
+To manualy manage cache coherency, users need to follow the 
 
+1. Specify a memory area shared between CPU and accelerator via `sync_offset` and `sync_size` device files. `sync_offset` accepts an offset from the start address of the allocated buffer in units of bytes. The size of the shared memory area should be set to `sync_size` in units of bytes.
+2. Data transfer direction should be set to `sync_direction`. If the accelerator performs only read accesses to the memory area, `sync_direction` should be set to `1(=DMA_TO_DEVICE)`, and to `2(=DMA_FROM_DEVICE)` if only write accesses. 
+3. If the accelerator reads and writes data from/to the memory area, `sync_direction` should be set to `0(=DMA_BIDIRECTIONAL)`.
 
+Following the above configuration, `sync_for_cpu` and/or `sync_for_device` should be used to set the owner of the buffer specified by the above-mentioned offset and the size. 
 
-アクセラレーターと共有するバッファの範囲をsync_offsetとsync_sizeで指定します。sync_offsetはmmap()で確保した先頭アドレスからのオフセット値を指定します。sync_sizeは共有するバッファの大きさをバイト数で指定します。
+When CPU accesses to the buffer, '1' should be written to `sync_for_cpu` to set CPU as the owner. Upon the write to `sync_for_cpu`, CPU cache is invalidated if `sync_direction` is `2(=DMA_FROM_DEVICE)` or `0(=DMA_BIDIRECTIONAL)`. Once CPU is becomes the owner of the buffer, the accelerator cannot access the buffer. 
 
-アクセラレータがバッファからデータを読むだけの場合は、sync_direction に1(=DMA_TO_DEVICE)を指定します。
-
-アクセラレータがバッファにデータを書き込むだけの場合は、sync_direction に2(=DMA_FROM_DEVICE)を指定します。
-
-アクセラレータがバッファにデータを読み書き両方行う場合は、sync_direction に0(=DMA_BIDIRECTIONAL)を指定します。
-
-
-
-以上の設定の後、CPUがバッファにアクセスする前に sync_for_cpu に1を書いてバッファのオーナーをCPUにします。この際、sync_direction が2か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュを無効化(Invalidiate)します。一度この操作を行ってバッファのオーナーをCPUにした後は、アクセラレーターがバッファをアクセスしないようにしなければなりません。
-
-
-
-アクセラレータがバッファにアクセスする前にsync_for_deviceに1を書いてバッファのオーナーをデバイスにします。この際、sync_directionが1か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュをフラッシュします。一度この操作を行ってバッファのオーナーをアクセラレーターにした後は、CPUがこのバッファをアクセスしてはいけません。
-
+On the other hand, when the accelerator needs to access the buffer, '1' should be written to `sync_for_device` to change owership of the buffer to the accelerator. Upon the write to `sync_for_device`, the CPU cache of the specified memory area is flushed using data on the main memory.
