@@ -41,10 +41,9 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
 ## 対応プラットフォーム
 
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4   
-(私が動作を確認したのは3.18と4.4です).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4  (私が動作を確認したのは3.18と4.4です).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
-
+* CPU: x86(64bit) (ただし検証は不十分です。皆さんからの結果を期待しています)
 
 # 使い方
 
