@@ -535,13 +535,14 @@ DECLARE_MINOR_NUMBER_ALLOCATOR(udmabuf_device, DEVICE_MAX_NUM);
  * udmabuf_driver_create() -  Create call for the device.
  *
  * @name:       device name or NULL
+ * @parent:     parent device
  * @minor:	minor_number or -1
  * @size:	buffer size
  * Returns device driver strcutre pointer
  *
  * It does all the memory allocation and registration for the device.
  */
-static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, int minor, unsigned int size)
+static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struct device* parent, int minor, unsigned int size)
 {
     struct udmabuf_driver_data* this     = NULL;
     unsigned int                done     = 0;
@@ -605,13 +606,13 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, int m
     {
         if (name == NULL) {
             this->device = device_create(udmabuf_sys_class,
-                                         NULL,
+                                         parent,
                                          this->device_number,
                                          (void *)this,
                                          DEVICE_NAME_FORMAT, MINOR(this->device_number));
         } else {
             this->device = device_create(udmabuf_sys_class,
-                                         NULL,
+                                         parent,
                                          this->device_number,
                                          (void *)this,
                                          name);
@@ -759,7 +760,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
      * create (udmabuf_driver_data*)this.
      */
     {
-        struct udmabuf_driver_data* driver_data = udmabuf_driver_create(device_name, minor_number, size);
+        struct udmabuf_driver_data* driver_data = udmabuf_driver_create(device_name, &pdev->dev, minor_number, size);
         if (IS_ERR_OR_NULL(driver_data)) {
             dev_err(&pdev->dev, "driver create fail.\n");
             retval = PTR_ERR(driver_data);
@@ -838,13 +839,13 @@ MODULE_PARM_DESC( dma_mask_bit, "udmabuf dma mask bit(default=32)");
 
 struct udmabuf_driver_data* udmabuf_driver[4] = {NULL,NULL,NULL,NULL};
 
-#define CREATE_UDMABUF_DRIVER(__num)                                                      \
-    if (udmabuf ## __num > 0) {                                                           \
-        udmabuf_driver[__num] = udmabuf_driver_create(NULL, __num, udmabuf ## __num);     \
-        if (IS_ERR_OR_NULL(udmabuf_driver[__num])) {                                      \
-            udmabuf_driver[__num] = NULL;                                                 \
-            printk(KERN_ERR "%s: couldn't create udmabuf%d driver\n", DRIVER_NAME, __num);\
-        }                                                                                 \
+#define CREATE_UDMABUF_DRIVER(__num,parent)                                                  \
+    if (udmabuf ## __num > 0) {                                                              \
+        udmabuf_driver[__num] = udmabuf_driver_create(NULL, parent, __num, udmabuf ## __num);\
+        if (IS_ERR_OR_NULL(udmabuf_driver[__num])) {                                         \
+            udmabuf_driver[__num] = NULL;                                                    \
+            printk(KERN_ERR "%s: couldn't create udmabuf%d driver\n", DRIVER_NAME, __num);   \
+        }                                                                                    \
     }
 
 /**
@@ -886,10 +887,10 @@ static int __init udmabuf_module_init(void)
     }
     SET_SYS_CLASS_ATTRIBUTES(udmabuf_sys_class);
 
-    CREATE_UDMABUF_DRIVER(0);
-    CREATE_UDMABUF_DRIVER(1);
-    CREATE_UDMABUF_DRIVER(2);
-    CREATE_UDMABUF_DRIVER(3);
+    CREATE_UDMABUF_DRIVER(0, NULL);
+    CREATE_UDMABUF_DRIVER(1, NULL);
+    CREATE_UDMABUF_DRIVER(2, NULL);
+    CREATE_UDMABUF_DRIVER(3, NULL);
 
     retval = platform_driver_register(&udmabuf_platform_driver);
     if (retval) {
