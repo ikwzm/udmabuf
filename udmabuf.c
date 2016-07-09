@@ -393,10 +393,12 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
                 vma->vm_flags    |= VM_IO;
                 vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
                 break;
+#ifdef CONFIG_ARM
             case SYNC_DMACOHERENT : 
                 vma->vm_flags    |= VM_IO;
                 vma->vm_page_prot = pgprot_dmacoherent(vma->vm_page_prot);
                 break;
+#endif
             default :
                 break;
         }
