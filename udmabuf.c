@@ -77,6 +77,7 @@
 
 static struct class*  udmabuf_sys_class     = NULL;
 static dev_t          udmabuf_device_number = 0;
+static int            dma_mask_bit          = 32;
 
 /**
  * struct udmabuf_driver_data - Device driver structure
@@ -91,6 +92,7 @@ struct udmabuf_driver_data {
     size_t               alloc_size;
     void*                virt_addr;
     dma_addr_t           phys_addr;
+    u64                  dma_mask;
 #if (SYNC_ENABLE == 1)
     int                  sync_mode;
     int                  sync_offset;
@@ -618,8 +620,20 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, int m
             this->device = NULL;
             goto failed;
         }
-        dma_set_coherent_mask(this->device, 0xFFFFFFFF);
         done |= DONE_DEVICE_CREATE;
+    }
+    /*
+     * setup dma mask 
+     */
+    {
+        this->device->dma_mask = &this->dma_mask;
+        if (dma_set_mask(this->device, DMA_BIT_MASK(dma_mask_bit)) == 0) {
+            dma_set_coherent_mask(this->device, DMA_BIT_MASK(dma_mask_bit));
+        } else {
+            printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
+            dma_set_mask(this->device, DMA_BIT_MASK(32));
+            dma_set_coherent_mask(this->device, DMA_BIT_MASK(32));
+        }
     }
     /*
      * dma buffer allocation 
@@ -818,6 +832,9 @@ MODULE_PARM_DESC( udmabuf0, "udmabuf0 buffer size");
 MODULE_PARM_DESC( udmabuf1, "udmabuf1 buffer size");
 MODULE_PARM_DESC( udmabuf2, "udmabuf2 buffer size");
 MODULE_PARM_DESC( udmabuf3, "udmabuf3 buffer size");
+
+module_param(     dma_mask_bit, int, S_IRUGO);
+MODULE_PARM_DESC( dma_mask_bit, "udmabuf dma mask bit(default=32)");
 
 struct udmabuf_driver_data* udmabuf_driver[4] = {NULL,NULL,NULL,NULL};
 
