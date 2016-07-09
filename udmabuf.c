@@ -201,7 +201,7 @@ DEF_ATTR_SHOW(sync_mode      , "%d\n"   , this->sync_mode                       
 DEF_ATTR_SET( sync_mode                 , 0, 7, NO_ACTION, NO_ACTION              );
 DEF_ATTR_SHOW(sync_offset    , "0x%lx\n", (long unsigned int)this->sync_offset    );
 DEF_ATTR_SET( sync_offset               , 0, 0xFFFFFFFF, NO_ACTION, NO_ACTION     );
-DEF_ATTR_SHOW(sync_size      , "%d\n"   , this->sync_size                         );
+DEF_ATTR_SHOW(sync_size      , "%zu\n"  , this->sync_size                         );
 DEF_ATTR_SET( sync_size                 , 0, 0xFFFFFFFF, NO_ACTION, NO_ACTION     );
 DEF_ATTR_SHOW(sync_direction , "%d\n"   , this->sync_direction                    );
 DEF_ATTR_SET( sync_direction            , 0, 3, NO_ACTION, NO_ACTION              );
@@ -670,7 +670,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, int m
     dev_info(this->device, "major number   = %d\n"    , MAJOR(this->device_number));
     dev_info(this->device, "minor number   = %d\n"    , MINOR(this->device_number));
     dev_info(this->device, "phys address   = 0x%lx\n" , (long unsigned int)this->phys_addr);
-    dev_info(this->device, "buffer size    = %d\n"    , this->alloc_size);
+    dev_info(this->device, "buffer size    = %zu\n"   , this->alloc_size);
 
     return this;
 
