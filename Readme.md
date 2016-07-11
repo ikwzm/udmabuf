@@ -27,7 +27,11 @@ Figure 1. Architecture
 
 * OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4  (the author tested on 3.18 and 4.4).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
-* CPU: x86(64bit) (However, verification is not enough. I hope the results from everyone)
+* CPU: x86(64bit) However, verification is not enough. I hope the results from everyone.
+  In addition, there is a limit to the following feature at the moment.
+  - Can not control of the CPU cache by O_SYNC flag . Always CPU cache is valid.
+  - Can not control of the CPU cache of manually by sync_for_device or sync_for_cpu.
+  - Can not various settings by the device tree.
 
 # Usage
 

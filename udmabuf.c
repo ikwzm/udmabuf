@@ -61,7 +61,11 @@
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
 #define UDMABUF_DEBUG       1
+#ifdef  CONFIG_ARM
 #define SYNC_ENABLE         1
+#else
+#define SYNC_ENABLE         0
+#endif
 
 #if     (LINUX_VERSION_CODE >= 0x030B00)
 #define USE_DEV_GROUPS      1
@@ -395,12 +399,10 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
                 vma->vm_flags    |= VM_IO;
                 vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
                 break;
-#ifdef CONFIG_ARM
             case SYNC_DMACOHERENT : 
                 vma->vm_flags    |= VM_IO;
                 vma->vm_page_prot = pgprot_dmacoherent(vma->vm_page_prot);
                 break;
-#endif
             default :
                 break;
         }
