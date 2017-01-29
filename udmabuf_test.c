@@ -141,6 +141,15 @@ void main()
     printf("phys_addr=0x%x\n", phys_addr);
     printf("size=%d\n", buf_size);
 
+    if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
+      long last_pos = lseek(fd, 0, 2);
+      if (last_pos == -1) {
+        printf("lseek error\n");
+        exit(-1);
+      }
+      close(fd);
+    }
+
     printf("check_buf()\n", buf_size);
     check_buf_test(buf_size, 0, 0);
     check_buf_test(buf_size, 0, O_SYNC);
