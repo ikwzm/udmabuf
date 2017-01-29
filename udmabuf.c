@@ -1,6 +1,6 @@
 /*********************************************************************************
  *
- *       Copyright (C) 2015-2016 Ichiro Kawazome
+ *       Copyright (C) 2015-2017 Ichiro Kawazome
  *       All rights reserved.
  * 
  *       Redistribution and use in source and binary forms, with or without
@@ -517,6 +517,38 @@ static ssize_t udmabuf_driver_file_write(struct file* file, const char __user* b
 }
 
 /**
+ * udmabuf_driver_file_llseek() - This is the driver llseek function.
+ * @file:	Pointer to the file structure.
+ * @offset:	File offset to seek.
+ * @whence:	Type of seek.
+ * returns:	The new position.
+ */
+static loff_t udmabuf_driver_file_llseek(struct file* file, loff_t offset, int whence)
+{
+    struct udmabuf_driver_data* this = file->private_data;
+    loff_t                      new_pos;
+
+    switch (whence) {
+        case 0 : /* SEEK_SET */
+            new_pos = offset;
+            break;
+        case 1 : /* SEEK_CUR */
+            new_pos = file->f_pos + offset;
+            break;
+        case 2 : /* SEEK_END */
+            new_pos = this->size  + offset;
+            break;
+        default:
+            return -EINVAL;
+    }
+    if (new_pos < 0         ){return -EINVAL;}
+    if (new_pos > this->size){return -EINVAL;}
+    file->f_pos = new_pos;
+    return new_pos;
+}
+
+
+/**
  *
  */
 static const struct file_operations udmabuf_driver_file_ops = {
@@ -526,6 +558,7 @@ static const struct file_operations udmabuf_driver_file_ops = {
     .mmap    = udmabuf_driver_file_mmap,
     .read    = udmabuf_driver_file_read,
     .write   = udmabuf_driver_file_write,
+    .llseek  = udmabuf_driver_file_llseek,
 };
 
 /**
