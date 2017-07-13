@@ -650,7 +650,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
                                          parent,
                                          this->device_number,
                                          (void *)this,
-                                         name);
+                                         "%s", name);
         }
         if (IS_ERR_OR_NULL(this->device)) {
             this->device = NULL;
