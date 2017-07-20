@@ -300,12 +300,12 @@ static void udmabuf_driver_vma_close(struct vm_area_struct* vma)
 
 #if (SYNC_ENABLE == 1)
 /**
- * udmabuf_driver_vma_fault() - This is the driver nopage function.
+ * _udmabuf_driver_vma_fault() - This is the driver nopage inline function.
  * @vma:        Pointer to the vm area structure.
  * @vfm:        Pointer to the vm fault structure.
  * returns:	Success or error status.
  */
-static int udmabuf_driver_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
+static inline int _udmabuf_driver_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
 {
     struct udmabuf_driver_data* this = vma->vm_private_data;
     struct page*  page_ptr           = NULL;
@@ -315,9 +315,22 @@ static int udmabuf_driver_vma_fault(struct vm_area_struct* vma, struct vm_fault*
     unsigned long request_size       = 1          << PAGE_SHIFT;
     unsigned long available_size     = this->alloc_size -offset;
 
+#if (LINUX_VERSION_CODE >= 0x040A00)
     if (UDMABUF_DEBUG_CHECK(this, debug_vma))
-        dev_info(this->device, "vma_fault(virt_addr=0x%lx, phys_addr=0x%lx)\n", (long unsigned int)vmf->virtual_address, phys_addr);
-
+        dev_info(this->device,
+                 "vma_fault(virt_addr=0x%lx, phys_addr=0x%lx)\n",
+                 vmf->address,
+                 phys_addr
+        );
+#else
+    if (UDMABUF_DEBUG_CHECK(this, debug_vma))
+        dev_info(this->device,
+                 "vma_fault(virt_addr=0x%lx, phys_addr=0x%lx)\n",
+                 (long unsigned int)vmf->virtual_address,
+                 phys_addr
+        );
+#endif
+    
     if (request_size > available_size) 
         return VM_FAULT_SIGBUS;
 
@@ -329,7 +342,31 @@ static int udmabuf_driver_vma_fault(struct vm_area_struct* vma, struct vm_fault*
     vmf->page = page_ptr;
     return 0;
 }
+
+#if (LINUX_VERSION_CODE >= 0x040B00)
+/**
+ * udmabuf_driver_vma_fault() - This is the driver nopage function.
+ * @vfm:        Pointer to the vm fault structure.
+ * returns:	Success or error status.
+ */
+static int udmabuf_driver_vma_fault(struct vm_fault* vmf)
+{
+    return _udmabuf_driver_vma_fault(vmf->vma, vmf);
+}
+#else
+/**
+ * udmabuf_driver_vma_fault() - This is the driver nopage function.
+ * @vma:        Pointer to the vm area structure.
+ * @vfm:        Pointer to the vm fault structure.
+ * returns:	Success or error status.
+ */
+static int udmabuf_driver_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
+{
+    return _udmabuf_driver_vma_fault(vma, vmf);
+}
 #endif
+
+#endif /* #if (SYNC_ENABLE == 1) */
 
 #if (SYNC_ENABLE == 1)
 /**
