@@ -199,7 +199,7 @@ static ssize_t udmabuf_set_ ## __attr_name(struct device *dev, struct device_att
 }
 
 DEF_ATTR_SHOW(size           , "%d\n"   , this->size                              );
-DEF_ATTR_SHOW(phys_addr      , "0x%lx\n", (long unsigned int)this->phys_addr      );
+DEF_ATTR_SHOW(phys_addr      , "%pad\n" , &this->phys_addr                        );
 #if (SYNC_ENABLE == 1)
 DEF_ATTR_SHOW(sync_mode      , "%d\n"   , this->sync_mode                         );
 DEF_ATTR_SET( sync_mode                 , 0, 7, NO_ACTION, NO_ACTION              );
@@ -318,16 +318,16 @@ static inline int _udmabuf_driver_vma_fault(struct vm_area_struct* vma, struct v
 #if (LINUX_VERSION_CODE >= 0x040A00)
     if (UDMABUF_DEBUG_CHECK(this, debug_vma))
         dev_info(this->device,
-                 "vma_fault(virt_addr=0x%lx, phys_addr=0x%lx)\n",
+                 "vma_fault(virt_addr=0x%lx, phys_addr=%pad)\n",
                  vmf->address,
-                 phys_addr
+                 &phys_addr
         );
 #else
     if (UDMABUF_DEBUG_CHECK(this, debug_vma))
         dev_info(this->device,
-                 "vma_fault(virt_addr=0x%lx, phys_addr=0x%lx)\n",
+                 "vma_fault(virt_addr=0x%lx, phys_addr=%pad)\n",
                  (long unsigned int)vmf->virtual_address,
-                 phys_addr
+                 &phys_addr
         );
 #endif
     
@@ -742,7 +742,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
     dev_info(this->device, "driver installed\n");
     dev_info(this->device, "major number   = %d\n"    , MAJOR(this->device_number));
     dev_info(this->device, "minor number   = %d\n"    , MINOR(this->device_number));
-    dev_info(this->device, "phys address   = 0x%lx\n" , (long unsigned int)this->phys_addr);
+    dev_info(this->device, "phys address   = %pad\n"  , &this->phys_addr);
     dev_info(this->device, "buffer size    = %zu\n"   , this->alloc_size);
 
     return this;
