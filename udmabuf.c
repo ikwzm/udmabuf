@@ -450,7 +450,7 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
 #if (PGPROT_DMACOHERENT_ENABLE == 1)
                 vma->vm_page_prot = pgprot_dmacoherent(vma->vm_page_prot);
 #else
-                vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+                vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
 #endif
                 break;
             default :
