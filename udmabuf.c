@@ -68,6 +68,12 @@
 #define SYNC_ENABLE         0
 #endif
 
+#if     defined(CONFIG_ARM)
+#define PGPROT_DMACOHERENT_ENABLE  1
+#else
+#define PGPROT_DMACOHERENT_ENABLE  0
+#endif
+
 #if     (LINUX_VERSION_CODE >= 0x030B00)
 #define USE_DEV_GROUPS      1
 #else
@@ -439,9 +445,13 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
                 vma->vm_flags    |= VM_IO;
                 vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
                 break;
-            case SYNC_DMACOHERENT : 
+            case SYNC_DMACOHERENT :
                 vma->vm_flags    |= VM_IO;
+#if (PGPROT_DMACOHERENT_ENABLE == 1)
                 vma->vm_page_prot = pgprot_dmacoherent(vma->vm_page_prot);
+#else
+                vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+#endif
                 break;
             default :
                 break;
