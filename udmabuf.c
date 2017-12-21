@@ -75,6 +75,12 @@
 #endif
 
 #if     defined(CONFIG_ARM)
+#define PGPROT_NONCACHED_ENABLE    1
+#else
+#define PGPROT_NONCACHED_ENABLE    0
+#endif
+
+#if     defined(CONFIG_ARM)
 #define PGPROT_DMACOHERENT_ENABLE  1
 #else
 #define PGPROT_DMACOHERENT_ENABLE  0
@@ -443,7 +449,11 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
         switch (this->sync_mode & SYNC_MODE_MASK) {
             case SYNC_NONCACHED : 
                 vma->vm_flags    |= VM_IO;
+#if (PGPROT_NONCACHED_ENABLE == 1)
                 vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+#else
+                vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+#endif
                 break;
             case SYNC_WRITECOMBINE : 
                 vma->vm_flags    |= VM_IO;
