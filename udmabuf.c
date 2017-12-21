@@ -68,6 +68,12 @@
 #define SYNC_ENABLE         0
 #endif
 
+#if     defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+#define USE_VMA_FAULT       1
+#else
+#define USE_VMA_FAULT       0
+#endif
+
 #if     defined(CONFIG_ARM)
 #define PGPROT_DMACOHERENT_ENABLE  1
 #else
@@ -115,7 +121,7 @@ struct udmabuf_driver_data {
     int                  sync_for_cpu;
     int                  sync_for_device;
 #endif
-#if ((UDMABUF_DEBUG == 1) && (SYNC_ENABLE == 1))
+#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
     bool                 debug_vma;
 #endif   
 };
@@ -224,7 +230,7 @@ DEF_ATTR_SET( sync_for_cpu              , 0, 1, NO_ACTION, udmabuf_sync_for_cpu 
 DEF_ATTR_SHOW(sync_for_device, "%d\n"   , this->sync_for_device                   );
 DEF_ATTR_SET( sync_for_device           , 0, 1, NO_ACTION, udmabuf_sync_for_device);
 #endif
-#if ((UDMABUF_DEBUG == 1) && (SYNC_ENABLE == 1))
+#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
 DEF_ATTR_SHOW(debug_vma      , "%d\n"   , this->debug_vma                         );
 DEF_ATTR_SET( debug_vma                 , 0, 1, NO_ACTION, NO_ACTION              );
 #endif
@@ -241,7 +247,7 @@ static struct device_attribute udmabuf_device_attrs[] = {
   __ATTR(sync_for_cpu   , 0664, udmabuf_show_sync_for_cpu    , udmabuf_set_sync_for_cpu   ),
   __ATTR(sync_for_device, 0664, udmabuf_show_sync_for_device , udmabuf_set_sync_for_device),
 #endif
-#if ((UDMABUF_DEBUG == 1) && (SYNC_ENABLE == 1))
+#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
   __ATTR(debug_vma      , 0664, udmabuf_show_debug_vma       , udmabuf_set_debug_vma      ),
 #endif
   __ATTR_NULL,
@@ -261,7 +267,7 @@ static struct attribute *udmabuf_attrs[] = {
   &(udmabuf_device_attrs[7].attr),
   &(udmabuf_device_attrs[8].attr),
 #endif
-#if ((UDMABUF_DEBUG == 1) && (SYNC_ENABLE == 1))
+#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
   &(udmabuf_device_attrs[9].attr),
 #endif
   NULL
@@ -279,7 +285,7 @@ static const struct attribute_group* udmabuf_attr_groups[] = {
 #define SET_SYS_CLASS_ATTRIBUTES(sys_class) {(sys_class)->dev_attrs  = udmabuf_device_attrs;}
 #endif
 
-#if (SYNC_ENABLE == 1)
+#if (USE_VMA_FAULT == 1)
 /**
  * udmabuf_driver_vma_open() - This is the driver open function.
  * @vma:        Pointer to the vm area structure.
@@ -293,7 +299,7 @@ static void udmabuf_driver_vma_open(struct vm_area_struct* vma)
 }
 #endif
 
-#if (SYNC_ENABLE == 1)
+#if (USE_VMA_FAULT == 1)
 /**
  * udmabuf_driver_vma_close() - This is the driver close function.
  * @vma:        Pointer to the vm area structure.
@@ -307,7 +313,7 @@ static void udmabuf_driver_vma_close(struct vm_area_struct* vma)
 }
 #endif
 
-#if (SYNC_ENABLE == 1)
+#if (USE_VMA_FAULT == 1)
 /**
  * _udmabuf_driver_vma_fault() - This is the driver nopage inline function.
  * @vma:        Pointer to the vm area structure.
@@ -375,9 +381,9 @@ static int udmabuf_driver_vma_fault(struct vm_area_struct* vma, struct vm_fault*
 }
 #endif
 
-#endif /* #if (SYNC_ENABLE == 1) */
+#endif /* #if (USE_VMA_FAULT == 1) */
 
-#if (SYNC_ENABLE == 1)
+#if (USE_VMA_FAULT == 1)
 /**
  *
  */
@@ -431,10 +437,8 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
 {
     struct udmabuf_driver_data* this = file->private_data;
 
+#if (USE_VMA_FAULT == 1)
 #if (SYNC_ENABLE == 1)
-    vma->vm_ops           = &udmabuf_driver_vm_ops;
-    vma->vm_private_data  = this;
- /* vma->vm_flags        |= VM_RESERVED; */
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS)) {
         switch (this->sync_mode & SYNC_MODE_MASK) {
             case SYNC_NONCACHED : 
@@ -457,9 +461,14 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
                 break;
         }
     }
+#endif /* #if (SYNC_ENABLE == 1) */
+    vma->vm_ops          = &udmabuf_driver_vm_ops;
+    vma->vm_private_data = this;
+    vma->vm_pgoff        = 0;
     udmabuf_driver_vma_open(vma);
     return 0;
 #else
+    vma->vm_pgoff        = 0;
     return dma_mmap_coherent(this->dma_dev, vma, this->virt_addr, this->phys_addr, this->alloc_size);
 #endif
 }
@@ -680,7 +689,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
         this->sync_for_device = 0;
     }
 #endif
-#if ((UDMABUF_DEBUG == 1) && (SYNC_ENABLE == 1))
+#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
     {
         this->debug_vma       = 0;
     }
