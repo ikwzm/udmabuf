@@ -767,6 +767,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
         dev_info(this->sys_dev, "minor number   = %d\n"    , MINOR(this->device_number));
         dev_info(this->sys_dev, "phys address   = %pad\n"  , &this->phys_addr);
         dev_info(this->sys_dev, "buffer size    = %zu\n"   , this->alloc_size);
+        dev_info(this->sys_dev, "dma coherent   = %d\n"    , is_device_dma_coherent(this->dma_dev));
     }
 
     return this;
