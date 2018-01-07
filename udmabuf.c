@@ -1,6 +1,6 @@
 /*********************************************************************************
  *
- *       Copyright (C) 2015-2017 Ichiro Kawazome
+ *       Copyright (C) 2015-2018 Ichiro Kawazome
  *       All rights reserved.
  * 
  *       Redistribution and use in source and binary forms, with or without
@@ -62,6 +62,7 @@
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
 #define UDMABUF_DEBUG       1
+
 #if     defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 #define SYNC_ENABLE         1
 #else
@@ -75,15 +76,13 @@
 #endif
 
 #if     defined(CONFIG_ARM)
-#define PGPROT_NONCACHED_ENABLE    1
+#define _PGPROT_NONCACHED(vm_page_prot)    pgprot_noncached(vm_page_prot)
+#define _PGPROT_WRITECOMBINE(vm_page_prot) pgprot_writecombine(vm_page_prot)
+#define _PGPROT_DMACOHERENT(vm_page_prot)  pgprot_dmacoherent(vm_page_prot)
 #else
-#define PGPROT_NONCACHED_ENABLE    0
-#endif
-
-#if     defined(CONFIG_ARM)
-#define PGPROT_DMACOHERENT_ENABLE  1
-#else
-#define PGPROT_DMACOHERENT_ENABLE  0
+#define _PGPROT_NONCACHED(vm_page_prot)    pgprot_writecombine(vm_page_prot)
+#define _PGPROT_WRITECOMBINE(vm_page_prot) pgprot_writecombine(vm_page_prot)
+#define _PGPROT_DMACOHERENT(vm_page_prot)  pgprot_writecombine(vm_page_prot)
 #endif
 
 #if     (LINUX_VERSION_CODE >= 0x030B00)
@@ -449,23 +448,15 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
         switch (this->sync_mode & SYNC_MODE_MASK) {
             case SYNC_NONCACHED : 
                 vma->vm_flags    |= VM_IO;
-#if (PGPROT_NONCACHED_ENABLE == 1)
-                vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-#else
-                vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
-#endif
+                vma->vm_page_prot = _PGPROT_NONCACHED(vma->vm_page_prot);
                 break;
             case SYNC_WRITECOMBINE : 
                 vma->vm_flags    |= VM_IO;
-                vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+                vma->vm_page_prot = _PGPROT_WRITECOMBINE(vma->vm_page_prot);
                 break;
             case SYNC_DMACOHERENT :
                 vma->vm_flags    |= VM_IO;
-#if (PGPROT_DMACOHERENT_ENABLE == 1)
-                vma->vm_page_prot = pgprot_dmacoherent(vma->vm_page_prot);
-#else
-                vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
-#endif
+                vma->vm_page_prot = _PGPROT_DMACOHERENT(vma->vm_page_prot);
                 break;
             default :
                 break;
@@ -786,7 +777,9 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
         dev_info(this->sys_dev, "minor number   = %d\n"    , MINOR(this->device_number));
         dev_info(this->sys_dev, "phys address   = %pad\n"  , &this->phys_addr);
         dev_info(this->sys_dev, "buffer size    = %zu\n"   , this->alloc_size);
+#if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
         dev_info(this->sys_dev, "dma coherent   = %d\n"    , is_device_dma_coherent(this->dma_dev));
+#endif
     }
 
     return this;
