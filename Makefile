@@ -1,8 +1,16 @@
-ARCH            := arm
+HOST_ARCH       ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
+ARCH            ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
 KERNEL_SRC_DIR  ?= /lib/modules/$(shell uname -r)/build
-ifeq ($(shell uname -m | sed -e s/arm.*/arm/),arm)
-else
- CROSS_COMPILE  ?= arm-linux-gnueabihf-
+
+ifeq ($(ARCH), arm)
+ ifneq ($(HOST_ARCH), arm)
+   CROSS_COMPILE  ?= arm-linux-gnueabihf-
+ endif
+endif
+ifeq ($(ARCH), arm64)
+ ifneq ($(HOST_ARCH), arm64)
+   CROSS_COMPILE  ?= aarch64-linux-gnu-
+ endif
 endif
 
 obj-m := udmabuf.o
