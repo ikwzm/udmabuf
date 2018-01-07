@@ -27,6 +27,7 @@ Figure 1. Architecture
 
 * OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12  (the author tested on 3.18, 4.4, 4.8 and 4.12).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
+* CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: x86(64bit) However, verification is not enough. I hope the results from everyone.
   In addition, there is a limit to the following feature at the moment.
   - Can not control of the CPU cache by O_SYNC flag . Always CPU cache is valid.
@@ -40,15 +41,26 @@ Figure 1. Architecture
 The following `Makefile` is included in the repository.
 
 ```Makefile:Makefile
-ARCH            := arm
+HOST_ARCH       ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
+ARCH            ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
 KERNEL_SRC_DIR  ?= /lib/modules/$(shell uname -r)/build
-ifeq ($(shell uname -m | sed -e s/arm.*/arm/),arm)
-else
- CROSS_COMPILE  ?= arm-linux-gnueabihf-
+
+ifeq ($(ARCH), arm)
+ ifneq ($(HOST_ARCH), arm)
+   CROSS_COMPILE  ?= arm-linux-gnueabihf-
+ endif
 endif
+ifeq ($(ARCH), arm64)
+ ifneq ($(HOST_ARCH), arm64)
+   CROSS_COMPILE  ?= aarch64-linux-gnu-
+ endif
+endif
+
 obj-m := udmabuf.o
+
 all:
 	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) modules
+
 clean:
 	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) clean
 
@@ -65,6 +77,7 @@ udmabuf udmabuf0: major number   = 248
 udmabuf udmabuf0: minor number   = 0
 udmabuf udmabuf0: phys address   = 0x1e900000
 udmabuf udmabuf0: buffer size    = 1048576
+udmabuf udmabuf0: dma coherent   = 0
 zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
@@ -117,6 +130,7 @@ udmabuf udmabuf0: major number   = 248
 udmabuf udmabuf0: minor number   = 0
 udmabuf udmabuf0: phys address   = 0x1e900000
 udmabuf udmabuf0: buffer size    = 1048576
+udmabuf udmabuf0: dma coherent   = 0
 zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
