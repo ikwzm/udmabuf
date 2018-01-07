@@ -44,6 +44,7 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
 * OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12   
 (私が動作を確認したのは3.18と4.4と4.8と4.12です).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
+* CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: x86(64bit) ただし検証が不十分です。皆さんからの結果を期待しています。また、現時点では以下の機能に制限があります。
 
   * O_SYNCフラグによるCPUキャッシュの制御が出来ません。常にCPUキャッシュは有効です。
@@ -62,15 +63,26 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
 
 
 ```Makefile:Makefile
-ARCH            := arm
+HOST_ARCH       ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
+ARCH            ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
 KERNEL_SRC_DIR  ?= /lib/modules/$(shell uname -r)/build
-ifeq ($(shell uname -m | sed -e s/arm.*/arm/),arm)
-else
- CROSS_COMPILE  ?= arm-linux-gnueabihf-
+
+ifeq ($(ARCH), arm)
+ ifneq ($(HOST_ARCH), arm)
+   CROSS_COMPILE  ?= arm-linux-gnueabihf-
+ endif
 endif
+ifeq ($(ARCH), arm64)
+ ifneq ($(HOST_ARCH), arm64)
+   CROSS_COMPILE  ?= aarch64-linux-gnu-
+ endif
+endif
+
 obj-m := udmabuf.o
+
 all:
 	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) modules
+
 clean:
 	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) clean
 
@@ -93,6 +105,7 @@ udmabuf udmabuf0: major number   = 248
 udmabuf udmabuf0: minor number   = 0
 udmabuf udmabuf0: phys address   = 0x1e900000
 udmabuf udmabuf0: buffer size    = 1048576
+udmabuf udmabuf0: dma coherent   = 0
 zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
@@ -157,6 +170,7 @@ udmabuf udmabuf0: major number   = 248
 udmabuf udmabuf0: minor number   = 0
 udmabuf udmabuf0: phys address   = 0x1e900000
 udmabuf udmabuf0: buffer size    = 1048576
+udmabuf udmabuf0: dma coherent   = 0
 zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
