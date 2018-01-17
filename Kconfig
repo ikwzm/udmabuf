@@ -1,0 +1,19 @@
+#
+# udmabuf
+#
+
+menu "User space mappable DMA Buffer"
+
+config UDMABUF
+	tristate "User space mappable DMA Buffer"
+	default m
+	depends on OF
+	---help---
+	  Enable this to allow the udmabuf to be built.
+	  udmabuf is a Linux device driver that allocates contiguous
+	  memory blocks in the kernel space as DMA buffers and
+	  makes them available from the user space.
+
+	  If you don't know what to do here, say N.
+
+endmenu
