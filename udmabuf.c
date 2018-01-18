@@ -56,6 +56,9 @@
 #include <linux/version.h>
 #include <asm/page.h>
 #include <asm/byteorder.h>
+#if ((LINUX_VERSION_CODE >= 0x040100) && defined(CONFIG_OF))
+#include <linux/of_reserved_mem.h>
+#endif
 #include "minor_number_allocator.h"
 
 #define DRIVER_NAME        "udmabuf"
@@ -645,6 +648,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
     const unsigned int          DONE_CHRDEV_ADD    = (1 << 1);
     const unsigned int          DONE_ALLOC_CMA     = (1 << 2);
     const unsigned int          DONE_DEVICE_CREATE = (1 << 3);
+    const unsigned int          DONE_RESERVED_MEM  = (1 << 4);
     /*
      * alloc device_minor_number
      */
@@ -718,6 +722,19 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
         }
         done |= DONE_DEVICE_CREATE;
     }
+#if ((LINUX_VERSION_CODE >= 0x040100) && defined(CONFIG_OF))
+    /*
+     * init reserved mem
+     */
+    if (parent != NULL) {
+        int ret = of_reserved_mem_device_init(parent);
+        if (!ret) {
+            done |= DONE_RESERVED_MEM;
+        } else if (ret != -ENODEV) {
+                goto failed;
+        }
+    }
+#endif
     /*
      * setup dma_dev
      */
@@ -787,6 +804,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
  failed:
     if (done & DONE_CHRDEV_ADD   ) { cdev_del(&this->cdev); }
     if (done & DONE_ALLOC_CMA    ) { dma_free_coherent(this->dma_dev, this->alloc_size, this->virt_addr, this->phys_addr);}
+    if (done & DONE_RESERVED_MEM ) { of_reserved_mem_device_release(parent); }
     if (done & DONE_DEVICE_CREATE) { device_destroy(udmabuf_sys_class, this->device_number);}
     if (done & DONE_ALLOC_MINOR  ) { udmabuf_device_minor_number_free(minor);}
     if (this != NULL)              { kfree(this); }
@@ -811,6 +829,9 @@ static int udmabuf_driver_destroy(struct udmabuf_driver_data* this)
         dev_info(this->sys_dev, "driver uninstalled\n");
     }
     dma_free_coherent(this->dma_dev, this->alloc_size, this->virt_addr, this->phys_addr);
+#if ((LINUX_VERSION_CODE >= 0x040100) && defined(CONFIG_OF))
+    of_reserved_mem_device_release(this->dma_dev);
+#endif
     device_destroy(udmabuf_sys_class, this->device_number);
     cdev_del(&this->cdev);
     kfree(this);
