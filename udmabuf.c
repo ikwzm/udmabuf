@@ -56,9 +56,6 @@
 #include <linux/version.h>
 #include <asm/page.h>
 #include <asm/byteorder.h>
-#if ((LINUX_VERSION_CODE >= 0x040100) && defined(CONFIG_OF))
-#include <linux/of_reserved_mem.h>
-#endif
 #include "minor_number_allocator.h"
 
 #define DRIVER_NAME        "udmabuf"
@@ -92,6 +89,13 @@
 #define USE_DEV_GROUPS      1
 #else
 #define USE_DEV_GROUPS      0
+#endif
+
+#if     ((LINUX_VERSION_CODE >= 0x040100) && defined(CONFIG_OF))
+#include <linux/of_reserved_mem.h>
+#define USE_RESERVED_MEM    1
+#else
+#define USE_RESERVED_MEM    0
 #endif
 
 #if     (UDMABUF_DEBUG == 1)
@@ -128,6 +132,9 @@ struct udmabuf_driver_data {
     bool                 sync_owner;
     int                  sync_for_cpu;
     int                  sync_for_device;
+#endif
+#if (USE_RESERVED_MEM == 1)
+    bool                 reserved_mem;
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
     bool                 debug_vma;
@@ -722,23 +729,20 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
         }
         done |= DONE_DEVICE_CREATE;
     }
-#if ((LINUX_VERSION_CODE >= 0x040100) && defined(CONFIG_OF))
-    /*
-     * init reserved mem
-     */
-    if (parent != NULL) {
-        int ret = of_reserved_mem_device_init(parent);
-        if (!ret) {
-            done |= DONE_RESERVED_MEM;
-        } else if (ret != -ENODEV) {
-                goto failed;
-        }
-    }
-#endif
     /*
      * setup dma_dev
      */
     if (parent != NULL) {
+#if (USE_RESERVED_MEM == 1)
+        int retval = of_reserved_mem_device_init(parent);
+        if (retval == 0) {
+            this->reserved_mem = 1;
+            done |= DONE_RESERVED_MEM;
+        } else if (retval != -ENODEV) {
+            printk(KERN_ERR "of_reserved_mem_device_init() failed\n");
+            goto failed;
+        }
+#endif
         this->dma_dev = parent;
     } else {
         this->dma_dev = this->sys_dev;
@@ -804,7 +808,9 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
  failed:
     if (done & DONE_CHRDEV_ADD   ) { cdev_del(&this->cdev); }
     if (done & DONE_ALLOC_CMA    ) { dma_free_coherent(this->dma_dev, this->alloc_size, this->virt_addr, this->phys_addr);}
+#if (USE_RESERVED_MEM == 1)
     if (done & DONE_RESERVED_MEM ) { of_reserved_mem_device_release(parent); }
+#endif
     if (done & DONE_DEVICE_CREATE) { device_destroy(udmabuf_sys_class, this->device_number);}
     if (done & DONE_ALLOC_MINOR  ) { udmabuf_device_minor_number_free(minor);}
     if (this != NULL)              { kfree(this); }
@@ -829,8 +835,10 @@ static int udmabuf_driver_destroy(struct udmabuf_driver_data* this)
         dev_info(this->sys_dev, "driver uninstalled\n");
     }
     dma_free_coherent(this->dma_dev, this->alloc_size, this->virt_addr, this->phys_addr);
-#if ((LINUX_VERSION_CODE >= 0x040100) && defined(CONFIG_OF))
-    of_reserved_mem_device_release(this->dma_dev);
+#if (USE_RESERVED_MEM == 1)
+    if (this->reserved_mem) {
+        of_reserved_mem_device_release(this->dma_dev);
+    }
 #endif
     device_destroy(udmabuf_sys_class, this->device_number);
     cdev_del(&this->cdev);
