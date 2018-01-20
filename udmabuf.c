@@ -91,10 +91,26 @@
 #define USE_DEV_GROUPS      0
 #endif
 
+#if     ((LINUX_VERSION_CODE >= 0x040100) && defined(CONFIG_OF))
+#define USE_OF_RESERVED_MEM 1
+#else
+#define USE_OF_RESERVED_MEM 0
+#endif
+
+#if     ((LINUX_VERSION_CODE >= 0x040100) && defined(CONFIG_OF))
+#define USE_OF_DMA_CONFIG   1
+#else
+#define USE_OF_DMA_CONFIG   0
+#endif
+
 #if     (UDMABUF_DEBUG == 1)
 #define UDMABUF_DEBUG_CHECK(this,debug) (this->debug)
 #else
 #define UDMABUF_DEBUG_CHECK(this,debug) (0)
+#endif
+
+#if     (USE_OF_RESERVED_MEM == 1)
+#include <linux/of_reserved_mem.h>
 #endif
 
 static struct class*  udmabuf_sys_class     = NULL;
@@ -116,7 +132,6 @@ struct udmabuf_driver_data {
     size_t               alloc_size;
     void*                virt_addr;
     dma_addr_t           phys_addr;
-    u64                  dma_mask;
 #if (SYNC_ENABLE == 1)
     int                  sync_mode;
     int                  sync_offset;
@@ -125,6 +140,9 @@ struct udmabuf_driver_data {
     bool                 sync_owner;
     int                  sync_for_cpu;
     int                  sync_for_device;
+#endif
+#if (USE_OF_RESERVED_MEM == 1)
+    bool                 of_reserved_mem;
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
     bool                 debug_vma;
@@ -645,6 +663,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
     const unsigned int          DONE_CHRDEV_ADD    = (1 << 1);
     const unsigned int          DONE_ALLOC_CMA     = (1 << 2);
     const unsigned int          DONE_DEVICE_CREATE = (1 << 3);
+    const unsigned int          DONE_RESERVED_MEM  = (1 << 4);
     /*
      * alloc device_minor_number
      */
@@ -690,6 +709,11 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
         this->sync_for_device = 0;
     }
 #endif
+#if (USE_OF_RESERVED_MEM == 1)
+    {
+        this->of_reserved_mem = 0;
+    }
+#endif
 #if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
     {
         this->debug_vma       = 0;
@@ -723,23 +747,39 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
      */
     if (parent != NULL) {
         this->dma_dev = parent;
-    } else {
-        this->dma_dev = this->sys_dev;
-#if ((LINUX_VERSION_CODE >= 0x040100) && defined(CONFIG_OF))
-        of_dma_configure(this->dma_dev, NULL);
-#else
-        if (this->dma_dev->dma_mask == NULL) {
-            this->dma_dev->dma_mask = &this->dma_mask;
-        }
-        if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
-            dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
-        } else {
-            printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
-            dma_set_mask(this->dma_dev, DMA_BIT_MASK(32));
-            dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(32));
+#if (USE_OF_RESERVED_MEM == 1)
+        {
+            int retval = of_reserved_mem_device_init(parent);
+            if (retval == 0) {
+                this->of_reserved_mem = 1;
+                done |= DONE_RESERVED_MEM;
+            } else if (retval != -ENODEV) {
+                printk(KERN_ERR "of_reserved_mem_device_init() failed\n");
+                goto failed;
+            }
         }
 #endif
+    } else {
+        this->dma_dev = this->sys_dev;
+#if (USE_OF_DMA_CONFIG == 1)
+        of_dma_configure(this->dma_dev, NULL);
+#endif
     }
+
+    /*
+     * setup dma_mask and coherent_dma_mask
+     */
+    if (this->dma_dev->dma_mask == NULL) {
+        this->dma_dev->dma_mask = &this->dma_dev->coherent_dma_mask;
+    }
+    if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
+        dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
+    } else {
+        printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
+        dma_set_mask(this->dma_dev, DMA_BIT_MASK(32));
+        dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(32));
+    }
+    
     /*
      * dma buffer allocation 
      */
@@ -787,6 +827,9 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
  failed:
     if (done & DONE_CHRDEV_ADD   ) { cdev_del(&this->cdev); }
     if (done & DONE_ALLOC_CMA    ) { dma_free_coherent(this->dma_dev, this->alloc_size, this->virt_addr, this->phys_addr);}
+#if (USE_OF_RESERVED_MEM == 1)
+    if (done & DONE_RESERVED_MEM ) { of_reserved_mem_device_release(parent); }
+#endif
     if (done & DONE_DEVICE_CREATE) { device_destroy(udmabuf_sys_class, this->device_number);}
     if (done & DONE_ALLOC_MINOR  ) { udmabuf_device_minor_number_free(minor);}
     if (this != NULL)              { kfree(this); }
@@ -811,6 +854,11 @@ static int udmabuf_driver_destroy(struct udmabuf_driver_data* this)
         dev_info(this->sys_dev, "driver uninstalled\n");
     }
     dma_free_coherent(this->dma_dev, this->alloc_size, this->virt_addr, this->phys_addr);
+#if (USE_OF_RESERVED_MEM == 1)
+    if (this->of_reserved_mem) {
+        of_reserved_mem_device_release(this->dma_dev);
+    }
+#endif
     device_destroy(udmabuf_sys_class, this->device_number);
     cdev_del(&this->cdev);
     kfree(this);
