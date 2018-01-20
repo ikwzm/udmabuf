@@ -132,7 +132,6 @@ struct udmabuf_driver_data {
     size_t               alloc_size;
     void*                virt_addr;
     dma_addr_t           phys_addr;
-    u64                  dma_mask;
 #if (SYNC_ENABLE == 1)
     int                  sync_mode;
     int                  sync_offset;
@@ -764,19 +763,23 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
         this->dma_dev = this->sys_dev;
 #if (USE_OF_DMA_CONFIG == 1)
         of_dma_configure(this->dma_dev, NULL);
-#else
-        if (this->dma_dev->dma_mask == NULL) {
-            this->dma_dev->dma_mask = &this->dma_mask;
-        }
-        if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
-            dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
-        } else {
-            printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
-            dma_set_mask(this->dma_dev, DMA_BIT_MASK(32));
-            dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(32));
-        }
 #endif
     }
+
+    /*
+     * setup dma_mask and coherent_dma_mask
+     */
+    if (this->dma_dev->dma_mask == NULL) {
+        this->dma_dev->dma_mask = &this->dma_dev->coherent_dma_mask;
+    }
+    if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
+        dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
+    } else {
+        printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
+        dma_set_mask(this->dma_dev, DMA_BIT_MASK(32));
+        dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(32));
+    }
+    
     /*
      * dma buffer allocation 
      */
