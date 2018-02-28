@@ -64,12 +64,6 @@
 #define UDMABUF_DEBUG       1
 
 #if     defined(CONFIG_ARM) || defined(CONFIG_ARM64)
-#define SYNC_ENABLE         1
-#else
-#define SYNC_ENABLE         0
-#endif
-
-#if     defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 #define USE_VMA_FAULT       1
 #else
 #define USE_VMA_FAULT       0
@@ -132,7 +126,6 @@ struct udmabuf_driver_data {
     size_t               alloc_size;
     void*                virt_addr;
     dma_addr_t           phys_addr;
-#if (SYNC_ENABLE == 1)
     int                  sync_mode;
     int                  sync_offset;
     size_t               sync_size;
@@ -140,7 +133,6 @@ struct udmabuf_driver_data {
     bool                 sync_owner;
     int                  sync_for_cpu;
     int                  sync_for_device;
-#endif
 #if (USE_OF_RESERVED_MEM == 1)
     bool                 of_reserved_mem;
 #endif
@@ -159,7 +151,6 @@ struct udmabuf_driver_data {
 #define SYNC_MODE_MASK     (0x03)
 #define SYNC_ALWAYS        (0x04)
 
-#if (SYNC_ENABLE == 1)
 /**
  * udmabuf_sync_for_cpu() - call dma_sync_single_for_cpu()
  * returns:	Success(0)
@@ -180,8 +171,7 @@ static int udmabuf_sync_for_cpu(struct udmabuf_driver_data* this)
     }
     return 0;
 }
-#endif
-#if (SYNC_ENABLE == 1)
+
 /**
  * udmabuf_sync_for_device() - call dma_sync_single_for_device()
  * returns:	Success(0)
@@ -202,7 +192,6 @@ static int udmabuf_sync_for_device(struct udmabuf_driver_data* this)
     }
     return 0;
 }
-#endif
 
 #define DEF_ATTR_SHOW(__attr_name, __format, __value) \
 static ssize_t udmabuf_show_ ## __attr_name(struct device *dev, struct device_attribute *attr, char *buf) \
@@ -238,7 +227,6 @@ static ssize_t udmabuf_set_ ## __attr_name(struct device *dev, struct device_att
 
 DEF_ATTR_SHOW(size           , "%d\n"   , this->size                              );
 DEF_ATTR_SHOW(phys_addr      , "%pad\n" , &this->phys_addr                        );
-#if (SYNC_ENABLE == 1)
 DEF_ATTR_SHOW(sync_mode      , "%d\n"   , this->sync_mode                         );
 DEF_ATTR_SET( sync_mode                 , 0, 7, NO_ACTION, NO_ACTION              );
 DEF_ATTR_SHOW(sync_offset    , "0x%lx\n", (long unsigned int)this->sync_offset    );
@@ -252,7 +240,6 @@ DEF_ATTR_SHOW(sync_for_cpu   , "%d\n"   , this->sync_for_cpu                    
 DEF_ATTR_SET( sync_for_cpu              , 0, 1, NO_ACTION, udmabuf_sync_for_cpu   );
 DEF_ATTR_SHOW(sync_for_device, "%d\n"   , this->sync_for_device                   );
 DEF_ATTR_SET( sync_for_device           , 0, 1, NO_ACTION, udmabuf_sync_for_device);
-#endif
 #if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
 DEF_ATTR_SHOW(debug_vma      , "%d\n"   , this->debug_vma                         );
 DEF_ATTR_SET( debug_vma                 , 0, 1, NO_ACTION, NO_ACTION              );
@@ -261,7 +248,6 @@ DEF_ATTR_SET( debug_vma                 , 0, 1, NO_ACTION, NO_ACTION            
 static struct device_attribute udmabuf_device_attrs[] = {
   __ATTR(size           , 0444, udmabuf_show_size            , NULL                       ),
   __ATTR(phys_addr      , 0444, udmabuf_show_phys_addr       , NULL                       ),
-#if (SYNC_ENABLE == 1)
   __ATTR(sync_mode      , 0664, udmabuf_show_sync_mode       , udmabuf_set_sync_mode      ),
   __ATTR(sync_offset    , 0664, udmabuf_show_sync_offset     , udmabuf_set_sync_offset    ),
   __ATTR(sync_size      , 0664, udmabuf_show_sync_size       , udmabuf_set_sync_size      ),
@@ -269,7 +255,6 @@ static struct device_attribute udmabuf_device_attrs[] = {
   __ATTR(sync_owner     , 0664, udmabuf_show_sync_owner      , NULL                       ),
   __ATTR(sync_for_cpu   , 0664, udmabuf_show_sync_for_cpu    , udmabuf_set_sync_for_cpu   ),
   __ATTR(sync_for_device, 0664, udmabuf_show_sync_for_device , udmabuf_set_sync_for_device),
-#endif
 #if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
   __ATTR(debug_vma      , 0664, udmabuf_show_debug_vma       , udmabuf_set_debug_vma      ),
 #endif
@@ -281,7 +266,6 @@ static struct device_attribute udmabuf_device_attrs[] = {
 static struct attribute *udmabuf_attrs[] = {
   &(udmabuf_device_attrs[0].attr),
   &(udmabuf_device_attrs[1].attr),
-#if (SYNC_ENABLE == 1)
   &(udmabuf_device_attrs[2].attr),
   &(udmabuf_device_attrs[3].attr),
   &(udmabuf_device_attrs[4].attr),
@@ -289,7 +273,6 @@ static struct attribute *udmabuf_attrs[] = {
   &(udmabuf_device_attrs[6].attr),
   &(udmabuf_device_attrs[7].attr),
   &(udmabuf_device_attrs[8].attr),
-#endif
 #if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
   &(udmabuf_device_attrs[9].attr),
 #endif
@@ -461,7 +444,6 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
     struct udmabuf_driver_data* this = file->private_data;
 
 #if (USE_VMA_FAULT == 1)
-#if (SYNC_ENABLE == 1)
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS)) {
         switch (this->sync_mode & SYNC_MODE_MASK) {
             case SYNC_NONCACHED : 
@@ -480,7 +462,6 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
                 break;
         }
     }
-#endif /* #if (SYNC_ENABLE == 1) */
     vma->vm_ops          = &udmabuf_driver_vm_ops;
     vma->vm_private_data = this;
     vma->vm_pgoff        = 0;
@@ -521,20 +502,16 @@ static ssize_t udmabuf_driver_file_read(struct file* file, char __user* buff, si
     virt_addr = this->virt_addr + *ppos;
     xfer_size = (*ppos + count >= this->size) ? this->size - *ppos : count;
 
-#if (SYNC_ENABLE == 1)
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
         dma_sync_single_for_cpu(this->dma_dev, phys_addr, xfer_size, DMA_FROM_DEVICE);
-#endif
 
     if ((remain_size = copy_to_user(buff, virt_addr, xfer_size)) != 0) {
         result = 0;
         goto return_unlock;
     }
 
-#if (SYNC_ENABLE == 1)
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
         dma_sync_single_for_device(this->dma_dev, phys_addr, xfer_size, DMA_FROM_DEVICE);
-#endif
 
     *ppos += xfer_size;
     result = xfer_size;
@@ -572,20 +549,16 @@ static ssize_t udmabuf_driver_file_write(struct file* file, const char __user* b
     virt_addr = this->virt_addr + *ppos;
     xfer_size = (*ppos + count >= this->size) ? this->size - *ppos : count;
 
-#if (SYNC_ENABLE == 1)
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
         dma_sync_single_for_cpu(this->dma_dev, phys_addr, xfer_size, DMA_TO_DEVICE);
-#endif
 
     if ((remain_size = copy_from_user(virt_addr, buff, xfer_size)) != 0) {
         result = 0;
         goto return_unlock;
     }
 
-#if (SYNC_ENABLE == 1)
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
         dma_sync_single_for_device(this->dma_dev, phys_addr, xfer_size, DMA_TO_DEVICE);
-#endif
 
     *ppos += xfer_size;
     result = xfer_size;
@@ -697,9 +670,6 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
         this->device_number   = MKDEV(MAJOR(udmabuf_device_number), minor);
         this->size            = size;
         this->alloc_size      = ((size + ((1 << PAGE_SHIFT) - 1)) >> PAGE_SHIFT) << PAGE_SHIFT;
-    }
-#if (SYNC_ENABLE == 1)
-    {
         this->sync_mode       = SYNC_NONCACHED;
         this->sync_offset     = 0;
         this->sync_size       = size;
@@ -708,7 +678,6 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
         this->sync_for_cpu    = 0;
         this->sync_for_device = 0;
     }
-#endif
 #if (USE_OF_RESERVED_MEM == 1)
     {
         this->of_reserved_mem = 0;
