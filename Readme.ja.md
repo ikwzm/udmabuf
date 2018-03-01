@@ -41,14 +41,13 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
 ## 対応プラットフォーム
 
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12   
-(私が動作を確認したのは3.18と4.4と4.8と4.12です).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14   
+(私が動作を確認したのは3.18と4.4と4.8と4.12と4.14です).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: x86(64bit) ただし検証が不十分です。皆さんからの結果を期待しています。また、現時点では以下の機能に制限があります。
 
   * O_SYNCフラグによるCPUキャッシュの制御が出来ません。常にCPUキャッシュは有効です。
-  * sync_for_cpu、sync_for_deviceによる手動でのCPUキャッシュの制御が出来ません。
   * デバイスツリーによる各種設定が出来ません。
 
 
