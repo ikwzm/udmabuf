@@ -954,47 +954,64 @@ static struct platform_driver udmabuf_platform_driver = {
 static bool udmabuf_platform_driver_done = 0;
 
 /**
- * 
+ * static udmabuf driver description and functions.
  */
-static int        udmabuf0 = 0;
-static int        udmabuf1 = 0;
-static int        udmabuf2 = 0;
-static int        udmabuf3 = 0;
-module_param(     udmabuf0, int, S_IRUGO);
-module_param(     udmabuf1, int, S_IRUGO);
-module_param(     udmabuf2, int, S_IRUGO);
-module_param(     udmabuf3, int, S_IRUGO);
-MODULE_PARM_DESC( udmabuf0, "udmabuf0 buffer size");
-MODULE_PARM_DESC( udmabuf1, "udmabuf1 buffer size");
-MODULE_PARM_DESC( udmabuf2, "udmabuf2 buffer size");
-MODULE_PARM_DESC( udmabuf3, "udmabuf3 buffer size");
+#define DEFINE_STATIC_UDMABUF_DRIVER(__num)                              \
+    static int       udmabuf ## __num = 0;                               \
+    module_param(    udmabuf ## __num, int, S_IRUGO);                    \
+    MODULE_PARM_DESC(udmabuf ## __num, "udmabuf" #__num " buffer size"); \
+    static struct udmabuf_driver_data* udmabuf_driver_ ## __num = NULL;
 
-module_param(     msg_enable , int, S_IRUGO);
-MODULE_PARM_DESC( msg_enable , "udmabuf install/uninstall message enable");
+#define CREATE_STATIC_UDMABUF_DRIVER(__num,parent)                                              \
+    if (udmabuf ## __num > 0) {                                                                 \
+        udmabuf_driver_ ## __num = udmabuf_driver_create(NULL, parent, __num, udmabuf ## __num);\
+        if (IS_ERR_OR_NULL(udmabuf_driver_ ## __num)) {                                         \
+            udmabuf_driver_ ## __num = NULL;                                                    \
+            printk(KERN_ERR "%s: couldn't create udmabuf%d driver\n", DRIVER_NAME, __num);      \
+        }                                                                                       \
+    }
+
+#define DESTROY_STATIC_UDMABUF_DRIVER(__num)              \
+    if (udmabuf_driver_ ## __num != NULL) {               \
+        udmabuf_driver_destroy(udmabuf_driver_ ## __num); \
+    }
+
+DEFINE_STATIC_UDMABUF_DRIVER(0);
+DEFINE_STATIC_UDMABUF_DRIVER(1);
+DEFINE_STATIC_UDMABUF_DRIVER(2);
+DEFINE_STATIC_UDMABUF_DRIVER(3);
+
+static void create_static_udmabuf_drivers(struct device* parent)
+{
+    CREATE_STATIC_UDMABUF_DRIVER(0, parent);
+    CREATE_STATIC_UDMABUF_DRIVER(1, parent);
+    CREATE_STATIC_UDMABUF_DRIVER(2, parent);
+    CREATE_STATIC_UDMABUF_DRIVER(3, parent);
+}
+
+static void destory_static_udmabuf_drivers(void)
+{
+    DESTROY_STATIC_UDMABUF_DRIVER(0);
+    DESTROY_STATIC_UDMABUF_DRIVER(1);
+    DESTROY_STATIC_UDMABUF_DRIVER(2);
+    DESTROY_STATIC_UDMABUF_DRIVER(3);
+}
+
+/**
+ * other module parameters
+ */
+module_param(     msg_enable  , int, S_IRUGO);
+MODULE_PARM_DESC( msg_enable  , "udmabuf install/uninstall message enable");
 
 module_param(     dma_mask_bit, int, S_IRUGO);
 MODULE_PARM_DESC( dma_mask_bit, "udmabuf dma mask bit(default=32)");
-
-struct udmabuf_driver_data* udmabuf_driver[4] = {NULL,NULL,NULL,NULL};
-
-#define CREATE_UDMABUF_DRIVER(__num,parent)                                                  \
-    if (udmabuf ## __num > 0) {                                                              \
-        udmabuf_driver[__num] = udmabuf_driver_create(NULL, parent, __num, udmabuf ## __num);\
-        if (IS_ERR_OR_NULL(udmabuf_driver[__num])) {                                         \
-            udmabuf_driver[__num] = NULL;                                                    \
-            printk(KERN_ERR "%s: couldn't create udmabuf%d driver\n", DRIVER_NAME, __num);   \
-        }                                                                                    \
-    }
 
 /**
  * udmabuf_module_exit()
  */
 static void __exit udmabuf_module_exit(void)
 {
-    if (udmabuf_driver[3]     != NULL){udmabuf_driver_destroy(udmabuf_driver[3]);}
-    if (udmabuf_driver[2]     != NULL){udmabuf_driver_destroy(udmabuf_driver[2]);}
-    if (udmabuf_driver[1]     != NULL){udmabuf_driver_destroy(udmabuf_driver[1]);}
-    if (udmabuf_driver[0]     != NULL){udmabuf_driver_destroy(udmabuf_driver[0]);}
+    destory_static_udmabuf_drivers();
     if (udmabuf_platform_driver_done ){platform_driver_unregister(&udmabuf_platform_driver);}
     if (udmabuf_sys_class     != NULL){class_destroy(udmabuf_sys_class);}
     if (udmabuf_device_number != 0   ){unregister_chrdev_region(udmabuf_device_number, 0);}
@@ -1026,10 +1043,7 @@ static int __init udmabuf_module_init(void)
     }
     SET_SYS_CLASS_ATTRIBUTES(udmabuf_sys_class);
 
-    CREATE_UDMABUF_DRIVER(0, NULL);
-    CREATE_UDMABUF_DRIVER(1, NULL);
-    CREATE_UDMABUF_DRIVER(2, NULL);
-    CREATE_UDMABUF_DRIVER(3, NULL);
+    create_static_udmabuf_drivers(NULL);
 
     retval = platform_driver_register(&udmabuf_platform_driver);
     if (retval) {
