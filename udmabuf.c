@@ -645,19 +645,22 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
     const unsigned int          DONE_RESERVED_MEM  = (1 << 4);
 #endif
     /*
-     * alloc device_minor_number
+     * allocate device minor number
      */
     {
         if ((0 <= minor) && (minor < DEVICE_MAX_NUM)) {
             if (ida_simple_get(&udmabuf_device_ida, minor, minor+1, GFP_KERNEL) < 0) {
-                printk(KERN_ERR "invalid or conflict minor number %d.\n", minor);
+                printk(KERN_ERR "couldn't allocate minor number(=%d).\n", minor);
+                goto failed;
+            }
+        } else if(minor == -1) {
+            if ((minor = ida_simple_get(&udmabuf_device_ida, 0, DEVICE_MAX_NUM, GFP_KERNEL)) < 0) {
+                printk(KERN_ERR "couldn't allocate new minor number.\n");
                 goto failed;
             }
         } else {
-            if ((minor = ida_simple_get(&udmabuf_device_ida, 0, DEVICE_MAX_NUM, GFP_KERNEL)) < 0) {
-                printk(KERN_ERR "couldn't allocate minor number.\n");
+                printk(KERN_ERR "invalid minor number(=%d), valid range is 0 to %d\n", minor, DEVICE_MAX_NUM-1);
                 goto failed;
-            }
         }
         done |= DONE_ALLOC_MINOR;
     }
