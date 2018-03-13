@@ -56,7 +56,6 @@
 #include <linux/version.h>
 #include <asm/page.h>
 #include <asm/byteorder.h>
-#include "minor_number_allocator.h"
 
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
@@ -127,6 +126,7 @@
 #endif
 
 static struct class*  udmabuf_sys_class     = NULL;
+static DEFINE_IDA(    udmabuf_device_ida );
 static dev_t          udmabuf_device_number = 0;
 static int            dma_mask_bit          = 32;
 static int            msg_enable            = 1;
@@ -624,11 +624,6 @@ static const struct file_operations udmabuf_driver_file_ops = {
 };
 
 /**
- * udmabuf_device_minor_number_allocator
- */
-DECLARE_MINOR_NUMBER_ALLOCATOR(udmabuf_device, DEVICE_MAX_NUM);
-
-/**
  * udmabuf_driver_create() -  Create udmabuf driver data structure.
  * @name:       device name   or NULL.
  * @parent:     parent device or NULL.
@@ -654,12 +649,12 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
      */
     {
         if ((0 <= minor) && (minor < DEVICE_MAX_NUM)) {
-            if (udmabuf_device_minor_number_allocate(minor) < 0) {
+            if (ida_simple_get(&udmabuf_device_ida, minor, minor+1, GFP_KERNEL) < 0) {
                 printk(KERN_ERR "invalid or conflict minor number %d.\n", minor);
                 goto failed;
             }
         } else {
-            if ((minor = udmabuf_device_minor_number_new()) < 0) {
+            if ((minor = ida_simple_get(&udmabuf_device_ida, 0, DEVICE_MAX_NUM, GFP_KERNEL)) < 0) {
                 printk(KERN_ERR "couldn't allocate minor number.\n");
                 goto failed;
             }
@@ -812,7 +807,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
     if (done & DONE_RESERVED_MEM ) { of_reserved_mem_device_release(parent); }
 #endif
     if (done & DONE_DEVICE_CREATE) { device_destroy(udmabuf_sys_class, this->device_number);}
-    if (done & DONE_ALLOC_MINOR  ) { udmabuf_device_minor_number_free(minor);}
+    if (done & DONE_ALLOC_MINOR  ) { ida_simple_remove(&udmabuf_device_ida, minor);}
     if (this != NULL)              { kfree(this); }
     return NULL;
 }
@@ -829,7 +824,7 @@ static int udmabuf_driver_destroy(struct udmabuf_driver_data* this)
     if (!this)
         return -ENODEV;
 
-    udmabuf_device_minor_number_free(MINOR(this->device_number));
+    ida_simple_remove(&udmabuf_device_ida, MINOR(this->device_number));
     if (msg_enable) {
         dev_info(this->sys_dev, "driver uninstalled\n");
     }
@@ -1000,6 +995,7 @@ static void __exit udmabuf_module_exit(void)
     if (udmabuf_platform_driver_done ){platform_driver_unregister(&udmabuf_platform_driver);}
     if (udmabuf_sys_class     != NULL){class_destroy(udmabuf_sys_class);}
     if (udmabuf_device_number != 0   ){unregister_chrdev_region(udmabuf_device_number, 0);}
+    ida_destroy(&udmabuf_device_ida);
 }
 
 /**
@@ -1009,7 +1005,7 @@ static int __init udmabuf_module_init(void)
 {
     int retval = 0;
 
-    udmabuf_device_minor_number_allocator_initilize();
+    ida_init(&udmabuf_device_ida);
       
     retval = alloc_chrdev_region(&udmabuf_device_number, 0, 0, DRIVER_NAME);
     if (retval != 0) {
