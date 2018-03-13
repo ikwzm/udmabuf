@@ -67,7 +67,7 @@ clean:
 
 ## Install
 
-Load the udmabuf kernel driver using `insmod`. The size of a DMA buffer should be provided as an argument as follows. The device driver is created, and allocates a DMA buffer with the specified size. The maximum number of DMA buffers that can be allocated using `insmod` is 4 (udmabuf0/1/2/3).
+Load the udmabuf kernel driver using `insmod`. The size of a DMA buffer should be provided as an argument as follows. The device driver is created, and allocates a DMA buffer with the specified size. The maximum number of DMA buffers that can be allocated using `insmod` is 8 (udmabuf0/1/2/3/4/5/6/7).
 
 ```Shell
 zynq$ insmod udmabuf.ko udmabuf0=1048576
