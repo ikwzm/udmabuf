@@ -740,9 +740,6 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
 #endif
     } else {
         this->dma_dev = this->sys_dev;
-#if (USE_OF_DMA_CONFIG == 1)
-        of_dma_configure(this->dma_dev, NULL);
-#endif
     }
 
     /*
@@ -898,7 +895,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     {
         struct udmabuf_driver_data* driver_data = udmabuf_driver_create(device_name, &pdev->dev, minor_number, size);
         if (IS_ERR_OR_NULL(driver_data)) {
-            dev_err(&pdev->dev, "driver create fail.\n");
+            dev_err(&pdev->dev, "driver create failed.\n");
             retval = PTR_ERR(driver_data);
             goto failed;
         }
@@ -951,7 +948,88 @@ static struct platform_driver udmabuf_platform_driver = {
         .of_match_table = udmabuf_of_match,
     },
 };
-static bool udmabuf_platform_driver_done = 0;
+
+/**
+ * udmabuf_static_device_create() - Create platform device for static udmabuf device.
+ * @id:	        device id.
+ * @size:	buffer size.
+ * Return:      Pointer to the platform device or NULL.
+ */
+static struct platform_device* udmabuf_static_device_create(int id, unsigned int size)
+{
+    struct platform_device* pdev;
+    int                     retval = 0;
+
+    if (size == 0)
+        return NULL;
+
+    /*
+     * create platform device.
+     */
+    {
+        pdev = platform_device_alloc(DRIVER_NAME, id);
+        if (IS_ERR_OR_NULL(pdev)) {
+            printk(KERN_ERR "platform_device_alloc(%s,%d) failed.\n", DRIVER_NAME, id);
+            pdev   = NULL;
+            retval = PTR_ERR(pdev);
+            goto failed;
+        }
+
+        retval = platform_device_add(pdev);
+        if (retval != 0) {
+            dev_err(&pdev->dev, "platform_device_add failed.\n");
+            goto failed;
+        }
+    }
+    /*
+     * configure dma device.
+     */
+#if (USE_OF_DMA_CONFIG == 1)
+    of_dma_configure(&pdev->dev, NULL);
+#endif
+    /*
+     * create (udmabuf_driver_data*)this.
+     */
+    {
+        struct udmabuf_driver_data* driver_data = udmabuf_driver_create(DRIVER_NAME, &pdev->dev, id, size);
+        if (IS_ERR_OR_NULL(driver_data)) {
+            dev_err(&pdev->dev, "driver create failed.\n");
+            retval = PTR_ERR(driver_data);
+            goto failed;
+        }
+        dev_set_drvdata(&pdev->dev, driver_data);
+    }
+    dev_info(&pdev->dev, "driver installed.\n");
+    return pdev;
+
+ failed:
+    if (pdev != NULL) {
+        platform_device_put(pdev);
+    }
+    dev_err(&pdev->dev, "driver install failed.\n");
+    return NULL;
+}
+
+/**
+ * udmabuf_static_device_destroy() -  Destroy platform device for static udmabuf device. 
+ * @pdev:	Handle to the platform device structure.
+ * Return:      NULL.
+ */
+struct platform_device* udmabuf_static_device_destroy(struct platform_device* pdev)
+{
+    if (pdev != NULL) {
+        struct udmabuf_driver_data* this = dev_get_drvdata(&pdev->dev);
+
+        if (udmabuf_driver_destroy(this) != 0)
+            dev_err( &pdev->dev, "driver unload failed.\n");
+        else
+            dev_info(&pdev->dev, "driver unloaded.\n");
+
+        dev_set_drvdata(&pdev->dev, NULL);
+        platform_device_put(pdev);
+    }
+    return NULL;
+}
 
 /**
  * static udmabuf driver description and functions.
@@ -960,21 +1038,13 @@ static bool udmabuf_platform_driver_done = 0;
     static int       udmabuf ## __num = 0;                               \
     module_param(    udmabuf ## __num, int, S_IRUGO);                    \
     MODULE_PARM_DESC(udmabuf ## __num, "udmabuf" #__num " buffer size"); \
-    static struct udmabuf_driver_data* udmabuf_driver_ ## __num = NULL;
+    static struct platform_device*     udmabuf_device_ ## __num = NULL;  
 
-#define CREATE_STATIC_UDMABUF_DRIVER(__num,parent)                                              \
-    if (udmabuf ## __num > 0) {                                                                 \
-        udmabuf_driver_ ## __num = udmabuf_driver_create(NULL, parent, __num, udmabuf ## __num);\
-        if (IS_ERR_OR_NULL(udmabuf_driver_ ## __num)) {                                         \
-            udmabuf_driver_ ## __num = NULL;                                                    \
-            printk(KERN_ERR "%s: couldn't create udmabuf%d driver\n", DRIVER_NAME, __num);      \
-        }                                                                                       \
-    }
+#define CREATE_STATIC_UDMABUF_DRIVER(__num,parent) \
+    udmabuf_device_ ## __num = udmabuf_static_device_create(__num, udmabuf ## __num);
 
-#define DESTROY_STATIC_UDMABUF_DRIVER(__num)              \
-    if (udmabuf_driver_ ## __num != NULL) {               \
-        udmabuf_driver_destroy(udmabuf_driver_ ## __num); \
-    }
+#define DESTROY_STATIC_UDMABUF_DRIVER(__num)       \
+    udmabuf_device_ ## __num = udmabuf_static_device_destroy(udmabuf_device_ ## __num)
 
 DEFINE_STATIC_UDMABUF_DRIVER(0);
 DEFINE_STATIC_UDMABUF_DRIVER(1);
@@ -1017,6 +1087,8 @@ MODULE_PARM_DESC( msg_enable  , "udmabuf install/uninstall message enable");
 
 module_param(     dma_mask_bit, int, S_IRUGO);
 MODULE_PARM_DESC( dma_mask_bit, "udmabuf dma mask bit(default=32)");
+
+static bool udmabuf_platform_driver_done = 0;
 
 /**
  * udmabuf_module_exit()
