@@ -1046,7 +1046,14 @@ static void udmabuf_static_device_create(int id, unsigned int size)
     }
 
 #if (USE_OF_DMA_CONFIG == 1)
+#if (LINUX_VERSION_CODE >= 0x040C00)
+    retval = of_dma_configure(&pdev->dev, NULL);
+    if (retval != 0) {
+        dev_err(&pdev->dev, "of_dma_configure failed. return=%d\n", retval);
+    }
+#else
     of_dma_configure(&pdev->dev, NULL);
+#endif
 #endif
 
     udmabuf_static_device_list[id].pdev = pdev;
