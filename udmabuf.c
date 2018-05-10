@@ -1126,9 +1126,9 @@ MODULE_PARM_DESC( dma_mask_bit, "udmabuf dma mask bit(default=32)");
 static bool udmabuf_platform_driver_done = 0;
 
 /**
- * udmabuf_module_exit()
+ * udmabuf_module_cleanup()
  */
-static void __exit udmabuf_module_exit(void)
+static void udmabuf_module_cleanup(void)
 {
     udmabuf_static_device_destory_all();
     if (udmabuf_platform_driver_done ){platform_driver_unregister(&udmabuf_platform_driver);}
@@ -1174,8 +1174,16 @@ static int __init udmabuf_module_init(void)
     return 0;
 
  failed:
-    udmabuf_module_exit();
+    udmabuf_module_cleanup();
     return retval;
+}
+
+/**
+ * udmabuf_module_exit()
+ */
+static void __exit udmabuf_module_exit(void)
+{
+    udmabuf_module_cleanup();
 }
 
 module_init(udmabuf_module_init);
