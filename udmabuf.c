@@ -63,12 +63,6 @@
 #define UDMABUF_DEBUG       1
 #define STATIC_DEVICE_NUM   8
 
-#if     defined(CONFIG_ARM) || defined(CONFIG_ARM64)
-#define USE_VMA_FAULT       1
-#else
-#define USE_VMA_FAULT       0
-#endif
-
 #if     (LINUX_VERSION_CODE >= 0x030B00)
 #define USE_DEV_GROUPS      1
 #else
@@ -156,7 +150,7 @@ struct udmabuf_driver_data {
 #if (USE_OF_RESERVED_MEM == 1)
     bool                 of_reserved_mem;
 #endif
-#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
+#if (UDMABUF_DEBUG == 1)
     bool                 debug_vma;
 #endif   
 };
@@ -285,7 +279,7 @@ DEF_ATTR_SHOW(sync_for_cpu   , "%d\n"   , this->sync_for_cpu                    
 DEF_ATTR_SET( sync_for_cpu              , 0, 1, NO_ACTION, udmabuf_sync_for_cpu   );
 DEF_ATTR_SHOW(sync_for_device, "%d\n"   , this->sync_for_device                   );
 DEF_ATTR_SET( sync_for_device           , 0, 1, NO_ACTION, udmabuf_sync_for_device);
-#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
+#if (UDMABUF_DEBUG == 1)
 DEF_ATTR_SHOW(debug_vma      , "%d\n"   , this->debug_vma                         );
 DEF_ATTR_SET( debug_vma                 , 0, 1, NO_ACTION, NO_ACTION              );
 #endif
@@ -300,7 +294,7 @@ static struct device_attribute udmabuf_device_attrs[] = {
   __ATTR(sync_owner     , 0664, udmabuf_show_sync_owner      , NULL                       ),
   __ATTR(sync_for_cpu   , 0664, udmabuf_show_sync_for_cpu    , udmabuf_set_sync_for_cpu   ),
   __ATTR(sync_for_device, 0664, udmabuf_show_sync_for_device , udmabuf_set_sync_for_device),
-#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
+#if (UDMABUF_DEBUG == 1)
   __ATTR(debug_vma      , 0664, udmabuf_show_debug_vma       , udmabuf_set_debug_vma      ),
 #endif
   __ATTR_NULL,
@@ -318,7 +312,7 @@ static struct attribute *udmabuf_attrs[] = {
   &(udmabuf_device_attrs[6].attr),
   &(udmabuf_device_attrs[7].attr),
   &(udmabuf_device_attrs[8].attr),
-#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
+#if (UDMABUF_DEBUG == 1)
   &(udmabuf_device_attrs[9].attr),
 #endif
   NULL
@@ -336,7 +330,6 @@ static const struct attribute_group* udmabuf_attr_groups[] = {
 #define SET_SYS_CLASS_ATTRIBUTES(sys_class) {(sys_class)->dev_attrs  = udmabuf_device_attrs;}
 #endif
 
-#if (USE_VMA_FAULT == 1)
 /**
  * udmabuf_driver_vma_open() - This is the driver open function.
  * @vma:        Pointer to the vm area structure.
@@ -348,9 +341,7 @@ static void udmabuf_driver_vma_open(struct vm_area_struct* vma)
     if (UDMABUF_DEBUG_CHECK(this, debug_vma))
         dev_info(this->dma_dev, "vma_open(virt_addr=0x%lx, offset=0x%lx)\n", vma->vm_start, vma->vm_pgoff<<PAGE_SHIFT);
 }
-#endif
 
-#if (USE_VMA_FAULT == 1)
 /**
  * udmabuf_driver_vma_close() - This is the driver close function.
  * @vma:        Pointer to the vm area structure.
@@ -362,9 +353,7 @@ static void udmabuf_driver_vma_close(struct vm_area_struct* vma)
     if (UDMABUF_DEBUG_CHECK(this, debug_vma))
         dev_info(this->dma_dev, "vma_close()\n");
 }
-#endif
 
-#if (USE_VMA_FAULT == 1)
 /**
  * _udmabuf_driver_vma_fault() - This is the driver nopage inline function.
  * @vma:        Pointer to the vm area structure.
@@ -432,9 +421,6 @@ static int udmabuf_driver_vma_fault(struct vm_area_struct* vma, struct vm_fault*
 }
 #endif
 
-#endif /* #if (USE_VMA_FAULT == 1) */
-
-#if (USE_VMA_FAULT == 1)
 /**
  *
  */
@@ -443,7 +429,6 @@ static const struct vm_operations_struct udmabuf_driver_vm_ops = {
     .close   = udmabuf_driver_vma_close,
     .fault   = udmabuf_driver_vma_fault,
 };
-#endif
 
 /**
  * udmabuf_driver_file_open() - This is the driver open function.
@@ -487,6 +472,7 @@ static int udmabuf_driver_file_release(struct inode *inode, struct file *file)
 static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vma)
 {
     struct udmabuf_driver_data* this = file->private_data;
+    unsigned long page_frame_num     = this->phys_addr >> PAGE_SHIFT;
 
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS)) {
         switch (this->sync_mode & SYNC_MODE_MASK) {
@@ -509,13 +495,15 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
     vma->vm_private_data = this;
     vma->vm_pgoff        = 0;
 
-#if (USE_VMA_FAULT == 1)
-    vma->vm_ops          = &udmabuf_driver_vm_ops;
-    udmabuf_driver_vma_open(vma);
-    return 0;
-#else
-    return dma_mmap_coherent(this->dma_dev, vma, this->virt_addr, this->phys_addr, this->alloc_size);
+#if     defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+    if (pfn_valid(page_frame_num)) {
+        vma->vm_ops      = &udmabuf_driver_vm_ops;
+        udmabuf_driver_vma_open(vma);
+        return 0;
+    }
 #endif
+
+    return dma_mmap_coherent(this->dma_dev, vma, this->virt_addr, this->phys_addr, this->alloc_size);
 }
 
 /**
@@ -765,7 +753,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
         this->of_reserved_mem = 0;
     }
 #endif
-#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
+#if (UDMABUF_DEBUG == 1)
     {
         this->debug_vma       = 0;
     }
@@ -1192,4 +1180,3 @@ module_exit(udmabuf_module_exit);
 MODULE_AUTHOR("ikwzm");
 MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_LICENSE("Dual BSD/GPL");
-
