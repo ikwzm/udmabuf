@@ -827,7 +827,7 @@ static int udmabuf_driver_setup(struct udmabuf_driver_data* this, unsigned int s
         int retval = PTR_ERR(this->virt_addr);
         printk(KERN_ERR "dma_alloc_coherent() failed. return(%d)\n", retval);
         this->virt_addr = NULL;
-        return retval;
+        return (retval == 0) ? -ENOMEM : retval;
     }
     return 0;
 }
@@ -914,9 +914,10 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
      */
     driver_data = udmabuf_driver_create(device_name, &pdev->dev, minor_number);
     if (IS_ERR_OR_NULL(driver_data)) {
-        retval      = PTR_ERR(driver_data);
+        retval = PTR_ERR(driver_data);
         dev_err(&pdev->dev, "driver create failed. return=%d.\n", retval);
         driver_data = NULL;
+        retval = (retval == 0) ? -EINVAL : retval;
         goto failed;
     }
     dev_set_drvdata(&pdev->dev, driver_data);
@@ -1163,6 +1164,7 @@ static int __init udmabuf_module_init(void)
         retval = PTR_ERR(udmabuf_sys_class);
         udmabuf_sys_class = NULL;
         printk(KERN_ERR "%s: couldn't create sys class. return=%d\n", DRIVER_NAME, retval);
+        retval = (retval == 0) ? -ENOMEM : retval;
         goto failed;
     }
     SET_SYS_CLASS_ATTRIBUTES(udmabuf_sys_class);
