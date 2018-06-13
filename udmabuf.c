@@ -953,15 +953,15 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
 failed:
     if (driver_data != NULL) {
         int status;
+        status = udmabuf_driver_destroy(driver_data);
+        if (status) {
+            dev_err(&pdev->dev, "driver destroy failed. return=%d.\n", status);
+        }
 #if (USE_OF_RESERVED_MEM == 1)
         if (driver_data->of_reserved_mem == 1) {
             of_reserved_mem_device_release(&pdev->dev);
         }
 #endif
-        status = udmabuf_driver_destroy(driver_data);
-        if (status) {
-            dev_err(&pdev->dev, "driver destroy failed. return=%d.\n", status);
-        }
     }
     return retval;
 }
@@ -981,14 +981,14 @@ static int udmabuf_platform_driver_remove(struct platform_device *pdev)
     dev_dbg(&pdev->dev, "driver remove start.\n");
 
     if (this != NULL) {
+        if ((retval = udmabuf_driver_destroy(this)) != 0)
+            return retval;
+        dev_set_drvdata(&pdev->dev, NULL);
 #if (USE_OF_RESERVED_MEM == 1)
         if (this->of_reserved_mem) {
             of_reserved_mem_device_release(&pdev->dev);
         }
 #endif
-        if ((retval = udmabuf_driver_destroy(this)) != 0)
-            return retval;
-        dev_set_drvdata(&pdev->dev, NULL);
     }
     if (info_enable) {
         dev_info(&pdev->dev, "driver removed.\n");
