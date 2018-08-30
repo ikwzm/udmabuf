@@ -776,10 +776,28 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
     }
 #endif
     mutex_init(&this->sem);
-    if (parent != NULL) 
-        this->dma_dev = parent;
-    else
-        this->dma_dev = this->sys_dev;
+
+    /*
+     * set dma_dev
+     */
+    {
+        if (parent != NULL) 
+            this->dma_dev = parent;
+        else
+            this->dma_dev = this->sys_dev;
+
+        if (this->dma_dev->dma_mask == NULL) {
+            this->dma_dev->dma_mask = &this->dma_dev->coherent_dma_mask;
+        }
+        if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
+            dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
+        } else {
+            printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
+            dma_set_mask(this->dma_dev, DMA_BIT_MASK(32));
+            dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(32));
+        }
+    }
+
     return this;
 
  failed:
@@ -800,19 +818,6 @@ static int udmabuf_driver_setup(struct udmabuf_driver_data* this, unsigned int s
 {
     if (!this)
         return -ENODEV;
-    /*
-     * setup dma_mask and coherent_dma_mask
-     */
-    if (this->dma_dev->dma_mask == NULL) {
-        this->dma_dev->dma_mask = &this->dma_dev->coherent_dma_mask;
-    }
-    if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
-        dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
-    } else {
-        printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
-        dma_set_mask(this->dma_dev, DMA_BIT_MASK(32));
-        dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(32));
-    }
     /*
      * setup buffer size and allocation size
      */
@@ -921,6 +926,20 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
         goto failed;
     }
     dev_set_drvdata(&pdev->dev, driver_data);
+    /*
+     * of_dma_configure()
+     */
+#if (USE_OF_DMA_CONFIG == 1)
+#if (LINUX_VERSION_CODE >= 0x040C00)
+    retval = of_dma_configure(&pdev->dev, pdev->dev.of_node);
+    if (retval != 0) {
+        dev_err(&pdev->dev, "of_dma_configure failed. return=%d\n", retval);
+        goto failed;
+    }
+#else
+    of_dma_configure(&pdev->dev, NULL);
+#endif
+#endif
     /*
      * of_reserved_mem_device_init()
      */
@@ -1050,17 +1069,6 @@ static void udmabuf_static_device_create(int id, unsigned int size)
         dev_err(&pdev->dev, "platform_device_add failed. return=%d\n", retval);
         goto failed;
     }
-
-#if (USE_OF_DMA_CONFIG == 1)
-#if (LINUX_VERSION_CODE >= 0x040C00)
-    retval = of_dma_configure(&pdev->dev, NULL);
-    if (retval != 0) {
-        dev_err(&pdev->dev, "of_dma_configure failed. return=%d\n", retval);
-    }
-#else
-    of_dma_configure(&pdev->dev, NULL);
-#endif
-#endif
 
     udmabuf_static_device_list[id].pdev = pdev;
     udmabuf_static_device_list[id].size = size;
