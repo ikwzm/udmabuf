@@ -832,19 +832,16 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
 /**
  * udmabuf_driver_setup() -  Setup the udmabuf driver data structure.
  * @this:       Pointer to the udmabuf driver data structure.
- * @size:	buffer size.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_driver_setup(struct udmabuf_driver_data* this, unsigned int size)
+static int udmabuf_driver_setup(struct udmabuf_driver_data* this)
 {
     if (!this)
         return -ENODEV;
     /*
      * setup buffer size and allocation size
      */
-    this->size       = size;
-    this->sync_size  = size;
-    this->alloc_size = ((size + ((1 << PAGE_SHIFT) - 1)) >> PAGE_SHIFT) << PAGE_SHIFT;
+    this->alloc_size = ((this->size + ((1 << PAGE_SHIFT) - 1)) >> PAGE_SHIFT) << PAGE_SHIFT;
     /*
      * dma buffer allocation 
      */
@@ -949,6 +946,10 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     }
     dev_set_drvdata(&pdev->dev, driver_data);
     /*
+     * set size
+     */
+    driver_data->size = size;
+    /*
      * of_dma_configure()
      */
 #if (USE_OF_DMA_CONFIG == 1)
@@ -1011,9 +1012,31 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
         driver_data->sync_direction = (int)of_u32_value;
     }
     /*
+     * set sync_offset
+     */
+    if (of_property_read_u32(pdev->dev.of_node, "sync-offset", &of_u32_value) == 0) {
+        if (of_u32_value >= driver_data->size) {
+            dev_err(&pdev->dev, "invalid sync-offset property value=%d\n", of_u32_value);
+            goto failed;
+        }
+        driver_data->sync_offset = (int)of_u32_value;
+    }
+    /*
+     * set sync_size
+     */
+    if (of_property_read_u32(pdev->dev.of_node, "sync-size", &of_u32_value) == 0) {
+        if (driver_data->sync_offset + of_u32_value > driver_data->size) {
+            dev_err(&pdev->dev, "invalid sync-size property value=%d\n", of_u32_value);
+            goto failed;
+        }
+        driver_data->sync_size = (size_t)of_u32_value;
+    } else {
+        driver_data->sync_size = driver_data->size;
+    }
+    /*
      * udmabuf_driver_setup()
      */
-    retval = udmabuf_driver_setup(driver_data, size);
+    retval = udmabuf_driver_setup(driver_data);
     if (retval) {
         dev_err(&pdev->dev, "driver setup failed. return=%d\n", retval);
         goto failed;
