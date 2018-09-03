@@ -57,6 +57,7 @@
 #include <asm/page.h>
 #include <asm/byteorder.h>
 
+#define DRIVER_VERSION     "1.4.5"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -276,6 +277,7 @@ static ssize_t udmabuf_set_ ## __attr_name(struct device *dev, struct device_att
     return status;                                                           \
 }
 
+DEF_ATTR_SHOW(driver_version , "%s\n"   , DRIVER_VERSION                          );
 DEF_ATTR_SHOW(size           , "%d\n"   , this->size                              );
 DEF_ATTR_SHOW(phys_addr      , "%pad\n" , &this->phys_addr                        );
 DEF_ATTR_SHOW(sync_mode      , "%d\n"   , this->sync_mode                         );
@@ -300,6 +302,7 @@ DEF_ATTR_SET( debug_vma                 , 0, 1, NO_ACTION, NO_ACTION            
 #endif
 
 static struct device_attribute udmabuf_device_attrs[] = {
+  __ATTR(driver_version , 0444, udmabuf_show_driver_version  , NULL                       ),
   __ATTR(size           , 0444, udmabuf_show_size            , NULL                       ),
   __ATTR(phys_addr      , 0444, udmabuf_show_phys_addr       , NULL                       ),
   __ATTR(sync_mode      , 0664, udmabuf_show_sync_mode       , udmabuf_set_sync_mode      ),
@@ -859,6 +862,7 @@ static int udmabuf_driver_setup(struct udmabuf_driver_data* this, unsigned int s
  */
 static void udmabuf_driver_info(struct udmabuf_driver_data* this)
 {
+    dev_info(this->sys_dev, "driver version = %s\n"  , DRIVER_VERSION);
     dev_info(this->sys_dev, "major number   = %d\n"  , MAJOR(this->device_number));
     dev_info(this->sys_dev, "minor number   = %d\n"  , MINOR(this->device_number));
     dev_info(this->sys_dev, "phys address   = %pad\n", &this->phys_addr);
