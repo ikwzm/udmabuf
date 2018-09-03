@@ -69,6 +69,12 @@
 #define USE_VMA_FAULT       0
 #endif
 
+#if     defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+#define USE_DMA_COHERENT    1
+#else
+#define USE_DMA_COHERENT    0
+#endif
+
 #if     (LINUX_VERSION_CODE >= 0x030B00)
 #define USE_DEV_GROUPS      1
 #else
@@ -285,6 +291,9 @@ DEF_ATTR_SHOW(sync_for_cpu   , "%d\n"   , this->sync_for_cpu                    
 DEF_ATTR_SET( sync_for_cpu              , 0, 1, NO_ACTION, udmabuf_sync_for_cpu   );
 DEF_ATTR_SHOW(sync_for_device, "%d\n"   , this->sync_for_device                   );
 DEF_ATTR_SET( sync_for_device           , 0, 1, NO_ACTION, udmabuf_sync_for_device);
+#if (USE_DMA_COHERENT == 1)
+DEF_ATTR_SHOW(dma_coherent   , "%d\n"   , is_device_dma_coherent(this->dma_dev)   );
+#endif
 #if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
 DEF_ATTR_SHOW(debug_vma      , "%d\n"   , this->debug_vma                         );
 DEF_ATTR_SET( debug_vma                 , 0, 1, NO_ACTION, NO_ACTION              );
@@ -300,6 +309,9 @@ static struct device_attribute udmabuf_device_attrs[] = {
   __ATTR(sync_owner     , 0664, udmabuf_show_sync_owner      , NULL                       ),
   __ATTR(sync_for_cpu   , 0664, udmabuf_show_sync_for_cpu    , udmabuf_set_sync_for_cpu   ),
   __ATTR(sync_for_device, 0664, udmabuf_show_sync_for_device , udmabuf_set_sync_for_device),
+#if (USE_DMA_COHERENT == 1)
+  __ATTR(dma_coherent   , 0664, udmabuf_show_dma_coherent    , NULL                       ),
+#endif
 #if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
   __ATTR(debug_vma      , 0664, udmabuf_show_debug_vma       , udmabuf_set_debug_vma      ),
 #endif
@@ -308,22 +320,12 @@ static struct device_attribute udmabuf_device_attrs[] = {
 
 #if (USE_DEV_GROUPS == 1)
 
-static struct attribute *udmabuf_attrs[] = {
-  &(udmabuf_device_attrs[0].attr),
-  &(udmabuf_device_attrs[1].attr),
-  &(udmabuf_device_attrs[2].attr),
-  &(udmabuf_device_attrs[3].attr),
-  &(udmabuf_device_attrs[4].attr),
-  &(udmabuf_device_attrs[5].attr),
-  &(udmabuf_device_attrs[6].attr),
-  &(udmabuf_device_attrs[7].attr),
-  &(udmabuf_device_attrs[8].attr),
-#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
-  &(udmabuf_device_attrs[9].attr),
-#endif
+#define udmabuf_device_attrs_size (sizeof(udmabuf_device_attrs)/sizeof(udmabuf_device_attrs[0]))
+
+static struct attribute* udmabuf_attrs[udmabuf_device_attrs_size] = {
   NULL
 };
-static struct attribute_group  udmabuf_attr_group = {
+static struct attribute_group udmabuf_attr_group = {
   .attrs = udmabuf_attrs
 };
 static const struct attribute_group* udmabuf_attr_groups[] = {
@@ -331,9 +333,23 @@ static const struct attribute_group* udmabuf_attr_groups[] = {
   NULL
 };
 
-#define SET_SYS_CLASS_ATTRIBUTES(sys_class) {(sys_class)->dev_groups = udmabuf_attr_groups; }
+static inline void udmabuf_sys_class_set_attributes(void)
+{
+    int i = 0;
+    while(i < udmabuf_device_attrs_size-1) {
+        udmabuf_attrs[i] = &(udmabuf_device_attrs[i].attr);
+        i++;
+    }
+    udmabuf_attrs[i] = NULL;
+    udmabuf_sys_class->dev_groups = udmabuf_attr_groups;
+}
 #else
-#define SET_SYS_CLASS_ATTRIBUTES(sys_class) {(sys_class)->dev_attrs  = udmabuf_device_attrs;}
+
+static inline void udmabuf_sys_class_set_attributes(void)
+{
+    udmabuf_sys_class->dev_attrs  = udmabuf_device_attrs;
+}
+
 #endif
 
 #if (USE_VMA_FAULT == 1)
@@ -847,7 +863,7 @@ static void udmabuf_driver_info(struct udmabuf_driver_data* this)
     dev_info(this->sys_dev, "minor number   = %d\n"  , MINOR(this->device_number));
     dev_info(this->sys_dev, "phys address   = %pad\n", &this->phys_addr);
     dev_info(this->sys_dev, "buffer size    = %zu\n" , this->alloc_size);
-#if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+#if (USE_DMA_COHERENT == 1)
     dev_info(this->sys_dev, "dma coherent   = %d\n"  , is_device_dma_coherent(this->dma_dev));
 #endif
 }
@@ -1175,7 +1191,8 @@ static int __init udmabuf_module_init(void)
         retval = (retval == 0) ? -ENOMEM : retval;
         goto failed;
     }
-    SET_SYS_CLASS_ATTRIBUTES(udmabuf_sys_class);
+
+    udmabuf_sys_class_set_attributes();
 
     udmabuf_static_device_create_all();
 
