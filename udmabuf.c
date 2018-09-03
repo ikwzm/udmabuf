@@ -112,6 +112,8 @@
 #define SYNC_MODE_WRITECOMBINE  (0x02)
 #define SYNC_MODE_DMACOHERENT   (0x03)
 #define SYNC_MODE_MASK          (0x03)
+#define SYNC_MODE_MIN           (0x01)
+#define SYNC_MODE_MAX           (0x03)
 #define SYNC_ALWAYS             (0x04)
 
 /**
@@ -287,7 +289,7 @@ DEF_ATTR_SET( sync_offset               , 0, 0xFFFFFFFF, NO_ACTION, NO_ACTION   
 DEF_ATTR_SHOW(sync_size      , "%zu\n"  , this->sync_size                         );
 DEF_ATTR_SET( sync_size                 , 0, 0xFFFFFFFF, NO_ACTION, NO_ACTION     );
 DEF_ATTR_SHOW(sync_direction , "%d\n"   , this->sync_direction                    );
-DEF_ATTR_SET( sync_direction            , 0, 3, NO_ACTION, NO_ACTION              );
+DEF_ATTR_SET( sync_direction            , 0, 2, NO_ACTION, NO_ACTION              );
 DEF_ATTR_SHOW(sync_owner     , "%d\n"   , this->sync_owner                        );
 DEF_ATTR_SHOW(sync_for_cpu   , "%d\n"   , this->sync_for_cpu                      );
 DEF_ATTR_SET( sync_for_cpu              , 0, 1, NO_ACTION, udmabuf_sync_for_cpu   );
@@ -905,6 +907,8 @@ static int udmabuf_driver_destroy(struct udmabuf_driver_data* this)
 static int udmabuf_platform_driver_probe(struct platform_device *pdev)
 {
     int                         retval       = 0;
+    int                         of_status    = 0;
+    unsigned int                of_u32_value = 0;
     unsigned int                size         = 0;
     int                         minor_number = -1;
     struct udmabuf_driver_data* driver_data  = NULL;
@@ -913,18 +917,16 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     dev_dbg(&pdev->dev, "driver probe start.\n");
 
     if (udmabuf_static_device_search(pdev, &minor_number, &size) == 0) {
-        int          status;
-        unsigned int number;
 
-        status = of_property_read_u32(pdev->dev.of_node, "size", &size);
-        if (status != 0) {
-            dev_err(&pdev->dev, "invalid property size. status=%d\n", status);
+        of_status = of_property_read_u32(pdev->dev.of_node, "size", &size);
+        if (of_status != 0) {
+            dev_err(&pdev->dev, "invalid property size. status=%d\n", of_status);
             retval = -ENODEV;
             goto failed;
         }
 
-        status = of_property_read_u32(pdev->dev.of_node, "minor-number", &number);
-        minor_number = (status == 0) ? number : -1;
+        of_status = of_property_read_u32(pdev->dev.of_node, "minor-number", &of_u32_value);
+        minor_number = (of_status == 0) ? of_u32_value : -1;
 
         device_name = of_get_property(pdev->dev.of_node, "device-name", NULL);
         if (IS_ERR_OR_NULL(device_name)) {
@@ -935,7 +937,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
         }
     }
     /*
-     * create udmabuf_driver
+     * udmabuf_driver_create()
      */
     driver_data = udmabuf_driver_create(device_name, &pdev->dev, minor_number);
     if (IS_ERR_OR_NULL(driver_data)) {
@@ -975,7 +977,41 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     }
 #endif
     /*
-     * setup udmabuf_driver
+     * set sync_mode
+     */
+    if (of_property_read_u32(pdev->dev.of_node, "sync-mode", &of_u32_value) == 0) {
+        if ((of_u32_value < SYNC_MODE_MIN) || (of_u32_value > SYNC_MODE_MAX)) {
+            dev_err(&pdev->dev, "invalid sync-mode property value=%d\n", of_u32_value);
+            goto failed;
+        }
+        driver_data->sync_mode &= ~SYNC_MODE_MASK;
+        driver_data->sync_mode |= (int)of_u32_value;
+    }
+    /*
+     * set sync_always
+     */
+    if (of_property_read_u32(pdev->dev.of_node, "sync-always", &of_u32_value) == 0) {
+        if (of_u32_value > 1) {
+            dev_err(&pdev->dev, "invalid sync-mode property value=%d\n", of_u32_value);
+            goto failed;
+        }
+        if (of_u32_value > 0)
+            driver_data->sync_mode |=  SYNC_ALWAYS;
+        else
+            driver_data->sync_mode &= ~SYNC_ALWAYS;
+    }
+    /*
+     * set sync_direction
+     */
+    if (of_property_read_u32(pdev->dev.of_node, "sync-direction", &of_u32_value) == 0) {
+        if (of_u32_value > 2) {
+            dev_err(&pdev->dev, "invalid sync-direction property value=%d\n", of_u32_value);
+            goto failed;
+        }
+        driver_data->sync_direction = (int)of_u32_value;
+    }
+    /*
+     * udmabuf_driver_setup()
      */
     retval = udmabuf_driver_setup(driver_data, size);
     if (retval) {
