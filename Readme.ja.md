@@ -94,7 +94,7 @@ clean:
 insmod でudmabufのカーネルドライバをロードします。この際に引数を渡すことによりDMAバッファを確保してデバイスドライバを作成します。insmod の引数で作成できるDMAバッファは udmabuf0/1/2/3/4/5/6/7の最大８つです。
 
 
-```Shell
+```console
 zynq$ insmod udmabuf.ko udmabuf0=1048576
 udmabuf udmabuf0: driver installed
 udmabuf udmabuf0: major number   = 248
@@ -120,10 +120,22 @@ KERNEL=="udmabuf[0-9]*", GROUP="root", MODE="0666"
 アンインストールするには rmmod を使います。
 
 
-```Shell
+```console
 zynq$ rmmod udmabuf
 udmabuf udmabuf0: driver uninstalled
 ```
+
+
+
+
+
+## Debian パッケージによるインストール
+
+
+以下のURL に udmabuf を Debian パッケージ化するリポジトリを用意しています。詳細は以下の URL を参照してください。
+
+*  https://github.com/ikwzm/udmabuf-kmod-dpkg
+
 
 
 
@@ -147,7 +159,7 @@ udmabufはinsmod の引数でDMAバッファを用意する以外に、Linuxの�
 
 
 
-```Shell
+```console
 zynq$ insmod udmabuf.ko
 udmabuf udmabuf0: driver installed
 udmabuf udmabuf0: major number   = 248
@@ -426,7 +438,7 @@ udmabufをinsmodでカーネルにロードすると、次のようなデバイ�
 また、ddコマンド等でにデバイスファイルを指定することにより、shellから直接リードライトすることも出来ます。
 
 
-```Shell
+```console
 zynq$ dd if=/dev/urandom of=/dev/udmabuf0 bs=4096 count=1024
 1024+0 records in
 1024+0 records out
@@ -434,7 +446,7 @@ zynq$ dd if=/dev/urandom of=/dev/udmabuf0 bs=4096 count=1024
 ```
 
 
-```Shell
+```console
 zynq$dd if=/dev/udmabuf4 of=random.bin
 8192+0 records in
 8192+0 records out
@@ -1042,3 +1054,231 @@ CPUキャッシュを有効にする場合は、O_SYNCフラグを設定せず�
 
 アクセラレータがバッファにアクセスする前にsync_for_deviceに1を書いてバッファのオーナーをデバイスにします。dma-coherentプロパティに<0>が設定されている場合、sync_directionが1か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュをフラッシュします。一度この操作を行ってバッファのオーナーをアクセラレーターにした後は、CPUがこのバッファをアクセスしてはいけません。dma-coherent プロパティに<1>が設定されている場合、キャッシュのフラッシュは行われません。
 
+
+# Python から udmabuf を使う例
+
+
+プログラミング言語Python には NumPy という拡張モジュールが提供されています。この節ではudmabuf でカーネル内に確保した DMA バッファを NumPy の memmap でマッピングして ndarray と同じような操作をする方法について説明します。
+
+
+## Udmabuf クラス
+
+
+ここでは  udmabuf を Python から使うための Udmabuf クラスを定義している udmabuf.py について説明します。
+
+
+
+Udmabuf クラスを定義する前に、numpy をインポートします。
+
+
+```python:udmabuf.py
+import numpy as np
+
+```
+
+
+
+
+Udmabuf クラスを定義します。初期化時にデバイス名を指定します。
+
+
+```python:udmabuf.py
+class Udmabuf:
+    """A simple udmabuf class"""
+    def __init__(self, name):
+        self.name           = name
+        self.device_name    = '/dev/%s'               % self.name
+        self.class_path     = '/sys/class/udmabuf/%s' % self.name
+        self.phys_addr      = self.get_value('phys_addr', 16)
+        self.buf_size       = self.get_value('size')
+        self.sync_offset    = None
+        self.sync_size      = None
+        self.sync_direction = None
+
+```
+
+
+
+
+Udmabuf クラスにカーネル内に確保した DMA バッファを NumPy の memmap でマッピングする memmap メソッドを定義します。
+
+
+```python:udmabuf.py
+    def memmap(self, dtype, shape):
+        self.item_size = np.dtype(dtype).itemsize
+        self.array     = np.memmap(self.device_name, dtype=dtype, mode='r+', shape=shape)
+        return self.array
+```
+
+
+
+
+Udmabuf クラスにデバイスファイルから数値を読む get_value メソッドと数値を書き込む set_value メソッドを定義します。
+
+
+```python:udmabuf.py
+    def get_value(self, name, radix=10):
+        value = None
+        for line in open(self.class_path + '/' + name):
+            value = int(line, radix)
+            break
+        return value
+    def set_value(self, name, value):
+        f = open(self.class_path + '/' + name, 'w')
+        f.write(str(value))
+        f.close
+
+```
+
+
+
+
+Udmabuf クラスにキャッシュを制御するメソッド群を定義します。
+
+
+```python:udmabuf.py
+    def set_sync_area(self, direction=None, offset=None, size=None):
+        if offset is None:
+            self.sync_offset    = self.get_value('sync_offset')
+        else:
+            self.set_value('sync_offset', offset)
+            self.sync_offset    = offset
+        if size   is None:
+            self.sync_size      = self.get_value('sync_size')
+        else:
+            self.set_value('sync_size', size)
+            self.sync_size      = size
+        if direction is None:
+            self.sync_direction = self.get_value('sync_direction')
+        else:
+            self.set_value('sync_direction', direction)
+            self.sync_direction = direction
+    def set_sync_to_device(self, offset=None, size=None):
+        self.set_sync_area(1, offset, size)
+    def set_sync_to_cpu(self, offset=None, size=None):
+        self.set_sync_area(2, offset, size)
+    def set_sync_to_bidirectional(self, offset=None, size=None):
+        self.set_sync_area(3, offset, size)
+    def sync_for_cpu(self):
+        self.set_value('sync_for_cpu', 1)
+    def sync_for_device(self):
+        self.set_value('sync_for_device', 1)
+
+```
+
+
+
+## udmabuf_test.py
+
+
+次に Python+NumPy による簡単なテストをするスクリプトを示します。
+
+
+```python:udmabuf_test.py
+from udmabuf import Udmabuf
+import numpy as np
+import time
+def test_1(a):
+    for i in range (0,9):
+        a *= 0
+        a += 0x31
+if __name__ == '__main__':
+    udmabuf      = Udmabuf('udmabuf0')
+    test_dtype   = np.uint8
+    test_size    = udmabuf.buf_size/(np.dtype(test_dtype).itemsize)
+    udmabuf.memmap(dtype=test_dtype, shape=(test_size))
+    comparison   = np.zeros(test_size, dtype=test_dtype)
+    print ("test_size  : %d" % test_size)
+    start        = time.time()
+    test_1(udmabuf.mem_map)
+    elapsed_time = time.time() - start
+    print ("udmabuf0   : elapsed_time:{0}".format(elapsed_time)) + "[sec]"
+    start        = time.time()
+    test_1(comparison)
+    elapsed_time = time.time() - start
+    print ("comparison : elapsed_time:{0}".format(elapsed_time)) + "[sec]"
+    if np.array_equal(udmabuf.mem_map, comparison):
+        print ("udmabuf0 == comparison : OK")
+    else:
+        print ("udmabuf0 != comparison : NG")
+
+```
+
+
+
+
+
+## 実行結果
+
+
+udmabuf をインストールします。今回の例では udmabuf0 として 8MByte のバッファを確保しています。
+
+
+```console
+zynq# insmod udmabuf.ko udmabuf0=8388608
+[34654.622746] udmabuf udmabuf0: driver installed
+[34654.627153] udmabuf udmabuf0: major number   = 237
+[34654.631889] udmabuf udmabuf0: minor number   = 0
+[34654.636685] udmabuf udmabuf0: phys address   = 0x1f300000
+[34654.642002] udmabuf udmabuf0: buffer size    = 8388608
+[34654.642002] udmabuf udmabuf0: dma-coherent  = 0
+
+```
+
+
+
+
+前節のスクリプトを実行すると次のような結果が得られました。
+
+
+```console
+zynq# python udmabuf_test.py
+test_size  : 8388608
+udmabuf0   : elapsed_time:1.53304982185[sec]
+comparison : elapsed_time:1.536673069[sec]
+udmabuf0 == comparison : OK
+```
+
+
+
+
+udmabuf0(カーネル内に確保したバッファ領域)に対する操作と、ndarray で同じ操作を行った場合(comparison)の実行時間はほぼ同じでした。すなわち udmabuf0 も CPU キャッシュが有効に働いていると思われます。
+
+このスクリプトを実行した後で、udmabuf0 の内容を確認しました。
+
+
+```console
+zynq# dd if=/dev/udmabuf0 of=udmabuf0.bin bs=8388608
+1+0 records in
+1+0 records out
+8388608 bytes (8.4 MB) copied, 0.151531 s, 55.4 MB/s
+shell# 
+shell# od -t x1 udmabuf0.bin
+0000000 31 31 31 31 31 31 31 31 31 31 31 31 31 31 31 31
+*
+40000000
+```
+
+
+
+
+スクリプト実行後も、実行した結果がバッファに残っていることが確認できました。念のため、NumPy でも読めることを確認しましょう。
+
+
+
+
+```console
+zynq# python
+Python 2.7.9 (default, Aug 13 2016, 17:56:53)
+[GCC 4.9.2] on linux2
+Type "help", "copyright", "credits" or "license" for more information.
+>>> import numpy as np
+>>> a = np.memmap('/dev/udmabuf0', dtype=np.uint8, mode='r+', shape=(8388608))
+>>> a
+memmap([49, 49, 49, ..., 49, 49, 49], dtype=uint8)
+>>> a.itemsize
+1
+>>> a.size
+8388608
+>>>
+```
