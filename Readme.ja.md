@@ -358,7 +358,7 @@ sync-direction プロパティは省略可能です。sync-direction プロパ�
 ### dma-coherent
 
 
-dma-coherent プロパティに<1>を指定した時、はDMAバッファとCPUキャッシュのコヒーレンシはハードウェアで保証できることを示します。
+dma-coherent プロパティに<1>を指定した時、DMAバッファとCPUキャッシュのコヒーレンシはハードウェアで保証できることを示します。
 
 dma-coherent プロパティは省略可能です。dma-cohernet プロパティが省略された場合は<0>に設定されます。
 
