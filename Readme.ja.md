@@ -41,13 +41,14 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
 ## 対応プラットフォーム
 
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14   
-(私が動作を確認したのは3.18と4.4と4.8と4.12と4.14です).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14    
+(私が動作を確認したのは3.18, 4.4, 4.8, 4.12, 4.14です).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: x86(64bit) ただし検証が不十分です。皆さんからの結果を期待しています。また、現時点では以下の機能に制限があります。
 
   * O_SYNCフラグによるCPUキャッシュの制御が出来ません。常にCPUキャッシュは有効です。
+  * sync_for_cpu、sync_for_deviceによる手動でのCPUキャッシュの制御が出来ません。
   * デバイスツリーによる各種設定が出来ません。
 
 
@@ -65,7 +66,6 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
 HOST_ARCH       ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
 ARCH            ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
 KERNEL_SRC_DIR  ?= /lib/modules/$(shell uname -r)/build
-
 ifeq ($(ARCH), arm)
  ifneq ($(HOST_ARCH), arm)
    CROSS_COMPILE  ?= arm-linux-gnueabihf-
@@ -76,12 +76,9 @@ ifeq ($(ARCH), arm64)
    CROSS_COMPILE  ?= aarch64-linux-gnu-
  endif
 endif
-
 obj-m := udmabuf.o
-
 all:
 	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) modules
-
 clean:
 	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) clean
 
@@ -94,17 +91,17 @@ clean:
 ## インストール
 
 
-insmod でudmabufのカーネルドライバをロードします。この際に引数を渡すことによりDMAバッファを確保してデバイスドライバを作成します。insmod の引数で作成できるDMAバッファはudmabuf0、udmabuf1、udmabuf2、udmabuf3、udmabuf4、udmabuf5、udmabuf6、udmabuf7の最大８つです。
+insmod でudmabufのカーネルドライバをロードします。この際に引数を渡すことによりDMAバッファを確保してデバイスドライバを作成します。insmod の引数で作成できるDMAバッファは udmabuf0/1/2/3/4/5/6/7の最大８つです。
 
 
-```Shell
+```console
 zynq$ insmod udmabuf.ko udmabuf0=1048576
 udmabuf udmabuf0: driver installed
 udmabuf udmabuf0: major number   = 248
 udmabuf udmabuf0: minor number   = 0
 udmabuf udmabuf0: phys address   = 0x1e900000
 udmabuf udmabuf0: buffer size    = 1048576
-udmabuf udmabuf0: dma coherent   = 0
+udmabuf udmabuf0:  dma coherent = 0
 zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
@@ -123,10 +120,22 @@ KERNEL=="udmabuf[0-9]*", GROUP="root", MODE="0666"
 アンインストールするには rmmod を使います。
 
 
-```Shell
+```console
 zynq$ rmmod udmabuf
 udmabuf udmabuf0: driver uninstalled
 ```
+
+
+
+
+
+## Debian パッケージによるインストール
+
+
+以下のURL に udmabuf を Debian パッケージ化するリポジトリを用意しています。詳細は以下の URL を参照してください。
+
+*  https://github.com/ikwzm/udmabuf-kmod-dpkg
+
 
 
 
@@ -147,29 +156,17 @@ udmabufはinsmod の引数でDMAバッファを用意する以外に、Linuxの�
 ```
 
 
-sizeでDMAバッファの容量をバイト数で指定します。
-
-device-nameでデバイス名を指定します。
-
-minor-number でudmabufのマイナー番号を指定します。マイナー番号は0から255までつけることができます。ただし、insmodの引数の方が優先され、マイナー番号がかち合うとdevicetreeで指定した方が失敗します。minor-numberが省略された場合、空いているマイナー番号が割り当てられます。
-
-デバイス名は次のように決まります。
-
-1. device-nameが指定されていた場合は、 device-name。
-2. device-nameが省略されていて、かつminor-numberが指定されていた場合は、sprintf("udmabuf%d", minor-number)。
-3. device-nameが省略されていて、かつminor-numberも省略されていた場合は、devicetree のエントリー名(例ではudmabuf@0x00)。
 
 
 
-
-```Shell
+```console
 zynq$ insmod udmabuf.ko
 udmabuf udmabuf0: driver installed
 udmabuf udmabuf0: major number   = 248
 udmabuf udmabuf0: minor number   = 0
 udmabuf udmabuf0: phys address   = 0x1e900000
 udmabuf udmabuf0: buffer size    = 1048576
-udmabuf udmabuf0: dma coherent   = 0
+udmabuf udmabuf0: dma coherent  = 0
 zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
@@ -177,22 +174,249 @@ crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 
 
 
+デバイスツリーでは以下のプロパティを設定することができます。
+
+  *  compatible
+  *  size
+  *  minor-number
+  *  device-name
+  *  sync-mode
+  *  sync-always
+  *  sync-offset
+  *  sync-size
+  *  sync-direction
+  *  dma-coherent
+  *  memory-region
+
+
+
+
+### compatible
+
+
+compatible プロパティはデバイスツリーをロードした際に対応するデバイスドライバを指定します。compatible プロパティは必須です。compatible プロパティには必ず "ikwzm,udmabuf-0.10.a" を指定してください。
+
+
+
+
+### size
+
+
+size プロパティはDMAバッファの容量をバイト数で指定します。size プロパティは必須です。
+
+
+```devicetree:devicetree.dts
+		udmabuf@0x00 {
+			compatible = "ikwzm,udmabuf-0.10.a";
+			size = <0x00100000>;
+		};
+
+```
+
+
+
+
+
+### minor-number
+
+
+minor-number プロパティはudmabufのマイナー番号を指定します。マイナー番号は0から255までつけることができます。ただし、insmodの引数の方が優先され、マイナー番号がかち合うとdevicetreeで指定した方が失敗します。
+
+minor-number プロパティは省略可能です。minor-number プロパティが省略された場合、空いているマイナー番号が割り当てられます。
+
+
+```devicetree:devicetree.dts
+		udmabuf@0x00 {
+			compatible = "ikwzm,udmabuf-0.10.a";
+			minor-number = <0>;
+			size = <0x00100000>;
+		};
+
+```
+
+
+
+
+
+### device-name
+
+
+device-name プロパティはデバイス名を指定します。
+
+device-name プロパティは省略可能です。デバイス名は次のように決まります。
+
+1. device-name プロパティが指定されていた場合は、 device-name。
+2. device-name プロパティが省略されていて、かつminor-number プロパティが指定されていた場合は、sprintf("udmabuf%d", minor-number)。
+3. device-name プロパティが省略されていて、かつminor-number プロパティも省略されていた場合は、devicetree のエントリー名(例ではudmabuf@0x00)。
+
+
+```devicetree:devicetree.dts
+		udmabuf@0x00 {
+			compatible = "ikwzm,udmabuf-0.10.a";
+			device-name = "udmabuf0";
+			size = <0x00100000>;
+		};
+
+```
+
+
+
+### sync-mode
+
+
+sync-mode プロパティはudmabufをopenする際にO_SYNCを指定した場合の動作を指定します。
+
+* sync-mode=<1>:  open 時にO_SYNCフラグが設定された場合または sync-always=<1> の場合、CPUキャッシュを無効にします。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
+* sync-mode=<2>: open 時に O_SYNCフラグが設定された場合または sync-always=<1> の場合、CPUがDMAバッファに書き込む際、ライトコンバインします。ライトコンバインとは、基本的にはCPUキャッシュは無効ですが、複数の書き込みをまとめて行うことで若干性能が向上します。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
+* sync-mode=<3>: open 時にO_SYNCフラグが設定された場合または sync-always=<1> の場合、DMAコヒーレンシモードにします。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
+
+sync-mode プロパティは省略可能です。sync-mode プロパティが省略された場合は <1> に設定されます。
+
+
+```devicetree:devicetree.dts
+		udmabuf@0x00 {
+			compatible = "ikwzm,udmabuf-0.10.a";
+			size = <0x00100000>;
+			sync-mode = <2>;
+		};
+
+```
+
+
+O_SYNCおよびキャッシュの設定に関しては次の節で説明します。
+
+
+### sync-always
+
+
+sync-always プロパティに<1> を指定した時、 udmabuf を open する際に O_SYNC の指定に関わらず常に sync-mode プロパティで指定された動作することを指定します。
+
+sync-always プロパティは省略可能です。sync-mode プロパティが省略された場合は <0> に設定されます。
+
+
+```devicetree:devicetree.dts
+		udmabuf@0x00 {
+			compatible = "ikwzm,udmabuf-0.10.a";
+			size = <0x00100000>;
+			sync-mode = <2>;
+			sync-always = <1>;
+		};
+
+```
+
+
+O_SYNCおよびキャッシュの設定に関しては次の節で説明します。
+
+
+### sync-offset
+
+
+sync-offset プロパティは udmabuf のキャッシュ制御を手動で行う際のバッファの範囲の先頭を指定します。
+
+sync-offset プロパティは省略可能です。sync-offset プロパティが省略された場合は<0> になります。
+
+手動でキャッシュを制御する方法は次の節で説明します。
+
+
+### sync-size
+
+
+sync-size プロパティは  udmabuf  のキャッシュ制御を手動で行う際のバッファの範囲のサイズを指定します。
+
+sync-size プロパティは省略可能です。sync-size プロパティが省略された場合は、size プロパティと同じ値になります。
+
+手動でキャッシュを制御する方法は次の節で説明します。
+
+
+### sync-direction
+
+
+sync-direction プロパティは udmabuf のキャッシュ制御を手動で行う際のDMAの方向を指定します。
+
+* sync-direction=<0>: DMA_BIDIRECTIONALを指定します。
+* sync-direction=<1>: DMA_TO_DEVICEを指定します。
+* sync-direction=<2>: DMA_FROM_DEVICEを指定します。
+
+sync-direction プロパティは省略可能です。sync-direction プロパティが省略された場合は<0>に設定されます。
+
+
+```devicetree:devicetree.dts
+		udmabuf@0x00 {
+			compatible = "ikwzm,udmabuf-0.10.a";
+			size = <0x00100000>;
+			sync-offset = <0x00010000>;
+			sync-size = <0x000F0000>;
+			sync-direction = <2>;
+		};
+
+```
+
+
+手動でキャッシュを制御する方法は次の節で説明します。
+
+
+### dma-coherent
+
+
+dma-coherent プロパティに<1>を指定した時、DMAバッファとCPUキャッシュのコヒーレンシはハードウェアで保証できることを示します。
+
+dma-coherent プロパティは省略可能です。dma-cohernet プロパティが省略された場合は<0>に設定されます。
+
+手動でキャッシュを制御する方法は次の節で説明します。
+
+
+### memory-region
+
+
+Linux はデバイスツリーで reserved-memory(予約メモリ)領域を指定することができます。Linux のカーネルは reserved-memory で指定された物理メモリ空間を通常のメモリアロケーションの対象外にします。この reserved-memory 領域にアクセスするためには /dev/mem 等の汎用メモリアクセスドライバを使うか、デバイスツリーでデバイスドライバに紐付ける必要があります。
+
+memory-region プロパティによってreserved-memory で確保したメモリ領域 udmabuf に紐付けることができます。
+
+
+```devicetree:devicetree.dts
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		image_buf0: image_buf@0 {
+			compatible = "shared-dma-pool";
+			reusable;
+			reg = <0x3C000000 0x04000000>; 
+			label = "image_buf0";
+		};
+	};
+	udmabuf@0 {
+		compatible = "ikwzm,udmabuf-0.10.a";
+		device-name = "udmabuf0";
+		size = <0x04000000>; // 64MiB
+		memory-region = <&image_buf0>;
+	};
+```
+
+
+上の例では image_buf0 として 0x3C000000 〜 0x3FFFFFFF の64Mbyte を reserved-memory として確保しています。この image_buf0 に compatible プロパティに "shared-dma-pool" を、そして reusable プロパティを指定します。これらのプロパティの指定によって、この reserved-memory の領域を CMA がアロケートする領域とします。また、アドレスとサイズのアライメントに注意する必要があります。
+
+udmabuf0 に上記の image_buf0 を memory-region プロパティで紐付けしています。この紐付けによって udmabuf0 は image_buf0 で指定した CMA 領域から物理メモリを確保します。
+
+memory-region プロパティは省略可能です。memory-region プロパティが省略された場合、Linux カーネルに確保された CMA 領域から DMA バッファを確保します。
+
 
 ## デバイスファイル
 
 
 udmabufをinsmodでカーネルにロードすると、次のようなデバイスファイルが作成されます。\<device-name\>には、前節で説明したデバイス名が入ります。
 
-* /dev/\<device-name\>
-* /sys/class/udmabuf/\<device-name\>/phys_addr
-* /sys/class/udmabuf/\<device-name\>/size
-* /sys/class/udmabuf/\<device-name\>/sync_mode
-* /sys/class/udmabuf/\<device-name\>/sync_offset
-* /sys/class/udmabuf/\<device-name\>/sync_size
-* /sys/class/udmabuf/\<device-name\>/sync_direction
-* /sys/class/udmabuf/\<device-name\>/sync_owner
-* /sys/class/udmabuf/\<device-name\>/sync_for_cpu
-* /sys/class/udmabuf/\<device-name\>/sync_for_device
+  * /dev/\<device-name\>
+  * /sys/class/udmabuf/\<device-name\>/phys_addr
+  * /sys/class/udmabuf/\<device-name\>/size
+  * /sys/class/udmabuf/\<device-name\>/sync_mode
+  * /sys/class/udmabuf/\<device-name\>/sync_offset
+  * /sys/class/udmabuf/\<device-name\>/sync_size
+  * /sys/class/udmabuf/\<device-name\>/sync_direction
+  * /sys/class/udmabuf/\<device-name\>/sync_owner
+  * /sys/class/udmabuf/\<device-name\>/sync_for_cpu
+  * /sys/class/udmabuf/\<device-name\>/sync_for_device
+  * /sys/class/udmabuf/\<device-name\>/dma_coherent
 
 
 ### /dev/\<device-name\>
@@ -214,7 +438,7 @@ udmabufをinsmodでカーネルにロードすると、次のようなデバイ�
 また、ddコマンド等でにデバイスファイルを指定することにより、shellから直接リードライトすることも出来ます。
 
 
-```Shell
+```console
 zynq$ dd if=/dev/urandom of=/dev/udmabuf0 bs=4096 count=1024
 1024+0 records in
 1024+0 records out
@@ -222,7 +446,7 @@ zynq$ dd if=/dev/urandom of=/dev/udmabuf0 bs=4096 count=1024
 ```
 
 
-```Shell
+```console
 zynq$dd if=/dev/udmabuf4 of=random.bin
 8192+0 records in
 8192+0 records out
@@ -369,6 +593,12 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 
 
 
+### dma_coherent
+
+
+/sys/class/udmabuf/\<device-name\>/dma_coherent は DMAバッファとCPUキャッシュのコヒーレンシをハードウェアで保証できるか否かを読み取ることができます。デバイスツリーで dma-coherent プロパティでハードウェアで保証できるか否かを指定することができますが、このデバイスファイルは読み取り専用です。
+
+
 ### sync_owner
 
 
@@ -464,6 +694,10 @@ CPUは通常キャッシュを通じてメインメモリ上のDMAバッファ�
 
 
 ハードウェアでコヒーレンシを保証できる場合は、次の項で説明するようなCPUキャッシュを手動で制御する必要はありません。
+
+
+
+デバイスツリーで dma-coherent プロパティに<1> を設定した場合、ハードウェアでコヒーレンシを保証できることを指定します。dma-coherent プロパティに<1> を指定した場合、後述の「CPUキャッシュを有効にしたまま手動でCPUキャッシュを制御する方法」で説明したキャッシュの制御が行われません。
 
 
 
@@ -814,9 +1048,237 @@ CPUキャッシュを有効にする場合は、O_SYNCフラグを設定せず�
 
 
 
-以上の設定の後、CPUがバッファにアクセスする前に sync_for_cpu に1を書いてバッファのオーナーをCPUにします。この際、sync_direction が2か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュを無効化(Invalidiate)します。一度この操作を行ってバッファのオーナーをCPUにした後は、アクセラレーターがバッファをアクセスしないようにしなければなりません。
+以上の設定の後、CPUがバッファにアクセスする前に sync_for_cpu に1を書いてバッファのオーナーをCPUにします。dma-coherent プロパティに<0>が設定されている場合、sync_direction が2か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュを無効化(Invalidiate)します。一度この操作を行ってバッファのオーナーをCPUにした後は、アクセラレーターがバッファをアクセスしないようにしなければなりません。dma-coherent プロパティに<1>が設定されている場合、キャッシュの無効化(Invalidiate)は行われません。
 
 
 
-アクセラレータがバッファにアクセスする前にsync_for_deviceに1を書いてバッファのオーナーをデバイスにします。この際、sync_directionが1か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュをフラッシュします。一度この操作を行ってバッファのオーナーをアクセラレーターにした後は、CPUがこのバッファをアクセスしてはいけません。
+アクセラレータがバッファにアクセスする前にsync_for_deviceに1を書いてバッファのオーナーをデバイスにします。dma-coherentプロパティに<0>が設定されている場合、sync_directionが1か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュをフラッシュします。一度この操作を行ってバッファのオーナーをアクセラレーターにした後は、CPUがこのバッファをアクセスしてはいけません。dma-coherent プロパティに<1>が設定されている場合、キャッシュのフラッシュは行われません。
 
+
+# Python から udmabuf を使う例
+
+
+プログラミング言語Python には NumPy という拡張モジュールが提供されています。この節ではudmabuf でカーネル内に確保した DMA バッファを NumPy の memmap でマッピングして ndarray と同じような操作をする方法について説明します。
+
+
+## Udmabuf クラス
+
+
+ここでは  udmabuf を Python から使うための Udmabuf クラスを定義している udmabuf.py について説明します。
+
+
+
+Udmabuf クラスを定義する前に、numpy をインポートします。
+
+
+```python:udmabuf.py
+import numpy as np
+
+```
+
+
+
+
+Udmabuf クラスを定義します。初期化時にデバイス名を指定します。
+
+
+```python:udmabuf.py
+class Udmabuf:
+    """A simple udmabuf class"""
+    def __init__(self, name):
+        self.name           = name
+        self.device_name    = '/dev/%s'               % self.name
+        self.class_path     = '/sys/class/udmabuf/%s' % self.name
+        self.phys_addr      = self.get_value('phys_addr', 16)
+        self.buf_size       = self.get_value('size')
+        self.sync_offset    = None
+        self.sync_size      = None
+        self.sync_direction = None
+
+```
+
+
+
+
+Udmabuf クラスにカーネル内に確保した DMA バッファを NumPy の memmap でマッピングする memmap メソッドを定義します。
+
+
+```python:udmabuf.py
+    def memmap(self, dtype, shape):
+        self.item_size = np.dtype(dtype).itemsize
+        self.array     = np.memmap(self.device_name, dtype=dtype, mode='r+', shape=shape)
+        return self.array
+```
+
+
+
+
+Udmabuf クラスにデバイスファイルから数値を読む get_value メソッドと数値を書き込む set_value メソッドを定義します。
+
+
+```python:udmabuf.py
+    def get_value(self, name, radix=10):
+        value = None
+        for line in open(self.class_path + '/' + name):
+            value = int(line, radix)
+            break
+        return value
+    def set_value(self, name, value):
+        f = open(self.class_path + '/' + name, 'w')
+        f.write(str(value))
+        f.close
+
+```
+
+
+
+
+Udmabuf クラスにキャッシュを制御するメソッド群を定義します。
+
+
+```python:udmabuf.py
+    def set_sync_area(self, direction=None, offset=None, size=None):
+        if offset is None:
+            self.sync_offset    = self.get_value('sync_offset')
+        else:
+            self.set_value('sync_offset', offset)
+            self.sync_offset    = offset
+        if size   is None:
+            self.sync_size      = self.get_value('sync_size')
+        else:
+            self.set_value('sync_size', size)
+            self.sync_size      = size
+        if direction is None:
+            self.sync_direction = self.get_value('sync_direction')
+        else:
+            self.set_value('sync_direction', direction)
+            self.sync_direction = direction
+    def set_sync_to_device(self, offset=None, size=None):
+        self.set_sync_area(1, offset, size)
+    def set_sync_to_cpu(self, offset=None, size=None):
+        self.set_sync_area(2, offset, size)
+    def set_sync_to_bidirectional(self, offset=None, size=None):
+        self.set_sync_area(3, offset, size)
+    def sync_for_cpu(self):
+        self.set_value('sync_for_cpu', 1)
+    def sync_for_device(self):
+        self.set_value('sync_for_device', 1)
+
+```
+
+
+
+## udmabuf_test.py
+
+
+次に Python+NumPy による簡単なテストをするスクリプトを示します。
+
+
+```python:udmabuf_test.py
+from udmabuf import Udmabuf
+import numpy as np
+import time
+def test_1(a):
+    for i in range (0,9):
+        a *= 0
+        a += 0x31
+if __name__ == '__main__':
+    udmabuf      = Udmabuf('udmabuf0')
+    test_dtype   = np.uint8
+    test_size    = udmabuf.buf_size/(np.dtype(test_dtype).itemsize)
+    udmabuf.memmap(dtype=test_dtype, shape=(test_size))
+    comparison   = np.zeros(test_size, dtype=test_dtype)
+    print ("test_size  : %d" % test_size)
+    start        = time.time()
+    test_1(udmabuf.mem_map)
+    elapsed_time = time.time() - start
+    print ("udmabuf0   : elapsed_time:{0}".format(elapsed_time)) + "[sec]"
+    start        = time.time()
+    test_1(comparison)
+    elapsed_time = time.time() - start
+    print ("comparison : elapsed_time:{0}".format(elapsed_time)) + "[sec]"
+    if np.array_equal(udmabuf.mem_map, comparison):
+        print ("udmabuf0 == comparison : OK")
+    else:
+        print ("udmabuf0 != comparison : NG")
+
+```
+
+
+
+
+
+## 実行結果
+
+
+udmabuf をインストールします。今回の例では udmabuf0 として 8MByte のバッファを確保しています。
+
+
+```console
+zynq# insmod udmabuf.ko udmabuf0=8388608
+[34654.622746] udmabuf udmabuf0: driver installed
+[34654.627153] udmabuf udmabuf0: major number   = 237
+[34654.631889] udmabuf udmabuf0: minor number   = 0
+[34654.636685] udmabuf udmabuf0: phys address   = 0x1f300000
+[34654.642002] udmabuf udmabuf0: buffer size    = 8388608
+[34654.642002] udmabuf udmabuf0: dma-coherent  = 0
+
+```
+
+
+
+
+前節のスクリプトを実行すると次のような結果が得られました。
+
+
+```console
+zynq# python udmabuf_test.py
+test_size  : 8388608
+udmabuf0   : elapsed_time:1.53304982185[sec]
+comparison : elapsed_time:1.536673069[sec]
+udmabuf0 == comparison : OK
+```
+
+
+
+
+udmabuf0(カーネル内に確保したバッファ領域)に対する操作と、ndarray で同じ操作を行った場合(comparison)の実行時間はほぼ同じでした。すなわち udmabuf0 も CPU キャッシュが有効に働いていると思われます。
+
+このスクリプトを実行した後で、udmabuf0 の内容を確認しました。
+
+
+```console
+zynq# dd if=/dev/udmabuf0 of=udmabuf0.bin bs=8388608
+1+0 records in
+1+0 records out
+8388608 bytes (8.4 MB) copied, 0.151531 s, 55.4 MB/s
+shell# 
+shell# od -t x1 udmabuf0.bin
+0000000 31 31 31 31 31 31 31 31 31 31 31 31 31 31 31 31
+*
+40000000
+```
+
+
+
+
+スクリプト実行後も、実行した結果がバッファに残っていることが確認できました。念のため、NumPy でも読めることを確認しましょう。
+
+
+
+
+```console
+zynq# python
+Python 2.7.9 (default, Aug 13 2016, 17:56:53)
+[GCC 4.9.2] on linux2
+Type "help", "copyright", "credits" or "license" for more information.
+>>> import numpy as np
+>>> a = np.memmap('/dev/udmabuf0', dtype=np.uint8, mode='r+', shape=(8388608))
+>>> a
+memmap([49, 49, 49, ..., 49, 49, 49], dtype=uint8)
+>>> a.itemsize
+1
+>>> a.size
+8388608
+>>>
+```
