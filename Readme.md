@@ -196,9 +196,9 @@ The `device-name` property is optional. The device name is determined as follow:
 
 The `sync-mode` property is used to configure the behavior when udmabuf is opened with the `O_SYNC` flag.
 
-  * `sync-mode`=<1>: If `O_SYNC` is specified or `sync-always` is set to <1>, CPU cache is disabled. Otherwise CPU cache is enabled.
-  * `sync-mode`=<2>: If `O_SYNC` is specified or `sync-always` is set to <1>, CPU cache is disabled but CPU uses write-combine when writing data to DMA buffer improves performance by combining multiple write accesses. Otherwise CPU cache is enabled.
-  * `sync-mode`=<3>: If `O_SYNC` is specified or `sync-always` is set to <1>, DMA coherency mode is used. Otherwise CPU cache is enabled.
+  * `sync-mode`=<1>: If `O_SYNC` is specified or `sync-always` property is specified, CPU cache is disabled. Otherwise CPU cache is enabled.
+  * `sync-mode`=<2>: If `O_SYNC` is specified or `sync-always` property is specified, CPU cache is disabled but CPU uses write-combine when writing data to DMA buffer improves performance by combining multiple write accesses. Otherwise CPU cache is enabled.
+  * `sync-mode`=<3>: If `O_SYNC` is specified or `sync-always` property is specified, DMA coherency mode is used. Otherwise CPU cache is enabled.
 
 The `sync-mode` property is optional. When the `sync-mode` property is not specified, `sync-mode` is set to <1>.
 
@@ -215,16 +215,16 @@ Details on `O_SYNC` and cache management will be described in the next section.
 
 ### `sync-always`
 
-If the `sync-always` property is set to <1>, when opening udmabuf, it specifies that the operation specified by the `sync-mode` property will always be performed regardless of O_SYNC specification.
+If the `sync-always` property is specified, when opening udmabuf, it specifies that the operation specified by the `sync-mode` property will always be performed regardless of O_SYNC specification.
 
-The `sync-always` property is optional. When the `sync-always` property is not specified, `sync-always` is set to <0>.
+The `sync-always` property is optional. 
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
 			compatible = "ikwzm,udmabuf-0.10.a";
 			size = <0x00100000>;
 			sync-mode = <2>;
-			sync-always = <1>;
+			sync-always;
 		};
 
 ```

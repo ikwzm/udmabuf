@@ -978,7 +978,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     }
 #endif
     /*
-     * set sync_mode
+     * set sync-mode
      */
     if (of_property_read_u32(pdev->dev.of_node, "sync-mode", &of_u32_value) == 0) {
         if ((of_u32_value < SYNC_MODE_MIN) || (of_u32_value > SYNC_MODE_MAX)) {
@@ -989,20 +989,13 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
         driver_data->sync_mode |= (int)of_u32_value;
     }
     /*
-     * set sync_always
+     * set sync-always
      */
-    if (of_property_read_u32(pdev->dev.of_node, "sync-always", &of_u32_value) == 0) {
-        if (of_u32_value > 1) {
-            dev_err(&pdev->dev, "invalid sync-mode property value=%d\n", of_u32_value);
-            goto failed;
-        }
-        if (of_u32_value > 0)
-            driver_data->sync_mode |=  SYNC_ALWAYS;
-        else
-            driver_data->sync_mode &= ~SYNC_ALWAYS;
+    if (of_property_read_bool(pdev->dev.of_node, "sync-always")) {
+        driver_data->sync_mode |= SYNC_ALWAYS;
     }
     /*
-     * set sync_direction
+     * set sync-direction
      */
     if (of_property_read_u32(pdev->dev.of_node, "sync-direction", &of_u32_value) == 0) {
         if (of_u32_value > 2) {
@@ -1012,7 +1005,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
         driver_data->sync_direction = (int)of_u32_value;
     }
     /*
-     * set sync_offset
+     * set sync-offset
      */
     if (of_property_read_u32(pdev->dev.of_node, "sync-offset", &of_u32_value) == 0) {
         if (of_u32_value >= driver_data->size) {
@@ -1022,7 +1015,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
         driver_data->sync_offset = (int)of_u32_value;
     }
     /*
-     * set sync_size
+     * set sync-size
      */
     if (of_property_read_u32(pdev->dev.of_node, "sync-size", &of_u32_value) == 0) {
         if (driver_data->sync_offset + of_u32_value > driver_data->size) {

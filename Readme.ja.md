@@ -266,9 +266,9 @@ device-name プロパティは省略可能です。デバイス名は次のよ�
 
 sync-mode プロパティはudmabufをopenする際にO_SYNCを指定した場合の動作を指定します。
 
-* sync-mode=<1>:  open 時にO_SYNCフラグが設定された場合または sync-always=<1> の場合、CPUキャッシュを無効にします。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
-* sync-mode=<2>: open 時に O_SYNCフラグが設定された場合または sync-always=<1> の場合、CPUがDMAバッファに書き込む際、ライトコンバインします。ライトコンバインとは、基本的にはCPUキャッシュは無効ですが、複数の書き込みをまとめて行うことで若干性能が向上します。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
-* sync-mode=<3>: open 時にO_SYNCフラグが設定された場合または sync-always=<1> の場合、DMAコヒーレンシモードにします。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
+* sync-mode=<1>:  open 時にO_SYNCフラグが設定された場合または sync-always プロパティが設定されていた場合、CPUキャッシュを無効にします。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
+* sync-mode=<2>: open 時に O_SYNCフラグが設定された場合または sync-always プロパティが設定されていた場合、CPUがDMAバッファに書き込む際、ライトコンバインします。ライトコンバインとは、基本的にはCPUキャッシュは無効ですが、複数の書き込みをまとめて行うことで若干性能が向上します。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
+* sync-mode=<3>: open 時にO_SYNCフラグが設定された場合または sync-always プロパティが設定されていた場合、DMAコヒーレンシモードにします。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
 
 sync-mode プロパティは省略可能です。sync-mode プロパティが省略された場合は <1> に設定されます。
 
@@ -289,9 +289,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync-always
 
 
-sync-always プロパティに<1> を指定した時、 udmabuf を open する際に O_SYNC の指定に関わらず常に sync-mode プロパティで指定された動作することを指定します。
-
-sync-always プロパティは省略可能です。sync-mode プロパティが省略された場合は <0> に設定されます。
+sync-always プロパティを設定した時、 udmabuf を open する際に O_SYNC の指定に関わらず常に sync-mode プロパティで指定された動作することを指定します。
 
 
 ```devicetree:devicetree.dts
@@ -299,7 +297,7 @@ sync-always プロパティは省略可能です。sync-mode プロパティが�
 			compatible = "ikwzm,udmabuf-0.10.a";
 			size = <0x00100000>;
 			sync-mode = <2>;
-			sync-always = <1>;
+			sync-always;
 		};
 
 ```
