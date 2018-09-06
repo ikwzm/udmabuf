@@ -57,7 +57,7 @@
 #include <asm/page.h>
 #include <asm/byteorder.h>
 
-#define DRIVER_VERSION     "1.3-rc1"
+#define DRIVER_VERSION     "1.3-rc2"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
