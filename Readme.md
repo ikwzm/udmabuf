@@ -196,9 +196,9 @@ The `device-name` property is optional. The device name is determined as follow:
 
 The `sync-mode` property is used to configure the behavior when udmabuf is opened with the `O_SYNC` flag.
 
-  * `sync-mode`=<1>: If `O_SYNC` is specified or `sync-always` is set to <1>, CPU cache is disabled. Otherwise CPU cache is enabled.
-  * `sync-mode`=<2>: If `O_SYNC` is specified or `sync-always` is set to <1>, CPU cache is disabled but CPU uses write-combine when writing data to DMA buffer improves performance by combining multiple write accesses. Otherwise CPU cache is enabled.
-  * `sync-mode`=<3>: If `O_SYNC` is specified or `sync-always` is set to <1>, DMA coherency mode is used. Otherwise CPU cache is enabled.
+  * `sync-mode`=<1>: If `O_SYNC` is specified or `sync-always` property is specified, CPU cache is disabled. Otherwise CPU cache is enabled.
+  * `sync-mode`=<2>: If `O_SYNC` is specified or `sync-always` property is specified, CPU cache is disabled but CPU uses write-combine when writing data to DMA buffer improves performance by combining multiple write accesses. Otherwise CPU cache is enabled.
+  * `sync-mode`=<3>: If `O_SYNC` is specified or `sync-always` property is specified, DMA coherency mode is used. Otherwise CPU cache is enabled.
 
 The `sync-mode` property is optional. When the `sync-mode` property is not specified, `sync-mode` is set to <1>.
 
@@ -215,16 +215,16 @@ Details on `O_SYNC` and cache management will be described in the next section.
 
 ### `sync-always`
 
-If the `sync-always` property is set to <1>, when opening udmabuf, it specifies that the operation specified by the `sync-mode` property will always be performed regardless of O_SYNC specification.
+If the `sync-always` property is specified, when opening udmabuf, it specifies that the operation specified by the `sync-mode` property will always be performed regardless of O_SYNC specification.
 
-The `sync-always` property is optional. When the `sync-always` property is not specified, `sync-always` is set to <0>.
+The `sync-always` property is optional. 
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
 			compatible = "ikwzm,udmabuf-0.10.a";
 			size = <0x00100000>;
 			sync-mode = <2>;
-			sync-always = <1>;
+			sync-always;
 		};
 
 ```
@@ -274,15 +274,15 @@ Details on cache management will be described in the next section.
 
 ### `dma-coherent`
 
-If the `dma-coherent` property is set to <1>, indicates that coherency between DMA buffer and CPU cache can be guaranteed by hardware.
+If the `dma-coherent` property is specified, indicates that coherency between DMA buffer and CPU cache can be guaranteed by hardware.
 
-The `dma-coherent` property is optional. When the `dma-coherent` property is not specified, `dma-coherent` is set to <0>.
+The `dma-coherent` property is optional. When the `dma-coherent` property is not specified, indicates that coherency between DMA buffer and CPU cache can not be guaranteed by hardware.
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
 			compatible = "ikwzm,udmabuf-0.10.a";
 			size = <0x00100000>;
-			dma-coherent = <1>;
+			dma-coherent;
 		};
 
 ```
@@ -470,9 +470,20 @@ Details of manual cache management is described in the next section.
 
 ### `dma_coherent`
 
-
 The device file `/sys/class/udmabuf/<device-name>/dma_coherent` can read whether the coherency of DMA buffer and CPU cache can be guaranteed by hardware. It is able to specify whether or not it is able to guarantee by hardware with the `dma-coherent` property in the device tree, but this device file is read-only.
 
+If this value is 1, the coherency of DMA buffer and CPU cache can be guaranteed by hardware. If this value is 0, the coherency of DMA buffer and CPU cache can be not guaranteed by hardware.
+
+```C:udmabuf_test.c
+    unsigned char  attr[1024];
+    int dma_coherent;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/dma_coherent", O_RDONLY)) != -1) {
+        read(fd, attr, 1024);
+        sscanf(attr, "%x", &dma_coherent);
+        close(fd);
+    }
+
+```
 
 ### `sync_owner`
 
@@ -546,7 +557,7 @@ In this case, accesses from CPU to the main memory can be fast by using CPU cach
 
 The manual management of cache, described in the following section, will not be necessary when hardware maintains the coherency.
 
-If the `dma-coherent` property is set to <1> in the device tree, specify that coherency can be guaranteed with hardware. In this case, the cache control described in "2. Manual cache management with the CPU canche still being enabled" described later is not performed.
+If the `dma-coherent` property is specified in the device tree, specify that coherency can be guaranteed with hardware. In this case, the cache control described in "2. Manual cache management with the CPU canche still being enabled" described later is not performed.
 
 
 ## When hardware does not maintain the coherency
@@ -883,7 +894,7 @@ When CPU accesses to the buffer, '1' should be written to `sync_for_cpu` to set 
 
 On the other hand, when the accelerator needs to access the buffer, '1' should be written to `sync_for_device` to change owership of the buffer to the accelerator. Upon the write to `sync_for_device`, the CPU cache of the specified memory area is flushed using data on the main memory.
 
-However, if the `dma-coherent` property is to set <1>, CPU cache invalidation and flushing are not done.
+However, if the `dma-coherent` property is specified in the device tree, CPU cache is not invalidated and flushed.
 
 
 # Example using udmabuf from Python

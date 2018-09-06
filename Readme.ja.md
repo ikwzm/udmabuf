@@ -266,9 +266,9 @@ device-name プロパティは省略可能です。デバイス名は次のよ�
 
 sync-mode プロパティはudmabufをopenする際にO_SYNCを指定した場合の動作を指定します。
 
-* sync-mode=<1>:  open 時にO_SYNCフラグが設定された場合または sync-always=<1> の場合、CPUキャッシュを無効にします。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
-* sync-mode=<2>: open 時に O_SYNCフラグが設定された場合または sync-always=<1> の場合、CPUがDMAバッファに書き込む際、ライトコンバインします。ライトコンバインとは、基本的にはCPUキャッシュは無効ですが、複数の書き込みをまとめて行うことで若干性能が向上します。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
-* sync-mode=<3>: open 時にO_SYNCフラグが設定された場合または sync-always=<1> の場合、DMAコヒーレンシモードにします。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
+* sync-mode=<1>:  open 時にO_SYNCフラグが設定された場合または sync-always プロパティが設定されていた場合、CPUキャッシュを無効にします。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
+* sync-mode=<2>: open 時に O_SYNCフラグが設定された場合または sync-always プロパティが設定されていた場合、CPUがDMAバッファに書き込む際、ライトコンバインします。ライトコンバインとは、基本的にはCPUキャッシュは無効ですが、複数の書き込みをまとめて行うことで若干性能が向上します。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
+* sync-mode=<3>: open 時にO_SYNCフラグが設定された場合または sync-always プロパティが設定されていた場合、DMAコヒーレンシモードにします。O_SYNCフラグが設定されなかった場合、CPUキャッシュは有効です。
 
 sync-mode プロパティは省略可能です。sync-mode プロパティが省略された場合は <1> に設定されます。
 
@@ -289,9 +289,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync-always
 
 
-sync-always プロパティに<1> を指定した時、 udmabuf を open する際に O_SYNC の指定に関わらず常に sync-mode プロパティで指定された動作することを指定します。
-
-sync-always プロパティは省略可能です。sync-mode プロパティが省略された場合は <0> に設定されます。
+sync-always プロパティを設定した時、 udmabuf を open する際に O_SYNC の指定に関わらず常に sync-mode プロパティで指定された動作することを指定します。
 
 
 ```devicetree:devicetree.dts
@@ -299,7 +297,7 @@ sync-always プロパティは省略可能です。sync-mode プロパティが�
 			compatible = "ikwzm,udmabuf-0.10.a";
 			size = <0x00100000>;
 			sync-mode = <2>;
-			sync-always = <1>;
+			sync-always;
 		};
 
 ```
@@ -358,9 +356,20 @@ sync-direction プロパティは省略可能です。sync-direction プロパ�
 ### dma-coherent
 
 
-dma-coherent プロパティに<1>を指定した時、DMAバッファとCPUキャッシュのコヒーレンシはハードウェアで保証できることを示します。
+dma-coherent プロパティを設定した時、DMAバッファとCPUキャッシュのコヒーレンシはハードウェアで保証できることを示します。
 
-dma-coherent プロパティは省略可能です。dma-cohernet プロパティが省略された場合は<0>に設定されます。
+dma-coherent プロパティは省略可能です。dma-cohernet プロパティが省略された場合、DMAバッファとCPUキャッシュのコヒーレンシはハードウェアで保証できないことを示します。
+
+
+```devicetree:devicetree.dts
+		udmabuf@0x00 {
+			compatible = "ikwzm,udmabuf-0.10.a";
+			size = <0x00100000>;
+			dma-coherent;
+		};
+
+```
+
 
 手動でキャッシュを制御する方法は次の節で説明します。
 
@@ -598,6 +607,25 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 
 /sys/class/udmabuf/\<device-name\>/dma_coherent は DMAバッファとCPUキャッシュのコヒーレンシをハードウェアで保証できるか否かを読み取ることができます。デバイスツリーで dma-coherent プロパティでハードウェアで保証できるか否かを指定することができますが、このデバイスファイルは読み取り専用です。
 
+この値が1の時は、DMAバッファとCPUキャッシュのコヒーレンシはハードウェアで保証できることを示します。この値が0の時は、DMAバッファとCPUキャッシュのコヒーレンシはハードウェアで保証できないことを示します。
+
+
+```C:udmabuf_test.c
+    unsigned char  attr[1024];
+    int dma_coherent;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/dma_coherent", O_RDONLY)) != -1) {
+        read(fd, attr, 1024);
+        sscanf(attr, "%x", &dma_coherent);
+        close(fd);
+    }
+
+```
+
+
+
+
+
+
 
 ### sync_owner
 
@@ -697,7 +725,7 @@ CPUは通常キャッシュを通じてメインメモリ上のDMAバッファ�
 
 
 
-デバイスツリーで dma-coherent プロパティに<1> を設定した場合、ハードウェアでコヒーレンシを保証できることを指定します。dma-coherent プロパティに<1> を指定した場合、後述の「CPUキャッシュを有効にしたまま手動でCPUキャッシュを制御する方法」で説明したキャッシュの制御が行われません。
+デバイスツリーで dma-coherent プロパティを設定した場合、ハードウェアでコヒーレンシを保証できることを指定します。dma-coherent プロパティを設定した場合、後述の「CPUキャッシュを有効にしたまま手動でCPUキャッシュを制御する方法」で説明したキャッシュの制御が行われません。
 
 
 
@@ -1048,11 +1076,11 @@ CPUキャッシュを有効にする場合は、O_SYNCフラグを設定せず�
 
 
 
-以上の設定の後、CPUがバッファにアクセスする前に sync_for_cpu に1を書いてバッファのオーナーをCPUにします。dma-coherent プロパティに<0>が設定されている場合、sync_direction が2か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュを無効化(Invalidiate)します。一度この操作を行ってバッファのオーナーをCPUにした後は、アクセラレーターがバッファをアクセスしないようにしなければなりません。dma-coherent プロパティに<1>が設定されている場合、キャッシュの無効化(Invalidiate)は行われません。
+以上の設定の後、CPUがバッファにアクセスする前に sync_for_cpu に1を書いてバッファのオーナーをCPUにします。dma-coherent プロパティが設定されていない場合、sync_direction が2か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュを無効化(Invalidiate)します。一度この操作を行ってバッファのオーナーをCPUにした後は、アクセラレーターがバッファをアクセスしないようにしなければなりません。dma-coherent プロパティが設定されている場合、キャッシュの無効化(Invalidiate)は行われません。
 
 
 
-アクセラレータがバッファにアクセスする前にsync_for_deviceに1を書いてバッファのオーナーをデバイスにします。dma-coherentプロパティに<0>が設定されている場合、sync_directionが1か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュをフラッシュします。一度この操作を行ってバッファのオーナーをアクセラレーターにした後は、CPUがこのバッファをアクセスしてはいけません。dma-coherent プロパティに<1>が設定されている場合、キャッシュのフラッシュは行われません。
+アクセラレータがバッファにアクセスする前にsync_for_deviceに1を書いてバッファのオーナーをデバイスにします。dma-coherentプロパティが設定されていない場合、sync_directionが1か0の時、sync_offsetとsync_sizeで指定された範囲のCPUキャッシュをフラッシュします。一度この操作を行ってバッファのオーナーをアクセラレーターにした後は、CPUがこのバッファをアクセスしてはいけません。dma-coherent プロパティが設定されている場合、キャッシュのフラッシュは行われません。
 
 
 # Python から udmabuf を使う例
