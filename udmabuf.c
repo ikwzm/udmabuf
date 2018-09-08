@@ -142,9 +142,9 @@ static int            dma_mask_bit          = 32;
 static int            info_enable           = 1;
 
 /**
- * struct udmabuf_driver_data - Udmabuf driver data structure
+ * struct udmabuf_device_data - udmabuf device data structure
  */
-struct udmabuf_driver_data {
+struct udmabuf_device_data {
     struct device*       sys_dev;
     struct device*       dma_dev;
     struct cdev          cdev;
@@ -205,10 +205,10 @@ static int udmabuf_static_device_search(struct platform_device *pdev, int* pid, 
 
 /**
  * udmabuf_sync_for_cpu() - call dma_sync_single_for_cpu() when (sync_for_cpu != 0)
- * @this:       Pointer to the udmabuf driver data structure.
+ * @this:       Pointer to the udmabuf device data structure.
  * Return:	Success(0)
  */
-static int udmabuf_sync_for_cpu(struct udmabuf_driver_data* this)
+static int udmabuf_sync_for_cpu(struct udmabuf_device_data* this)
 {
     if (this->sync_for_cpu) {
         dma_addr_t phys_addr = this->phys_addr + this->sync_offset;
@@ -227,10 +227,10 @@ static int udmabuf_sync_for_cpu(struct udmabuf_driver_data* this)
 
 /**
  * udmabuf_sync_for_device() - call dma_sync_single_for_device() when (sync_for_device != 0)
- * @this:       Pointer to the udmabuf driver data structure.
+ * @this:       Pointer to the udmabuf device data structure.
  * Return:	Success(0)
  */
-static int udmabuf_sync_for_device(struct udmabuf_driver_data* this)
+static int udmabuf_sync_for_device(struct udmabuf_device_data* this)
 {
     if (this->sync_for_device) {
         dma_addr_t phys_addr = this->phys_addr + this->sync_offset;
@@ -251,7 +251,7 @@ static int udmabuf_sync_for_device(struct udmabuf_driver_data* this)
 static ssize_t udmabuf_show_ ## __attr_name(struct device *dev, struct device_attribute *attr, char *buf) \
 {                                                            \
     ssize_t status;                                          \
-    struct udmabuf_driver_data* this = dev_get_drvdata(dev); \
+    struct udmabuf_device_data* this = dev_get_drvdata(dev); \
     if (mutex_lock_interruptible(&this->sem) != 0)           \
         return -ERESTARTSYS;                                 \
     status = sprintf(buf, __format, (__value));              \
@@ -259,14 +259,14 @@ static ssize_t udmabuf_show_ ## __attr_name(struct device *dev, struct device_at
     return status;                                           \
 }
 
-static inline int NO_ACTION(struct udmabuf_driver_data* this){return 0;}
+static inline int NO_ACTION(struct udmabuf_device_data* this){return 0;}
 
 #define DEF_ATTR_SET(__attr_name, __min, __max, __pre_action, __post_action) \
 static ssize_t udmabuf_set_ ## __attr_name(struct device *dev, struct device_attribute *attr, const char *buf, size_t size) \
 { \
     ssize_t       status; \
     unsigned long value;  \
-    struct udmabuf_driver_data* this = dev_get_drvdata(dev);                 \
+    struct udmabuf_device_data* this = dev_get_drvdata(dev);                 \
     if (0 != mutex_lock_interruptible(&this->sem)){return -ERESTARTSYS;}     \
     if (0 != (status = kstrtoul(buf, 10, &value))){            goto failed;} \
     if ((value < __min) || (__max < value)) {status = -EINVAL; goto failed;} \
@@ -359,13 +359,13 @@ static inline void udmabuf_sys_class_set_attributes(void)
 
 #if (USE_VMA_FAULT == 1)
 /**
- * udmabuf_driver_vma_open() - This is the driver open function.
+ * udmabuf_device_vma_open() - This is the driver open function.
  * @vma:        Pointer to the vm area structure.
  * Return:	None
  */
-static void udmabuf_driver_vma_open(struct vm_area_struct* vma)
+static void udmabuf_device_vma_open(struct vm_area_struct* vma)
 {
-    struct udmabuf_driver_data* this = vma->vm_private_data;
+    struct udmabuf_device_data* this = vma->vm_private_data;
     if (UDMABUF_DEBUG_CHECK(this, debug_vma))
         dev_info(this->dma_dev, "vma_open(virt_addr=0x%lx, offset=0x%lx)\n", vma->vm_start, vma->vm_pgoff<<PAGE_SHIFT);
 }
@@ -373,13 +373,13 @@ static void udmabuf_driver_vma_open(struct vm_area_struct* vma)
 
 #if (USE_VMA_FAULT == 1)
 /**
- * udmabuf_driver_vma_close() - This is the driver close function.
+ * udmabuf_device_vma_close() - This is the driver close function.
  * @vma:        Pointer to the vm area structure.
  * Return:	None
  */
-static void udmabuf_driver_vma_close(struct vm_area_struct* vma)
+static void udmabuf_device_vma_close(struct vm_area_struct* vma)
 {
-    struct udmabuf_driver_data* this = vma->vm_private_data;
+    struct udmabuf_device_data* this = vma->vm_private_data;
     if (UDMABUF_DEBUG_CHECK(this, debug_vma))
         dev_info(this->dma_dev, "vma_close()\n");
 }
@@ -387,14 +387,14 @@ static void udmabuf_driver_vma_close(struct vm_area_struct* vma)
 
 #if (USE_VMA_FAULT == 1)
 /**
- * _udmabuf_driver_vma_fault() - This is the driver nopage inline function.
+ * _udmabuf_device_vma_fault() - This is the driver nopage inline function.
  * @vma:        Pointer to the vm area structure.
  * @vfm:        Pointer to the vm fault structure.
  * Return:      Success(=0) or error status(<0).
  */
-static inline int _udmabuf_driver_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
+static inline int _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
 {
-    struct udmabuf_driver_data* this = vma->vm_private_data;
+    struct udmabuf_device_data* this = vma->vm_private_data;
     struct page*  page_ptr           = NULL;
     unsigned long offset             = vmf->pgoff << PAGE_SHIFT;
     unsigned long phys_addr          = this->phys_addr + offset;
@@ -432,24 +432,24 @@ static inline int _udmabuf_driver_vma_fault(struct vm_area_struct* vma, struct v
 
 #if (LINUX_VERSION_CODE >= 0x040B00)
 /**
- * udmabuf_driver_vma_fault() - This is the driver nopage function.
+ * udmabuf_device_vma_fault() - This is the driver nopage function.
  * @vfm:        Pointer to the vm fault structure.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_driver_vma_fault(struct vm_fault* vmf)
+static int udmabuf_device_vma_fault(struct vm_fault* vmf)
 {
-    return _udmabuf_driver_vma_fault(vmf->vma, vmf);
+    return _udmabuf_device_vma_fault(vmf->vma, vmf);
 }
 #else
 /**
- * udmabuf_driver_vma_fault() - This is the driver nopage function.
+ * udmabuf_device_vma_fault() - This is the driver nopage function.
  * @vma:        Pointer to the vm area structure.
  * @vfm:        Pointer to the vm fault structure.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_driver_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
+static int udmabuf_device_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
 {
-    return _udmabuf_driver_vma_fault(vma, vmf);
+    return _udmabuf_device_vma_fault(vma, vmf);
 }
 #endif
 
@@ -459,25 +459,25 @@ static int udmabuf_driver_vma_fault(struct vm_area_struct* vma, struct vm_fault*
 /**
  *
  */
-static const struct vm_operations_struct udmabuf_driver_vm_ops = {
-    .open    = udmabuf_driver_vma_open ,
-    .close   = udmabuf_driver_vma_close,
-    .fault   = udmabuf_driver_vma_fault,
+static const struct vm_operations_struct udmabuf_device_vm_ops = {
+    .open    = udmabuf_device_vma_open ,
+    .close   = udmabuf_device_vma_close,
+    .fault   = udmabuf_device_vma_fault,
 };
 #endif
 
 /**
- * udmabuf_driver_file_open() - This is the driver open function.
+ * udmabuf_device_file_open() - This is the driver open function.
  * @inode:	Pointer to the inode structure of this device.
  * @file:	Pointer to the file structure.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_driver_file_open(struct inode *inode, struct file *file)
+static int udmabuf_device_file_open(struct inode *inode, struct file *file)
 {
-    struct udmabuf_driver_data* this;
+    struct udmabuf_device_data* this;
     int status = 0;
 
-    this = container_of(inode->i_cdev, struct udmabuf_driver_data, cdev);
+    this = container_of(inode->i_cdev, struct udmabuf_device_data, cdev);
     file->private_data = this;
     this->is_open = 1;
 
@@ -485,14 +485,14 @@ static int udmabuf_driver_file_open(struct inode *inode, struct file *file)
 }
 
 /**
- * udmabuf_driver_file_release() - This is the driver release function.
+ * udmabuf_device_file_release() - This is the driver release function.
  * @inode:	Pointer to the inode structure of this device.
  * @file:	Pointer to the file structure.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_driver_file_release(struct inode *inode, struct file *file)
+static int udmabuf_device_file_release(struct inode *inode, struct file *file)
 {
-    struct udmabuf_driver_data* this = file->private_data;
+    struct udmabuf_device_data* this = file->private_data;
 
     this->is_open = 0;
 
@@ -500,14 +500,14 @@ static int udmabuf_driver_file_release(struct inode *inode, struct file *file)
 }
 
 /**
- * udmabuf_driver_file_mmap() - This is the driver memory map function.
+ * udmabuf_device_file_mmap() - This is the driver memory map function.
  * @file:	Pointer to the file structure.
  * @vma:        Pointer to the vm area structure.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vma)
+static int udmabuf_device_file_mmap(struct file *file, struct vm_area_struct* vma)
 {
-    struct udmabuf_driver_data* this = file->private_data;
+    struct udmabuf_device_data* this = file->private_data;
 
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS)) {
         switch (this->sync_mode & SYNC_MODE_MASK) {
@@ -534,8 +534,8 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
     {
         unsigned long page_frame_num = this->phys_addr >> PAGE_SHIFT;
         if (pfn_valid(page_frame_num)) {
-            vma->vm_ops      = &udmabuf_driver_vm_ops;
-            udmabuf_driver_vma_open(vma);
+            vma->vm_ops      = &udmabuf_device_vm_ops;
+            udmabuf_device_vma_open(vma);
             return 0;
         }
     }
@@ -545,16 +545,16 @@ static int udmabuf_driver_file_mmap(struct file *file, struct vm_area_struct* vm
 }
 
 /**
- * udmabuf_driver_file_read() - This is the driver read function.
+ * udmabuf_device_file_read() - This is the driver read function.
  * @file:	Pointer to the file structure.
  * @buff:	Pointer to the user buffer.
  * @count:	The number of bytes to be written.
  * @ppos:	Pointer to the offset value.
  * Return:	Transferd size.
  */
-static ssize_t udmabuf_driver_file_read(struct file* file, char __user* buff, size_t count, loff_t* ppos)
+static ssize_t udmabuf_device_file_read(struct file* file, char __user* buff, size_t count, loff_t* ppos)
 {
-    struct udmabuf_driver_data* this      = file->private_data;
+    struct udmabuf_device_data* this      = file->private_data;
     int                         result    = 0;
     size_t                      xfer_size;
     size_t                      remain_size;
@@ -592,16 +592,16 @@ static ssize_t udmabuf_driver_file_read(struct file* file, char __user* buff, si
 }
 
 /**
- * udmabuf_driver_file_write() - This is the driver write function.
+ * udmabuf_device_file_write() - This is the driver write function.
  * @file:	Pointer to the file structure.
  * @buff:	Pointer to the user buffer.
  * @count:	The number of bytes to be written.
  * @ppos:	Pointer to the offset value
  * Return:	Transferd size.
  */
-static ssize_t udmabuf_driver_file_write(struct file* file, const char __user* buff, size_t count, loff_t* ppos)
+static ssize_t udmabuf_device_file_write(struct file* file, const char __user* buff, size_t count, loff_t* ppos)
 {
-    struct udmabuf_driver_data* this      = file->private_data;
+    struct udmabuf_device_data* this      = file->private_data;
     int                         result    = 0;
     size_t                      xfer_size;
     size_t                      remain_size;
@@ -639,15 +639,15 @@ static ssize_t udmabuf_driver_file_write(struct file* file, const char __user* b
 }
 
 /**
- * udmabuf_driver_file_llseek() - This is the driver llseek function.
+ * udmabuf_device_file_llseek() - This is the driver llseek function.
  * @file:	Pointer to the file structure.
  * @offset:	File offset to seek.
  * @whence:	Type of seek.
  * Return:	The new position.
  */
-static loff_t udmabuf_driver_file_llseek(struct file* file, loff_t offset, int whence)
+static loff_t udmabuf_device_file_llseek(struct file* file, loff_t offset, int whence)
 {
-    struct udmabuf_driver_data* this = file->private_data;
+    struct udmabuf_device_data* this = file->private_data;
     loff_t                      new_pos;
 
     switch (whence) {
@@ -672,26 +672,26 @@ static loff_t udmabuf_driver_file_llseek(struct file* file, loff_t offset, int w
 /**
  *
  */
-static const struct file_operations udmabuf_driver_file_ops = {
+static const struct file_operations udmabuf_device_file_ops = {
     .owner   = THIS_MODULE,
-    .open    = udmabuf_driver_file_open,
-    .release = udmabuf_driver_file_release,
-    .mmap    = udmabuf_driver_file_mmap,
-    .read    = udmabuf_driver_file_read,
-    .write   = udmabuf_driver_file_write,
-    .llseek  = udmabuf_driver_file_llseek,
+    .open    = udmabuf_device_file_open,
+    .release = udmabuf_device_file_release,
+    .mmap    = udmabuf_device_file_mmap,
+    .read    = udmabuf_device_file_read,
+    .write   = udmabuf_device_file_write,
+    .llseek  = udmabuf_device_file_llseek,
 };
 
 /**
- * udmabuf_driver_create() -  Create udmabuf driver data structure.
+ * udmabuf_device_create() -  Create udmabuf device data structure.
  * @name:       device name   or NULL.
  * @parent:     parent device or NULL.
  * @minor:	minor_number  or -1.
- * Return:      Pointer to the udmabuf driver data structure or NULL.
+ * Return:      Pointer to the udmabuf device data structure or NULL.
  */
-static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struct device* parent, int minor)
+static struct udmabuf_device_data* udmabuf_device_create(const char* name, struct device* parent, int minor)
 {
-    struct udmabuf_driver_data* this     = NULL;
+    struct udmabuf_device_data* this     = NULL;
     unsigned int                done     = 0;
     const unsigned int          DONE_ALLOC_MINOR   = (1 << 0);
     const unsigned int          DONE_CHRDEV_ADD    = (1 << 1);
@@ -717,7 +717,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
         done |= DONE_ALLOC_MINOR;
     }
     /*
-     * create (udmabuf_driver_data*) this.
+     * create (udmabuf_device_data*) this.
      */
     {
         this = kzalloc(sizeof(*this), GFP_KERNEL);
@@ -764,7 +764,7 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
      */
     {
         int retval;
-        cdev_init(&this->cdev, &udmabuf_driver_file_ops);
+        cdev_init(&this->cdev, &udmabuf_device_file_ops);
         this->cdev.owner = THIS_MODULE;
         if ((retval = cdev_add(&this->cdev, this->device_number, 1)) != 0) {
             printk(KERN_ERR "cdev_add() failed. return=%d\n", retval);
@@ -830,11 +830,11 @@ static struct udmabuf_driver_data* udmabuf_driver_create(const char* name, struc
 }
 
 /**
- * udmabuf_driver_setup() -  Setup the udmabuf driver data structure.
- * @this:       Pointer to the udmabuf driver data structure.
+ * udmabuf_device_setup() -  Setup the udmabuf device data structure.
+ * @this:       Pointer to the udmabuf device data structure.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_driver_setup(struct udmabuf_driver_data* this)
+static int udmabuf_device_setup(struct udmabuf_device_data* this)
 {
     if (!this)
         return -ENODEV;
@@ -856,10 +856,10 @@ static int udmabuf_driver_setup(struct udmabuf_driver_data* this)
 }
 
 /**
- * udmabuf_driver_info() -  Print infomation the udmabuf driver data structure.
- * @this:       Pointer to the udmabuf driver data structure.
+ * udmabuf_device_info() -  Print infomation the udmabuf device data structure.
+ * @this:       Pointer to the udmabuf device data structure.
  */
-static void udmabuf_driver_info(struct udmabuf_driver_data* this)
+static void udmabuf_device_info(struct udmabuf_device_data* this)
 {
     dev_info(this->sys_dev, "driver version = %s\n"  , DRIVER_VERSION);
     dev_info(this->sys_dev, "major number   = %d\n"  , MAJOR(this->device_number));
@@ -872,13 +872,13 @@ static void udmabuf_driver_info(struct udmabuf_driver_data* this)
 }
 
 /**
- * udmabuf_driver_destroy() -  Remove the udmabuf driver data structure.
- * @this:       Pointer to the udmabuf driver data structure.
+ * udmabuf_device_destroy() -  Remove the udmabuf device data structure.
+ * @this:       Pointer to the udmabuf device data structure.
  * Return:      Success(=0) or error status(<0).
  *
  * Unregister the device after releasing the resources.
  */
-static int udmabuf_driver_destroy(struct udmabuf_driver_data* this)
+static int udmabuf_device_destroy(struct udmabuf_device_data* this)
 {
     if (!this)
         return -ENODEV;
@@ -897,18 +897,18 @@ static int udmabuf_driver_destroy(struct udmabuf_driver_data* this)
 /**
  * udmabuf_platform_driver_cleanup() - 
  * @pdev:	handle to the platform device structure.
- * @drvdata:    Pointer to the udmabuf driver data structure.
+ * @drvdata:    Pointer to the udmabuf device data structure.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_platform_driver_cleanup(struct platform_device *pdev, struct udmabuf_driver_data* drvdata)
+static int udmabuf_platform_driver_cleanup(struct platform_device *pdev, struct udmabuf_device_data* devdata)
 {
     int retval = 0;
 
-    if (drvdata != NULL) {
+    if (devdata != NULL) {
 #if (USE_OF_RESERVED_MEM == 1)
-        bool of_reserved_mem = drvdata->of_reserved_mem;
+        bool of_reserved_mem = devdata->of_reserved_mem;
 #endif
-        retval = udmabuf_driver_destroy(drvdata);
+        retval = udmabuf_device_destroy(devdata);
         dev_set_drvdata(&pdev->dev, NULL);
 #if (USE_OF_RESERVED_MEM == 1)
         if (of_reserved_mem) {
@@ -935,7 +935,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     unsigned int                of_u32_value = 0;
     unsigned int                size         = 0;
     int                         minor_number = -1;
-    struct udmabuf_driver_data* driver_data  = NULL;
+    struct udmabuf_device_data* device_data  = NULL;
     const char*                 device_name  = NULL;
 
     dev_dbg(&pdev->dev, "driver probe start.\n");
@@ -961,21 +961,21 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
         }
     }
     /*
-     * udmabuf_driver_create()
+     * udmabuf_device_create()
      */
-    driver_data = udmabuf_driver_create(device_name, &pdev->dev, minor_number);
-    if (IS_ERR_OR_NULL(driver_data)) {
-        retval = PTR_ERR(driver_data);
+    device_data = udmabuf_device_create(device_name, &pdev->dev, minor_number);
+    if (IS_ERR_OR_NULL(device_data)) {
+        retval = PTR_ERR(device_data);
         dev_err(&pdev->dev, "driver create failed. return=%d.\n", retval);
-        driver_data = NULL;
+        device_data = NULL;
         retval = (retval == 0) ? -EINVAL : retval;
         goto failed;
     }
-    dev_set_drvdata(&pdev->dev, driver_data);
+    dev_set_drvdata(&pdev->dev, device_data);
     /*
      * set size
      */
-    driver_data->size = size;
+    device_data->size = size;
     /*
      * of_dma_configure()
      */
@@ -997,7 +997,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     if (pdev->dev.of_node != NULL) {
         retval = of_reserved_mem_device_init(&pdev->dev);
         if (retval == 0) {
-            driver_data->of_reserved_mem = 1;
+            device_data->of_reserved_mem = 1;
         } else if (retval != -ENODEV) {
             dev_err(&pdev->dev, "of_reserved_mem_device_init failed. return=%d\n", retval);
             goto failed;
@@ -1012,14 +1012,14 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
             dev_err(&pdev->dev, "invalid sync-mode property value=%d\n", of_u32_value);
             goto failed;
         }
-        driver_data->sync_mode &= ~SYNC_MODE_MASK;
-        driver_data->sync_mode |= (int)of_u32_value;
+        device_data->sync_mode &= ~SYNC_MODE_MASK;
+        device_data->sync_mode |= (int)of_u32_value;
     }
     /*
      * set sync-always
      */
     if (of_property_read_bool(pdev->dev.of_node, "sync-always")) {
-        driver_data->sync_mode |= SYNC_ALWAYS;
+        device_data->sync_mode |= SYNC_ALWAYS;
     }
     /*
      * set sync-direction
@@ -1029,47 +1029,47 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
             dev_err(&pdev->dev, "invalid sync-direction property value=%d\n", of_u32_value);
             goto failed;
         }
-        driver_data->sync_direction = (int)of_u32_value;
+        device_data->sync_direction = (int)of_u32_value;
     }
     /*
      * set sync-offset
      */
     if (of_property_read_u32(pdev->dev.of_node, "sync-offset", &of_u32_value) == 0) {
-        if (of_u32_value >= driver_data->size) {
+        if (of_u32_value >= device_data->size) {
             dev_err(&pdev->dev, "invalid sync-offset property value=%d\n", of_u32_value);
             goto failed;
         }
-        driver_data->sync_offset = (int)of_u32_value;
+        device_data->sync_offset = (int)of_u32_value;
     }
     /*
      * set sync-size
      */
     if (of_property_read_u32(pdev->dev.of_node, "sync-size", &of_u32_value) == 0) {
-        if (driver_data->sync_offset + of_u32_value > driver_data->size) {
+        if (device_data->sync_offset + of_u32_value > device_data->size) {
             dev_err(&pdev->dev, "invalid sync-size property value=%d\n", of_u32_value);
             goto failed;
         }
-        driver_data->sync_size = (size_t)of_u32_value;
+        device_data->sync_size = (size_t)of_u32_value;
     } else {
-        driver_data->sync_size = driver_data->size;
+        device_data->sync_size = device_data->size;
     }
     /*
-     * udmabuf_driver_setup()
+     * udmabuf_device_setup()
      */
-    retval = udmabuf_driver_setup(driver_data);
+    retval = udmabuf_device_setup(device_data);
     if (retval) {
         dev_err(&pdev->dev, "driver setup failed. return=%d\n", retval);
         goto failed;
     }
     
     if (info_enable) {
-        udmabuf_driver_info(driver_data);
+        udmabuf_device_info(device_data);
         dev_info(&pdev->dev, "driver installed.\n");
     }
     return 0;
 
 failed:
-    udmabuf_platform_driver_cleanup(pdev, driver_data);
+    udmabuf_platform_driver_cleanup(pdev, device_data);
     return retval;
 }
 
@@ -1082,7 +1082,7 @@ failed:
  */
 static int udmabuf_platform_driver_remove(struct platform_device *pdev)
 {
-    struct udmabuf_driver_data* this   = dev_get_drvdata(&pdev->dev);
+    struct udmabuf_device_data* this   = dev_get_drvdata(&pdev->dev);
     int                         retval = 0;
 
     dev_dbg(&pdev->dev, "driver remove start.\n");
