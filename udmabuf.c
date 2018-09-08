@@ -895,6 +895,33 @@ static int udmabuf_driver_destroy(struct udmabuf_driver_data* this)
 }
 
 /**
+ * udmabuf_platform_driver_cleanup() - 
+ * @pdev:	handle to the platform device structure.
+ * @drvdata:    Pointer to the udmabuf driver data structure.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int udmabuf_platform_driver_cleanup(struct platform_device *pdev, struct udmabuf_driver_data* drvdata)
+{
+    int retval = 0;
+
+    if (drvdata != NULL) {
+#if (USE_OF_RESERVED_MEM == 1)
+        bool of_reserved_mem = drvdata->of_reserved_mem;
+#endif
+        retval = udmabuf_driver_destroy(drvdata);
+        dev_set_drvdata(&pdev->dev, NULL);
+#if (USE_OF_RESERVED_MEM == 1)
+        if (of_reserved_mem) {
+            of_reserved_mem_device_release(&pdev->dev);
+        }
+#endif
+    } else {
+        retval = -ENODEV;
+    }
+    return retval;
+}
+
+/**
  * udmabuf_platform_driver_probe() -  Probe call for the device.
  * @pdev:	handle to the platform device structure.
  * Return:      Success(=0) or error status(<0).
@@ -1042,18 +1069,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     return 0;
 
 failed:
-    if (driver_data != NULL) {
-        int status;
-        status = udmabuf_driver_destroy(driver_data);
-        if (status) {
-            dev_err(&pdev->dev, "driver destroy failed. return=%d.\n", status);
-        }
-#if (USE_OF_RESERVED_MEM == 1)
-        if (driver_data->of_reserved_mem == 1) {
-            of_reserved_mem_device_release(&pdev->dev);
-        }
-#endif
-    }
+    udmabuf_platform_driver_cleanup(pdev, driver_data);
     return retval;
 }
 
@@ -1071,20 +1087,12 @@ static int udmabuf_platform_driver_remove(struct platform_device *pdev)
 
     dev_dbg(&pdev->dev, "driver remove start.\n");
 
-    if (this != NULL) {
-        if ((retval = udmabuf_driver_destroy(this)) != 0)
-            return retval;
-        dev_set_drvdata(&pdev->dev, NULL);
-#if (USE_OF_RESERVED_MEM == 1)
-        if (this->of_reserved_mem) {
-            of_reserved_mem_device_release(&pdev->dev);
-        }
-#endif
-    }
+    retval = udmabuf_platform_driver_cleanup(pdev, this);
+
     if (info_enable) {
         dev_info(&pdev->dev, "driver removed.\n");
     }
-    return 0;
+    return retval;
 }
 
 /**
