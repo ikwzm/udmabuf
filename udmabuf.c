@@ -1217,7 +1217,7 @@ MODULE_PARM_DESC( info_enable , "udmabuf install/uninstall infomation enable");
 module_param(     dma_mask_bit, int, S_IRUGO);
 MODULE_PARM_DESC( dma_mask_bit, "udmabuf dma mask bit(default=32)");
 
-static bool udmabuf_platform_driver_done = 0;
+static bool udmabuf_platform_driver_registerd = 0;
 
 /**
  * udmabuf_module_cleanup()
@@ -1225,9 +1225,9 @@ static bool udmabuf_platform_driver_done = 0;
 static void udmabuf_module_cleanup(void)
 {
     udmabuf_static_device_destory_all();
-    if (udmabuf_platform_driver_done ){platform_driver_unregister(&udmabuf_platform_driver);}
-    if (udmabuf_sys_class     != NULL){class_destroy(udmabuf_sys_class);}
-    if (udmabuf_device_number != 0   ){unregister_chrdev_region(udmabuf_device_number, 0);}
+    if (udmabuf_platform_driver_registerd){platform_driver_unregister(&udmabuf_platform_driver);}
+    if (udmabuf_sys_class     != NULL    ){class_destroy(udmabuf_sys_class);}
+    if (udmabuf_device_number != 0       ){unregister_chrdev_region(udmabuf_device_number, 0);}
     ida_destroy(&udmabuf_device_ida);
 }
 
@@ -1264,7 +1264,7 @@ static int __init udmabuf_module_init(void)
     if (retval) {
         printk(KERN_ERR "%s: couldn't register platform driver. return=%d\n", DRIVER_NAME, retval);
     } else {
-        udmabuf_platform_driver_done = 1;
+        udmabuf_platform_driver_registerd = 1;
     }
 
     return 0;
