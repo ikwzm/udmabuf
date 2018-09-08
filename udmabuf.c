@@ -1263,6 +1263,8 @@ static int __init udmabuf_module_init(void)
     retval = platform_driver_register(&udmabuf_platform_driver);
     if (retval) {
         printk(KERN_ERR "%s: couldn't register platform driver. return=%d\n", DRIVER_NAME, retval);
+        udmabuf_platform_driver_registerd = 0;
+        goto failed;
     } else {
         udmabuf_platform_driver_registerd = 1;
     }
