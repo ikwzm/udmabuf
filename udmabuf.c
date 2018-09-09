@@ -743,7 +743,7 @@ static dev_t      udmabuf_device_number = 0;
  * udmabuf_device_create() -  Create udmabuf device data.
  * @name:       device name   or NULL.
  * @parent:     parent device or NULL.
- * @minor:	minor_number  or -1.
+ * @minor:      minor_number  or -1.
  * Return:      Pointer to the udmabuf device data or NULL.
  */
 static struct udmabuf_device_data* udmabuf_device_create(const char* name, struct device* parent, int minor)
@@ -830,6 +830,13 @@ static struct udmabuf_device_data* udmabuf_device_create(const char* name, struc
         done |= DONE_CHRDEV_ADD;
     }
     /*
+     * set dma_dev
+     */
+    if (parent != NULL)
+        this->dma_dev = parent;
+    else
+        this->dma_dev = this->sys_dev;
+    /*
      * initialize other variables.
      */
     {
@@ -855,27 +862,6 @@ static struct udmabuf_device_data* udmabuf_device_create(const char* name, struc
 #endif
     mutex_init(&this->sem);
 
-    /*
-     * set dma_dev
-     */
-    {
-        if (parent != NULL) 
-            this->dma_dev = parent;
-        else
-            this->dma_dev = this->sys_dev;
-
-        if (this->dma_dev->dma_mask == NULL) {
-            this->dma_dev->dma_mask = &this->dma_dev->coherent_dma_mask;
-        }
-        if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
-            dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
-        } else {
-            printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
-            dma_set_mask(this->dma_dev, DMA_BIT_MASK(32));
-            dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(32));
-        }
-    }
-
     return this;
 
  failed:
@@ -895,6 +881,24 @@ static int udmabuf_device_setup(struct udmabuf_device_data* this)
 {
     if (!this)
         return -ENODEV;
+    /*
+     * set this->dma_dev->dma_mask
+     */
+    if (this->dma_dev->dma_mask == NULL) {
+        this->dma_dev->dma_mask = &this->dma_dev->coherent_dma_mask;
+    }
+    /*
+     * set this->dma_dev->dma_mask
+     */
+    if (*this->dma_dev->dma_mask == 0) {
+        if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
+           dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
+        } else {
+            printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
+            dma_set_mask(this->dma_dev, DMA_BIT_MASK(32));
+            dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(32));
+       }
+    }
     /*
      * setup buffer size and allocation size
      */
@@ -1209,7 +1213,8 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
 #if (USE_OF_DMA_CONFIG == 1)
     /*
      * of_dma_configure()
-     * - set pdev->dev->dma_mask to &pdev->dev->coherent_dma_mask
+     * - set pdev->dev->dma_mask
+     * - set pdev->dev->coherent_dma_mask
      * - call of_dma_is_coherent()
      * - call arch_setup_dma_ops()
      */
