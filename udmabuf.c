@@ -1210,24 +1210,6 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
      * set size
      */
     device_data->size = size;
-#if (USE_OF_DMA_CONFIG == 1)
-    /*
-     * of_dma_configure()
-     * - set pdev->dev->dma_mask
-     * - set pdev->dev->coherent_dma_mask
-     * - call of_dma_is_coherent()
-     * - call arch_setup_dma_ops()
-     */
-#if (LINUX_VERSION_CODE >= 0x040C00)
-    retval = of_dma_configure(&pdev->dev, pdev->dev.of_node);
-    if (retval != 0) {
-        dev_err(&pdev->dev, "of_dma_configure failed. return=%d\n", retval);
-        goto failed;
-    }
-#else
-    of_dma_configure(&pdev->dev, pdev->dev.of_node);
-#endif
-#endif
     /*
      * of_reserved_mem_device_init()
      */
@@ -1240,6 +1222,32 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
             dev_err(&pdev->dev, "of_reserved_mem_device_init failed. return=%d\n", retval);
             goto failed;
         }
+    }
+#endif
+#if (USE_OF_DMA_CONFIG == 1)
+    /*
+     * of_dma_configure()
+     * - set pdev->dev->dma_mask
+     * - set pdev->dev->coherent_dma_mask
+     * - call of_dma_is_coherent()
+     * - call arch_setup_dma_ops()
+     */
+#if (USE_OF_RESERVED_MEM == 1)
+    /* If "memory-region" property is spsecified, of_dma_configure() will not be executed.
+     * Because in that case, it is already executed in of_reserved_mem_device_init().
+     */
+    if (device_data->of_reserved_mem == 0)
+#endif
+    {
+#if (LINUX_VERSION_CODE >= 0x040C00)
+        retval = of_dma_configure(&pdev->dev, pdev->dev.of_node);
+        if (retval != 0) {
+            dev_err(&pdev->dev, "of_dma_configure failed. return=%d\n", retval);
+            goto failed;
+        }
+#else
+        of_dma_configure(&pdev->dev, pdev->dev.of_node);
+#endif
     }
 #endif
     /*
