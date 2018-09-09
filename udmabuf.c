@@ -1206,10 +1206,13 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
      * set size
      */
     device_data->size = size;
+#if (USE_OF_DMA_CONFIG == 1)
     /*
      * of_dma_configure()
+     * - set pdev->dev->dma_mask to &pdev->dev->coherent_dma_mask
+     * - call of_dma_is_coherent()
+     * - call arch_setup_dma_ops()
      */
-#if (USE_OF_DMA_CONFIG == 1)
 #if (LINUX_VERSION_CODE >= 0x040C00)
     retval = of_dma_configure(&pdev->dev, pdev->dev.of_node);
     if (retval != 0) {
@@ -1217,7 +1220,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
         goto failed;
     }
 #else
-    of_dma_configure(&pdev->dev, NULL);
+    of_dma_configure(&pdev->dev, pdev->dev.of_node);
 #endif
 #endif
     /*
