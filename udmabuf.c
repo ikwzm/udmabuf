@@ -32,6 +32,7 @@
 #include <linux/clk.h>
 #include <linux/dma-mapping.h>
 #include <linux/fs.h>
+#include <linux/idr.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -65,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.3.1-rc1"
+#define DRIVER_VERSION     "1.3.1-rc2"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
