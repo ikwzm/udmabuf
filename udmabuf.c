@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.3.1"
+#define DRIVER_VERSION     "1.3.2"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -552,6 +552,9 @@ static int udmabuf_device_file_mmap(struct file *file, struct vm_area_struct* vm
 {
     struct udmabuf_device_data* this = file->private_data;
 
+    if (vma->vm_pgoff + vma_pages(vma) > (this->alloc_size >> PAGE_SHIFT))
+        return -EINVAL;
+
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS)) {
         switch (this->sync_mode & SYNC_MODE_MASK) {
             case SYNC_MODE_NONCACHED : 
@@ -571,13 +574,12 @@ static int udmabuf_device_file_mmap(struct file *file, struct vm_area_struct* vm
         }
     }
     vma->vm_private_data = this;
-    vma->vm_pgoff        = 0;
 
 #if (USE_VMA_FAULT == 1)
     {
-        unsigned long page_frame_num = this->phys_addr >> PAGE_SHIFT;
+        unsigned long page_frame_num = (this->phys_addr >> PAGE_SHIFT) + vma->vm_pgoff;
         if (pfn_valid(page_frame_num)) {
-            vma->vm_ops      = &udmabuf_device_vm_ops;
+            vma->vm_ops = &udmabuf_device_vm_ops;
             udmabuf_device_vma_open(vma);
             return 0;
         }
