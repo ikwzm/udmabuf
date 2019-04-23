@@ -575,9 +575,10 @@ Details of manual cache management is described in the next section.
 ### `sync_for_cpu`
 
 In the manual cache management mode, CPU can be the owner of the buffer by writing
-`1` to the device file `/sys/class/udmabuf/<device-name>/sync_for_cpu`.
-If `sync_direction` is 2(=DMA_FROM_DEVICE) or 0(=DMA_BIDIRECTIONAL), the write to
-the device file invalidates a cache specified by `sync_offset` and `sync_size`.
+non-zero to the device file `/sys/class/udmabuf/<device-name>/sync_for_cpu`.
+
+If '1' is written to device file, if `sync_direction` is 2(=DMA_FROM_DEVICE) or 0(=DMA_BIDIRECTIONAL),
+the write to the device file invalidates a cache specified by `sync_offset` and `sync_size`.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -589,14 +590,32 @@ the device file invalidates a cache specified by `sync_offset` and `sync_size`.
     }
 ```
 
+The value written to this device file can include sync_offset, sync_size, and sync_direction. 
+
+```C:udmabuf_test.c
+    unsigned char  attr[1024];
+    unsigned long  sync_offset    = 0;
+    unsigned long  sync_size      = 0x10000;
+    unsigned int   sync_direction = 1;
+    unsigned long  sync_for_cpu   = 1;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_for_cpu", O_WRONLY)) != -1) {
+        sprintf(attr, "0x%08X%08X", (sync_offset & 0xFFFFFFFF), (sync_size & 0xFFFFFFF0) | (sync_direction << 2) | sync_for_cpu);
+        write(fd, attr, strlen(attr));
+        close(fd);
+    }
+```
+
+The sync_offset/sync_size/sync_direction specified by ```sync_for_cpu``` is temporary and does not affect the ```sync_offset``` or ```sync_size``` or ```sync_direction``` device files.
+
 Details of manual cache management is described in the next section.
 
 ### `sync_for_device`
 
 In the manual cache management mode, DEVICE can be the owner of the buffer by
-writing `1` to the device file `/sys/class/udmabuf/<device-name>/sync_for_device`.
-If `sync_direction` is 1(=DMA_TO_DEVICE) or 0(=DMA_BIDIRECTIONAL), the write to the
-device file flushes a cache specified by `sync_offset` and `sync_size` (i.e. the
+writing non-zero to the device file `/sys/class/udmabuf/<device-name>/sync_for_device`.
+
+If '1' is written to device file, if `sync_direction` is 1(=DMA_TO_DEVICE) or 0(=DMA_BIDIRECTIONAL),
+the write to the device file flushes a cache specified by `sync_offset` and `sync_size` (i.e. the
 cached data, if any, will be updated with data on DDR memory).
 
 ```C:udmabuf_test.c
@@ -608,6 +627,23 @@ cached data, if any, will be updated with data on DDR memory).
         close(fd);
     }
 ```
+
+The value written to this device file can include sync_offset, sync_size, and sync_direction. 
+
+```C:udmabuf_test.c
+    unsigned char  attr[1024];
+    unsigned long  sync_offset     = 0;
+    unsigned long  sync_size       = 0x10000;
+    unsigned int   sync_direction  = 1;
+    unsigned long  sync_for_device = 1;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_for_device", O_WRONLY)) != -1) {
+        sprintf(attr, "0x%08X%08X", (sync_offset & 0xFFFFFFFF), (sync_size & 0xFFFFFFF0) | (sync_direction << 2) | sync_for_device);
+        write(fd, attr, strlen(attr));
+        close(fd);
+    }
+```
+
+The sync_offset/sync_size/sync_direction specified by ```sync_for_device``` is temporary and does not affect the ```sync_offset``` or ```sync_size``` or ```sync_direction``` device files.
 
 Details of manual cache management is described in the next section.
 
