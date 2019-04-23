@@ -485,7 +485,7 @@ the start address of a memory block of which cache is manually managed.
     unsigned char  attr[1024];
     unsigned long  sync_offset = 0x00000000;
     if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_offset", O_WRONLY)) != -1) {
-        sprintf(attr, "%d", sync_offset);
+        sprintf(attr, "%d", sync_offset); /* or sprintf(attr, "0x%x", sync_offset); */
         write(fd, attr, strlen(attr));
         close(fd);
     }
@@ -502,7 +502,7 @@ the size of a memory block of which cache is manually managed.
     unsigned char  attr[1024];
     unsigned long  sync_size = 1024;
     if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_size", O_WRONLY)) != -1) {
-        sprintf(attr, "%d", sync_size);
+        sprintf(attr, "%d", sync_size); /* or sprintf(attr, "0x%x", sync_size); */
         write(fd, attr, strlen(attr));
         close(fd);
     }

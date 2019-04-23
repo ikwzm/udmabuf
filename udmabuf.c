@@ -1,6 +1,6 @@
 /*********************************************************************************
  *
- *       Copyright (C) 2015-2018 Ichiro Kawazome
+ *       Copyright (C) 2015-2019 Ichiro Kawazome
  *       All rights reserved.
  * 
  *       Redistribution and use in source and binary forms, with or without
@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.3.2"
+#define DRIVER_VERSION     "1.4.0-rc1"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -161,7 +161,7 @@ struct udmabuf_device_data {
     void*                virt_addr;
     dma_addr_t           phys_addr;
     int                  sync_mode;
-    int                  sync_offset;
+    u64                  sync_offset;
     size_t               sync_size;
     int                  sync_direction;
     bool                 sync_owner;
@@ -274,7 +274,7 @@ static ssize_t udmabuf_set_ ## __attr_name(struct device *dev, struct device_att
     unsigned long value;  \
     struct udmabuf_device_data* this = dev_get_drvdata(dev);                 \
     if (0 != mutex_lock_interruptible(&this->sem)){return -ERESTARTSYS;}     \
-    if (0 != (status = kstrtoul(buf, 10, &value))){            goto failed;} \
+    if (0 != (status = kstrtoul(buf, 0, &value))) {            goto failed;} \
     if ((value < __min) || (__max < value)) {status = -EINVAL; goto failed;} \
     if (0 != (status = __pre_action(this)))       {            goto failed;} \
     this->__attr_name = value;                                               \
@@ -285,28 +285,28 @@ static ssize_t udmabuf_set_ ## __attr_name(struct device *dev, struct device_att
     return status;                                                           \
 }
 
-DEF_ATTR_SHOW(driver_version , "%s\n"   , DRIVER_VERSION                          );
-DEF_ATTR_SHOW(size           , "%d\n"   , this->size                              );
-DEF_ATTR_SHOW(phys_addr      , "%pad\n" , &this->phys_addr                        );
-DEF_ATTR_SHOW(sync_mode      , "%d\n"   , this->sync_mode                         );
-DEF_ATTR_SET( sync_mode                 , 0, 7, NO_ACTION, NO_ACTION              );
-DEF_ATTR_SHOW(sync_offset    , "0x%lx\n", (long unsigned int)this->sync_offset    );
-DEF_ATTR_SET( sync_offset               , 0, 0xFFFFFFFF, NO_ACTION, NO_ACTION     );
-DEF_ATTR_SHOW(sync_size      , "%zu\n"  , this->sync_size                         );
-DEF_ATTR_SET( sync_size                 , 0, 0xFFFFFFFF, NO_ACTION, NO_ACTION     );
-DEF_ATTR_SHOW(sync_direction , "%d\n"   , this->sync_direction                    );
-DEF_ATTR_SET( sync_direction            , 0, 2, NO_ACTION, NO_ACTION              );
-DEF_ATTR_SHOW(sync_owner     , "%d\n"   , this->sync_owner                        );
-DEF_ATTR_SHOW(sync_for_cpu   , "%d\n"   , this->sync_for_cpu                      );
-DEF_ATTR_SET( sync_for_cpu              , 0, 1, NO_ACTION, udmabuf_sync_for_cpu   );
-DEF_ATTR_SHOW(sync_for_device, "%d\n"   , this->sync_for_device                   );
-DEF_ATTR_SET( sync_for_device           , 0, 1, NO_ACTION, udmabuf_sync_for_device);
+DEF_ATTR_SHOW(driver_version , "%s\n"   , DRIVER_VERSION                                  );
+DEF_ATTR_SHOW(size           , "%d\n"   , this->size                                      );
+DEF_ATTR_SHOW(phys_addr      , "%pad\n" , &this->phys_addr                                );
+DEF_ATTR_SHOW(sync_mode      , "%d\n"   , this->sync_mode                                 );
+DEF_ATTR_SET( sync_mode                 , 0, 7,        NO_ACTION, NO_ACTION               );
+DEF_ATTR_SHOW(sync_offset    , "0x%lx\n", (long unsigned int)this->sync_offset            );
+DEF_ATTR_SET( sync_offset               , 0, U64_MAX,  NO_ACTION, NO_ACTION               );
+DEF_ATTR_SHOW(sync_size      , "%zu\n"  , this->sync_size                                 );
+DEF_ATTR_SET( sync_size                 , 0, SIZE_MAX, NO_ACTION, NO_ACTION               );
+DEF_ATTR_SHOW(sync_direction , "%d\n"   , this->sync_direction                            );
+DEF_ATTR_SET( sync_direction            , 0, 2,        NO_ACTION, NO_ACTION               );
+DEF_ATTR_SHOW(sync_owner     , "%d\n"   , this->sync_owner                                );
+DEF_ATTR_SHOW(sync_for_cpu   , "%d\n"   , this->sync_for_cpu                              );
+DEF_ATTR_SET( sync_for_cpu              , 0, 1,        NO_ACTION, udmabuf_sync_for_cpu    );
+DEF_ATTR_SHOW(sync_for_device, "%d\n"   , this->sync_for_device                           );
+DEF_ATTR_SET( sync_for_device           , 0, 1,        NO_ACTION, udmabuf_sync_for_device );
 #if (USE_DMA_COHERENT == 1)
-DEF_ATTR_SHOW(dma_coherent   , "%d\n"   , is_device_dma_coherent(this->dma_dev)   );
+DEF_ATTR_SHOW(dma_coherent   , "%d\n"   , is_device_dma_coherent(this->dma_dev)           );
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
-DEF_ATTR_SHOW(debug_vma      , "%d\n"   , this->debug_vma                         );
-DEF_ATTR_SET( debug_vma                 , 0, 1, NO_ACTION, NO_ACTION              );
+DEF_ATTR_SHOW(debug_vma      , "%d\n"   , this->debug_vma                                 );
+DEF_ATTR_SET( debug_vma                 , 0, 1,        NO_ACTION, NO_ACTION               );
 #endif
 
 static struct device_attribute udmabuf_device_attrs[] = {
