@@ -1,6 +1,6 @@
 /*********************************************************************************
  *
- *       Copyright (C) 2015-2018 Ichiro Kawazome
+ *       Copyright (C) 2015-2019 Ichiro Kawazome
  *       All rights reserved.
  * 
  *       Redistribution and use in source and binary forms, with or without
@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.3.2"
+#define DRIVER_VERSION     "1.4.0"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -161,12 +161,12 @@ struct udmabuf_device_data {
     void*                virt_addr;
     dma_addr_t           phys_addr;
     int                  sync_mode;
-    int                  sync_offset;
+    u64                  sync_offset;
     size_t               sync_size;
     int                  sync_direction;
     bool                 sync_owner;
-    int                  sync_for_cpu;
-    int                  sync_for_device;
+    u64                  sync_for_cpu;
+    u64                  sync_for_device;
 #if (USE_OF_RESERVED_MEM == 1)
     bool                 of_reserved_mem;
 #endif
@@ -209,48 +209,98 @@ struct udmabuf_device_data {
  * * 
  */
 
+#define  SYNC_COMMAND_DIR_MASK        (0x000000000000000C)
+#define  SYNC_COMMAND_DIR_SHIFT       (2)
+#define  SYNC_COMMAND_SIZE_MASK       (0x00000000FFFFFFF0)
+#define  SYNC_COMMAND_SIZE_SHIFT      (0)
+#define  SYNC_COMMAND_OFFSET_MASK     (0xFFFFFFFF00000000)
+#define  SYNC_COMMAND_OFFSET_SHIFT    (32)
+#define  SYNC_COMMAND_ARGMENT_MASK    (0xFFFFFFFFFFFFFFFE)
+/**
+ * udmabuf_sync_command_argments() - get argment for dma_sync_single_for_cpu() or dma_sync_single_for_device()
+ *                                  
+ * @this:       Pointer to the udmabuf device data structure.
+ * @command     sync command (this->sync_for_cpu or this->sync_for_device)
+ * @phys_addr   Pointer to the phys_addr for dma_sync_single_for_...()
+ * @size        Pointer to the size for dma_sync_single_for_...()
+ * @direction   Pointer to the direction for dma_sync_single_for_...()
+ * Return:      Success(=0) or error status(<0).
+ */
+static int udmabuf_sync_command_argments(
+    struct udmabuf_device_data *this     ,
+    u64                         command  ,
+    dma_addr_t                 *phys_addr,
+    size_t                     *size     ,
+    enum dma_data_direction    *direction
+) {
+    u64    sync_offset   ;
+    size_t sync_size     ;
+    int    sync_direction;
+    if ((command & SYNC_COMMAND_ARGMENT_MASK) != 0) {
+        sync_offset    = (u64   )((command & SYNC_COMMAND_OFFSET_MASK) >> SYNC_COMMAND_OFFSET_SHIFT);
+        sync_size      = (size_t)((command & SYNC_COMMAND_SIZE_MASK  ) >> SYNC_COMMAND_SIZE_SHIFT  );
+        sync_direction = (int   )((command & SYNC_COMMAND_DIR_MASK   ) >> SYNC_COMMAND_DIR_SHIFT   );
+    } else {
+        sync_offset    = this->sync_offset;
+        sync_size      = this->sync_size;
+        sync_direction = this->sync_direction;
+    }
+    if (sync_offset + sync_size > this->size)
+        return -EINVAL;
+    switch(sync_direction) {
+        case 1 : *direction = DMA_TO_DEVICE    ; break;
+        case 2 : *direction = DMA_FROM_DEVICE  ; break;
+        default: *direction = DMA_BIDIRECTIONAL; break;
+    }
+    *phys_addr = this->phys_addr + sync_offset;
+    *size      = sync_size;
+    return 0;
+} 
+
 /**
  * udmabuf_sync_for_cpu() - call dma_sync_single_for_cpu() when (sync_for_cpu != 0)
  * @this:       Pointer to the udmabuf device data structure.
- * Return:	Success(0)
+ * Return:      Success(=0) or error status(<0).
  */
 static int udmabuf_sync_for_cpu(struct udmabuf_device_data* this)
 {
+    int status = 0;
+
     if (this->sync_for_cpu) {
-        dma_addr_t phys_addr = this->phys_addr + this->sync_offset;
+        dma_addr_t              phys_addr;
+        size_t                  size;
         enum dma_data_direction direction;
-        switch(this->sync_direction) {
-            case 1 : direction = DMA_TO_DEVICE    ; break;
-            case 2 : direction = DMA_FROM_DEVICE  ; break;
-            default: direction = DMA_BIDIRECTIONAL; break;
+        status = udmabuf_sync_command_argments(this, this->sync_for_cpu, &phys_addr, &size, &direction);
+        if (status == 0) {
+            dma_sync_single_for_cpu(this->dma_dev, phys_addr, size, direction);
+            this->sync_for_cpu = 0;
+            this->sync_owner   = 0;
         }
-        dma_sync_single_for_cpu(this->dma_dev, phys_addr, this->sync_size, direction);
-        this->sync_for_cpu = 0;
-        this->sync_owner   = 0;
     }
-    return 0;
+    return status;
 }
 
 /**
  * udmabuf_sync_for_device() - call dma_sync_single_for_device() when (sync_for_device != 0)
  * @this:       Pointer to the udmabuf device data structure.
- * Return:	Success(0)
+ * Return:      Success(=0) or error status(<0).
  */
 static int udmabuf_sync_for_device(struct udmabuf_device_data* this)
 {
+    int status = 0;
+
     if (this->sync_for_device) {
-        dma_addr_t phys_addr = this->phys_addr + this->sync_offset;
+        dma_addr_t              phys_addr;
+        size_t                  size;
         enum dma_data_direction direction;
-        switch(this->sync_direction) {
-            case 1 : direction = DMA_TO_DEVICE    ; break;
-            case 2 : direction = DMA_FROM_DEVICE  ; break;
-            default: direction = DMA_BIDIRECTIONAL; break;
+        status = udmabuf_sync_command_argments(this, this->sync_for_device, &phys_addr, &size, &direction);
+        if (status == 0) {
+            dma_sync_single_for_device(this->dma_dev, phys_addr, size, direction);
+            this->sync_for_device = 0;
+            this->sync_owner      = 1;
         }
-        dma_sync_single_for_device(this->dma_dev, phys_addr, this->sync_size, direction);
-        this->sync_for_device = 0;
-        this->sync_owner      = 1;
     }
-    return 0;
+    return status;
 }
 
 #define DEF_ATTR_SHOW(__attr_name, __format, __value) \
@@ -271,10 +321,10 @@ static inline int NO_ACTION(struct udmabuf_device_data* this){return 0;}
 static ssize_t udmabuf_set_ ## __attr_name(struct device *dev, struct device_attribute *attr, const char *buf, size_t size) \
 { \
     ssize_t       status; \
-    unsigned long value;  \
+    u64           value;  \
     struct udmabuf_device_data* this = dev_get_drvdata(dev);                 \
     if (0 != mutex_lock_interruptible(&this->sem)){return -ERESTARTSYS;}     \
-    if (0 != (status = kstrtoul(buf, 10, &value))){            goto failed;} \
+    if (0 != (status = kstrtoull(buf, 0, &value))){            goto failed;} \
     if ((value < __min) || (__max < value)) {status = -EINVAL; goto failed;} \
     if (0 != (status = __pre_action(this)))       {            goto failed;} \
     this->__attr_name = value;                                               \
@@ -285,28 +335,28 @@ static ssize_t udmabuf_set_ ## __attr_name(struct device *dev, struct device_att
     return status;                                                           \
 }
 
-DEF_ATTR_SHOW(driver_version , "%s\n"   , DRIVER_VERSION                          );
-DEF_ATTR_SHOW(size           , "%d\n"   , this->size                              );
-DEF_ATTR_SHOW(phys_addr      , "%pad\n" , &this->phys_addr                        );
-DEF_ATTR_SHOW(sync_mode      , "%d\n"   , this->sync_mode                         );
-DEF_ATTR_SET( sync_mode                 , 0, 7, NO_ACTION, NO_ACTION              );
-DEF_ATTR_SHOW(sync_offset    , "0x%lx\n", (long unsigned int)this->sync_offset    );
-DEF_ATTR_SET( sync_offset               , 0, 0xFFFFFFFF, NO_ACTION, NO_ACTION     );
-DEF_ATTR_SHOW(sync_size      , "%zu\n"  , this->sync_size                         );
-DEF_ATTR_SET( sync_size                 , 0, 0xFFFFFFFF, NO_ACTION, NO_ACTION     );
-DEF_ATTR_SHOW(sync_direction , "%d\n"   , this->sync_direction                    );
-DEF_ATTR_SET( sync_direction            , 0, 2, NO_ACTION, NO_ACTION              );
-DEF_ATTR_SHOW(sync_owner     , "%d\n"   , this->sync_owner                        );
-DEF_ATTR_SHOW(sync_for_cpu   , "%d\n"   , this->sync_for_cpu                      );
-DEF_ATTR_SET( sync_for_cpu              , 0, 1, NO_ACTION, udmabuf_sync_for_cpu   );
-DEF_ATTR_SHOW(sync_for_device, "%d\n"   , this->sync_for_device                   );
-DEF_ATTR_SET( sync_for_device           , 0, 1, NO_ACTION, udmabuf_sync_for_device);
+DEF_ATTR_SHOW(driver_version , "%s\n"    , DRIVER_VERSION                                 );
+DEF_ATTR_SHOW(size           , "%d\n"    , this->size                                     );
+DEF_ATTR_SHOW(phys_addr      , "%pad\n"  , &this->phys_addr                               );
+DEF_ATTR_SHOW(sync_mode      , "%d\n"    , this->sync_mode                                );
+DEF_ATTR_SET( sync_mode                  , 0, 7,        NO_ACTION, NO_ACTION              );
+DEF_ATTR_SHOW(sync_offset    , "0x%llx\n", this->sync_offset                              );
+DEF_ATTR_SET( sync_offset                , 0, U64_MAX,  NO_ACTION, NO_ACTION              );
+DEF_ATTR_SHOW(sync_size      , "%zu\n"   , this->sync_size                                );
+DEF_ATTR_SET( sync_size                  , 0, SIZE_MAX, NO_ACTION, NO_ACTION              );
+DEF_ATTR_SHOW(sync_direction , "%d\n"    , this->sync_direction                           );
+DEF_ATTR_SET( sync_direction             , 0, 2,        NO_ACTION, NO_ACTION              );
+DEF_ATTR_SHOW(sync_owner     , "%d\n"    , this->sync_owner                               );
+DEF_ATTR_SHOW(sync_for_cpu   , "%llu\n"  , this->sync_for_cpu                             );
+DEF_ATTR_SET( sync_for_cpu               , 0, U64_MAX,  NO_ACTION, udmabuf_sync_for_cpu   );
+DEF_ATTR_SHOW(sync_for_device, "%llu\n"  , this->sync_for_device                          );
+DEF_ATTR_SET( sync_for_device            , 0, U64_MAX,  NO_ACTION, udmabuf_sync_for_device);
 #if (USE_DMA_COHERENT == 1)
-DEF_ATTR_SHOW(dma_coherent   , "%d\n"   , is_device_dma_coherent(this->dma_dev)   );
+DEF_ATTR_SHOW(dma_coherent   , "%d\n"    , is_device_dma_coherent(this->dma_dev)          );
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
-DEF_ATTR_SHOW(debug_vma      , "%d\n"   , this->debug_vma                         );
-DEF_ATTR_SET( debug_vma                 , 0, 1, NO_ACTION, NO_ACTION              );
+DEF_ATTR_SHOW(debug_vma      , "%d\n"    , this->debug_vma                                );
+DEF_ATTR_SET( debug_vma                  , 0, 1,        NO_ACTION, NO_ACTION              );
 #endif
 
 static struct device_attribute udmabuf_device_attrs[] = {

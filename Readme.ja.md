@@ -653,7 +653,9 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_for_cpu
 
 
-/sys/class/udmabuf/\<device-name\>/sync_for_cpu はudmabufのキャッシュ制御を手動で行う際、このデバイスドライバに1を書き込むことでバッファのオーナーをCPUにします。その際、sync_directionが2(=DMA_FROM_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュが無効化されます。
+/sys/class/udmabuf/\<device-name\>/sync_for_cpu はudmabufのキャッシュ制御を手動で行う際、このデバイスファイルに0以外の値を書き込むことでバッファのオーナーをCPUにします。
+
+このデバイスファイルに 1 を書いた場合、sync_directionが2(=DMA_FROM_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュが無効化されます。
 
 
 ```C:udmabuf_test.c
@@ -667,15 +669,38 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ```
 
 
+
+
+この sync_for_cpu デバイスファイルに書き込む値には、次のように、 sync_offset、sync_size および sync_direction を含める事が出来ます。
+
+
+```C:udmabuf_test.c
+    unsigned char  attr[1024];
+    unsigned long  sync_offset     = 0;
+    unsigned long  sync_size        = 0x10000;
+    unsigned int   sync_direction = 1;
+    unsigned long  sync_for_cpu    = 1;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_for_cpu", O_WRONLY)) != -1) {
+        sprintf(attr, "0x%08X%08X", (sync_offset & 0xFFFFFFFF), (sync_size & 0xFFFFFFF0) | (sync_direction << 2) | sync_for_cpu);
+        write(fd, attr, strlen(attr));
+        close(fd);
+    }
+```
+
+
+この sync_for_cpu デバイスファイルに含まれた sync_offset、sync_size、sync_direction は一時的なものであり、デバイスファイルの sync_offset、sync_size、sync_direction の値には影響を与えません。
+
+
+
 手動でキャッシュを制御する方法は次の節で説明します。
-
-
 
 
 ### sync_for_device
 
 
-/sys/class/udmabuf/\<device-name\>/sync_for_deviceはudmabufのキャッシュ制御を手動で行う際、このデバイスドライバに1を書き込むことでバッファのオーナーをDEVICEにします。その際、sync_directionが1(=DMA_TO_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュがフラッシュされます。
+/sys/class/udmabuf/\<device-name\>/sync_for_deviceはudmabufのキャッシュ制御を手動で行う際、このデバイスドライバに0以外の値を書き込むことでバッファのオーナーをDEVICEにします。
+
+このデバイスファイルに 1 を書いた場合、sync_directionが1(=DMA_TO_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュがフラッシュされます。
 
 
 ```C:udmabuf_test.c
@@ -687,6 +712,29 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
         close(fd);
     }
 ```
+
+
+
+
+この sync_for_device デバイスファイルに書き込む値には、次のように、 sync_offset、sync_size および sync_direction を含める事が出来ます。
+
+
+```C:udmabuf_test.c
+    unsigned char  attr[1024];
+    unsigned long  sync_offset     = 0;
+    unsigned long  sync_size        = 0x10000;
+    unsigned int   sync_direction  = 1;
+    unsigned long  sync_for_device = 1;
+    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_for_device", O_WRONLY)) != -1) {
+        sprintf(attr, "0x%08X%08X", (sync_offset & 0xFFFFFFFF), (sync_size & 0xFFFFFFF0) | (sync_direction << 2) | sync_for_device);
+        write(fd, attr, strlen(attr));
+        close(fd);
+    }
+```
+
+
+この sync_for_device デバイスファイルに含まれた sync_offset、sync_size、sync_direction は一時的なものであり、デバイスファイルの sync_offset、sync_size、sync_direction の値には影響を与えません。
+
 
 
 手動でキャッシュを制御する方法は次の節で説明します。
