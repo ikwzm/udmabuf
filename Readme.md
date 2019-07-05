@@ -36,7 +36,7 @@ Figure 1. Architecture
 
 ## Supported platforms
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: x86(64bit) However, verification is not enough. I hope the results from everyone.
