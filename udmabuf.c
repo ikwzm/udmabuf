@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.4.1"
+#define DRIVER_VERSION     "1.4.2-rc1"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -457,39 +457,43 @@ static void udmabuf_device_vma_close(struct vm_area_struct* vma)
 static inline int _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
 {
     struct udmabuf_device_data* this = vma->vm_private_data;
-    struct page*  page_ptr           = NULL;
     unsigned long offset             = vmf->pgoff << PAGE_SHIFT;
     unsigned long phys_addr          = this->phys_addr + offset;
     unsigned long page_frame_num     = phys_addr  >> PAGE_SHIFT;
     unsigned long request_size       = 1          << PAGE_SHIFT;
     unsigned long available_size     = this->alloc_size -offset;
+    unsigned long virt_addr;
 
 #if (LINUX_VERSION_CODE >= 0x040A00)
-    if (UDMABUF_DEBUG_CHECK(this, debug_vma))
-        dev_info(this->dma_dev,
-                 "vma_fault(virt_addr=0x%lx, phys_addr=%pad)\n",
-                 vmf->address,
-                 &phys_addr
-        );
+    virt_addr = vmf->address;
 #else
-    if (UDMABUF_DEBUG_CHECK(this, debug_vma))
-        dev_info(this->dma_dev,
-                 "vma_fault(virt_addr=0x%lx, phys_addr=%pad)\n",
-                 (long unsigned int)vmf->virtual_address,
-                 &phys_addr
-        );
+    virt_addr = (unsigned long)vmf->virtual_address;
 #endif
     
+    if (UDMABUF_DEBUG_CHECK(this, debug_vma))
+        dev_info(this->dma_dev,
+                 "vma_fault(virt_addr=%pad, phys_addr=%pad)\n", &virt_addr, &phys_addr
+        );
+
     if (request_size > available_size) 
         return VM_FAULT_SIGBUS;
 
     if (!pfn_valid(page_frame_num))
         return VM_FAULT_SIGBUS;
 
-    page_ptr = pfn_to_page(page_frame_num);
-    get_page(page_ptr);
-    vmf->page = page_ptr;
-    return 0;
+#if (LINUX_VERSION_CODE >= 0x041200)
+    return vmf_insert_pfn(vma, virt_addr, page_frame_num);
+#else
+    {
+        int err = vm_insert_pfn(vma, virt_addr, page_frame_num);
+	if (err == -ENOMEM)
+		return VM_FAULT_OOM;
+	if (err < 0 && err != -EBUSY)
+		return VM_FAULT_SIGBUS;
+
+	return VM_FAULT_NOPAGE;
+    }
+#endif
 }
 
 #if (LINUX_VERSION_CODE >= 0x040B00)
@@ -629,7 +633,8 @@ static int udmabuf_device_file_mmap(struct file *file, struct vm_area_struct* vm
     {
         unsigned long page_frame_num = (this->phys_addr >> PAGE_SHIFT) + vma->vm_pgoff;
         if (pfn_valid(page_frame_num)) {
-            vma->vm_ops = &udmabuf_device_vm_ops;
+            vma->vm_flags |= VM_PFNMAP;
+            vma->vm_ops    = &udmabuf_device_vm_ops;
             udmabuf_device_vma_open(vma);
             return 0;
         }
