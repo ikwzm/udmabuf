@@ -167,7 +167,7 @@ struct udmabuf_device_data {
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
     bool                 debug_vma;
-#endif   
+#endif
 };
 
 /**
@@ -422,7 +422,7 @@ static inline void udmabuf_sys_class_set_attributes(void)
 /**
  * udmabuf_device_vma_open() - udmabuf device vm area open operation.
  * @vma:        Pointer to the vm area structure.
- * Return:	None
+ * Return:      None
  */
 static void udmabuf_device_vma_open(struct vm_area_struct* vma)
 {
@@ -434,7 +434,7 @@ static void udmabuf_device_vma_open(struct vm_area_struct* vma)
 /**
  * udmabuf_device_vma_close() - udmabuf device vm area close operation.
  * @vma:        Pointer to the vm area structure.
- * Return:	None
+ * Return:      None
  */
 static void udmabuf_device_vma_close(struct vm_area_struct* vma)
 {
@@ -464,13 +464,13 @@ static inline int _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct v
 #else
     virt_addr = (unsigned long)vmf->virtual_address;
 #endif
-    
+
     if (UDMABUF_DEBUG_CHECK(this, debug_vma))
         dev_info(this->dma_dev,
                  "vma_fault(virt_addr=%pad, phys_addr=%pad)\n", &virt_addr, &phys_addr
         );
 
-    if (request_size > available_size) 
+    if (request_size > available_size)
         return VM_FAULT_SIGBUS;
 
     if (!pfn_valid(page_frame_num))
@@ -481,12 +481,12 @@ static inline int _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct v
 #else
     {
         int err = vm_insert_pfn(vma, virt_addr, page_frame_num);
-	if (err == -ENOMEM)
-		return VM_FAULT_OOM;
-	if (err < 0 && err != -EBUSY)
-		return VM_FAULT_SIGBUS;
+        if (err == -ENOMEM)
+            return VM_FAULT_OOM;
+        if (err < 0 && err != -EBUSY)
+            return VM_FAULT_SIGBUS;
 
-	return VM_FAULT_NOPAGE;
+        return VM_FAULT_NOPAGE;
     }
 #endif
 }
@@ -541,8 +541,8 @@ static const struct vm_operations_struct udmabuf_device_vm_ops = {
 
 /**
  * udmabuf_device_file_open() - udmabuf device file open operation.
- * @inode:	Pointer to the inode structure of this device.
- * @file:	Pointer to the file structure.
+ * @inode:      Pointer to the inode structure of this device.
+ * @file:       to the file structure.
  * Return:      Success(=0) or error status(<0).
  */
 static int udmabuf_device_file_open(struct inode *inode, struct file *file)
@@ -559,8 +559,8 @@ static int udmabuf_device_file_open(struct inode *inode, struct file *file)
 
 /**
  * udmabuf_device_file_release() - udmabuf device file release operation.
- * @inode:	Pointer to the inode structure of this device.
- * @file:	Pointer to the file structure.
+ * @inode:      Pointer to the inode structure of this device.
+ * @file:       Pointer to the file structure.
  * Return:      Success(=0) or error status(<0).
  */
 static int udmabuf_device_file_release(struct inode *inode, struct file *file)
@@ -593,7 +593,7 @@ static int udmabuf_device_file_release(struct inode *inode, struct file *file)
 
 /**
  * udmabuf_device_file_mmap() - udmabuf device file memory map operation.
- * @file:	Pointer to the file structure.
+ * @file:       Pointer to the file structure.
  * @vma:        Pointer to the vm area structure.
  * Return:      Success(=0) or error status(<0).
  */
@@ -606,11 +606,11 @@ static int udmabuf_device_file_mmap(struct file *file, struct vm_area_struct* vm
 
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS)) {
         switch (this->sync_mode & SYNC_MODE_MASK) {
-            case SYNC_MODE_NONCACHED : 
+            case SYNC_MODE_NONCACHED :
                 vma->vm_flags    |= VM_IO;
                 vma->vm_page_prot = _PGPROT_NONCACHED(vma->vm_page_prot);
                 break;
-            case SYNC_MODE_WRITECOMBINE : 
+            case SYNC_MODE_WRITECOMBINE :
                 vma->vm_flags    |= VM_IO;
                 vma->vm_page_prot = _PGPROT_WRITECOMBINE(vma->vm_page_prot);
                 break;
@@ -641,11 +641,11 @@ static int udmabuf_device_file_mmap(struct file *file, struct vm_area_struct* vm
 
 /**
  * udmabuf_device_file_read() - udmabuf device file read operation.
- * @file:	Pointer to the file structure.
- * @buff:	Pointer to the user buffer.
- * @count:	The number of bytes to be read.
- * @ppos:	Pointer to the offset value.
- * Return:	Transferd size.
+ * @file:       Pointer to the file structure.
+ * @buff:       Pointer to the user buffer.
+ * @count:      The number of bytes to be read.
+ * @ppos:       Pointer to the offset value.
+ * Return:      Transferd size.
  */
 static ssize_t udmabuf_device_file_read(struct file* file, char __user* buff, size_t count, loff_t* ppos)
 {
@@ -688,11 +688,11 @@ static ssize_t udmabuf_device_file_read(struct file* file, char __user* buff, si
 
 /**
  * udmabuf_device_file_write() - udmabuf device file write operation.
- * @file:	Pointer to the file structure.
- * @buff:	Pointer to the user buffer.
- * @count:	The number of bytes to be written.
- * @ppos:	Pointer to the offset value
- * Return:	Transferd size.
+ * @file:       Pointer to the file structure.
+ * @buff:       Pointer to the user buffer.
+ * @count:      The number of bytes to be written.
+ * @ppos:       Pointer to the offset value
+ * Return:      Transferd size.
  */
 static ssize_t udmabuf_device_file_write(struct file* file, const char __user* buff, size_t count, loff_t* ppos)
 {
@@ -735,10 +735,10 @@ static ssize_t udmabuf_device_file_write(struct file* file, const char __user* b
 
 /**
  * udmabuf_device_file_llseek() - udmabuf device file llseek operation.
- * @file:	Pointer to the file structure.
- * @offset:	File offset to seek.
- * @whence:	Type of seek.
- * Return:	The new position.
+ * @file:       Pointer to the file structure.
+ * @offset:     File offset to seek.
+ * @whence:     Type of seek.
+ * Return:      The new position.
  */
 static loff_t udmabuf_device_file_llseek(struct file* file, loff_t offset, int whence)
 {
@@ -1036,12 +1036,12 @@ struct udmabuf_static_device {
 
 /**
  * udmabuf_static_device_list   - list of udmabuf static device structure.
- */ 
+ */
 struct udmabuf_static_device udmabuf_static_device_list[STATIC_DEVICE_NUM] = {};
 
 /**
  * udmabuf_static_device_create() - Create udmabuf static device.
- * @id:	        device id.
+ * @id:         device id.
  * @size:       buffer size.
  */
 static void udmabuf_static_device_create(int id, unsigned int size)
@@ -1051,7 +1051,7 @@ static void udmabuf_static_device_create(int id, unsigned int size)
 
     if ((id < 0) || (id >= STATIC_DEVICE_NUM))
         return;
-    
+
     if (size == 0) {
         udmabuf_static_device_list[id].pdev = NULL;
         udmabuf_static_device_list[id].size = 0;
@@ -1087,7 +1087,7 @@ static void udmabuf_static_device_create(int id, unsigned int size)
 
 /**
  * udmabuf_static_device_remove() - Remove the udmabuf static device.
- * @id:	        device id.
+ * @id:         device id.
  */
 static void udmabuf_static_device_remove(int id)
 {
@@ -1101,9 +1101,9 @@ static void udmabuf_static_device_remove(int id)
 
 /**
  * udmabuf_static_device_search() - Search udmabuf static device from udmabuf_static_device_list.
- * @pdev:	Handle to the platform device structure.
- * @pid:	Pointer to device id.
- * @psize:	Pointer to buffer size.
+ * @pdev:       Handle to the platform device structure.
+ * @pid:        Pointer to device id.
+ * @psize:      Pointer to buffer size.
  * Return:      1 = found, 0 = not found
  */
 static int udmabuf_static_device_search(struct platform_device *pdev, int* pid, unsigned int* psize)
@@ -1183,7 +1183,7 @@ static void udmabuf_static_device_remove_all(void)
 
 /**
  * udmabuf_platform_driver_cleanup()   - Clean Up udmabuf platform driver
- * @pdev:	handle to the platform device structure.
+ * @pdev:       handle to the platform device structure.
  * @devdata     Pointer to the udmabuf device data structure.
  * Return:      Success(=0) or error status(<0).
  */
@@ -1210,7 +1210,7 @@ static int udmabuf_platform_driver_cleanup(struct platform_device *pdev, struct 
 
 /**
  * udmabuf_platform_driver_probe() -  Probe call for the device.
- * @pdev:	handle to the platform device structure.
+ * @pdev:       handle to the platform device structure.
  * Return:      Success(=0) or error status(<0).
  *
  * It does all the memory allocation and registration for the device.
@@ -1364,7 +1364,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
         dev_err(&pdev->dev, "driver setup failed. return=%d\n", retval);
         goto failed;
     }
-    
+
     if (info_enable) {
         udmabuf_device_info(device_data);
         dev_info(&pdev->dev, "driver installed.\n");
@@ -1379,7 +1379,7 @@ failed:
 
 /**
  * udmabuf_platform_driver_remove() -  Remove call for the device.
- * @pdev:	Handle to the platform device structure.
+ * @pdev:       Handle to the platform device structure.
  * Return:      Success(=0) or error status(<0).
  *
  * Unregister the device after releasing the resources.
@@ -1451,7 +1451,7 @@ static int __init udmabuf_module_init(void)
     int retval = 0;
 
     ida_init(&udmabuf_device_ida);
-      
+
     retval = alloc_chrdev_region(&udmabuf_device_number, 0, 0, DRIVER_NAME);
     if (retval != 0) {
         printk(KERN_ERR "%s: couldn't allocate device major number. return=%d\n", DRIVER_NAME, retval);
