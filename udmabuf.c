@@ -67,7 +67,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.4.3-rc1"
+#define DRIVER_VERSION     "1.4.3-rc2"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1030,6 +1030,7 @@ static int udmabuf_device_destroy(struct udmabuf_device_data* this)
  * udmabuf_static_device_list   - list of udmabuf static platform_device structure.
  */
 static struct platform_device* udmabuf_static_device_list[STATIC_DEVICE_NUM] = {};
+static struct mutex            udmabuf_static_device_sem;
 
 /**
  * udmabuf_device_read_size_property()         - Read udmabuf device size property.
@@ -1043,6 +1044,7 @@ static int  udmabuf_device_read_size_property(struct platform_device *pdev, u32*
     int id;
     int status = -1;
 
+    mutex_lock(&udmabuf_static_device_sem);
     for (id = 0; id < STATIC_DEVICE_NUM; id++) {
         if ((udmabuf_static_device_list[id] != NULL) &&
             (udmabuf_static_device_list[id] == pdev)) {
@@ -1051,6 +1053,7 @@ static int  udmabuf_device_read_size_property(struct platform_device *pdev, u32*
             break;
         }
     }
+    mutex_unlock(&udmabuf_static_device_sem);
     return status;
 }
 
@@ -1059,6 +1062,7 @@ static int  udmabuf_device_read_minor_number_property(struct platform_device *pd
     int id;
     int status = -1;
 
+    mutex_lock(&udmabuf_static_device_sem);
     for (id = 0; id < STATIC_DEVICE_NUM; id++) {
         if ((udmabuf_static_device_list[id] != NULL) &&
             (udmabuf_static_device_list[id] == pdev)) {
@@ -1067,6 +1071,7 @@ static int  udmabuf_device_read_minor_number_property(struct platform_device *pd
             break;
         }
     }
+    mutex_unlock(&udmabuf_static_device_sem);
     return status;
 }
 
@@ -1096,7 +1101,9 @@ static void udmabuf_static_device_create(int id, unsigned int size)
         return;
 
     if (size == 0) {
+        mutex_lock(&udmabuf_static_device_sem);
         udmabuf_static_device_list[id] = NULL;
+        mutex_unlock(&udmabuf_static_device_sem);
         return;
     }
 
@@ -1107,43 +1114,46 @@ static void udmabuf_static_device_create(int id, unsigned int size)
         printk(KERN_ERR "platform_device_alloc(%s,%d) failed. return=%d\n", DRIVER_NAME, id, retval);
         goto failed;
     }
-    udmabuf_static_device_list[id] = pdev;
 
+#if   (LINUX_VERSION_CODE >= 0x040500)
+    {
+        const struct property_entry   props[] = {
+            PROPERTY_ENTRY_U32("size"        , size),
+            PROPERTY_ENTRY_U32("minor-number", id)  ,
+            {},
+        };
+   
 #if   (LINUX_VERSION_CODE >= 0x040700)
-    {
-        const struct property_entry   props[] = {
-            PROPERTY_ENTRY_U32("size"        , size),
-            PROPERTY_ENTRY_U32("minor-number", id)  ,
-            {},
-        };
-   
-        retval = device_add_properties(&pdev->dev, props);
-        if (retval != 0) {
-            dev_err(&pdev->dev, "device_add_properties failed. return=%d\n", retval);
-            goto failed;
+        {
+            retval = device_add_properties(&pdev->dev, props);
+            if (retval != 0) {
+                dev_err(&pdev->dev, "device_add_properties failed. return=%d\n", retval);
+                goto failed;
+            }
         }
-    }
-#elif (LINUX_VERSION_CODE >= 0x040500)
-    {
-        const struct property_entry   props[] = {
-            PROPERTY_ENTRY_U32("size"        , size),
-            PROPERTY_ENTRY_U32("minor-number", id)  ,
-            {},
-        };
+#else
+        {
+            const struct property_set pset = {
+                .properties = props,
+            };
    
-        const struct property_set pset = {
-            .properties = props,
-        };
-   
-        retval = device_add_property_set(&pdev->dev, &pset);
-        if (retval != 0) {
-            dev_err(&pdev->dev, "device_add_propertiy_set failed. return=%d\n", retval);
-            goto failed;
+            retval = device_add_property_set(&pdev->dev, &pset);
+            if (retval != 0) {
+                dev_err(&pdev->dev, "device_add_propertiy_set failed. return=%d\n", retval);
+                goto failed;
+            }
         }
+#endif
+        mutex_lock(&udmabuf_static_device_sem);
+        udmabuf_static_device_list[id] = pdev;
+        mutex_unlock(&udmabuf_static_device_sem);
     }
 #else
     {
+        mutex_lock(&udmabuf_static_device_sem);
+        udmabuf_static_device_list[id] = pdev;
         udmabuf_static_buffer_size[id] = size;
+        mutex_unlock(&udmabuf_static_device_sem);
     }
 #endif
     
@@ -1159,7 +1169,9 @@ static void udmabuf_static_device_create(int id, unsigned int size)
     if (pdev != NULL) {
         platform_device_put(pdev);
     }
+    mutex_lock(&udmabuf_static_device_sem);
     udmabuf_static_device_list[id] = NULL;
+    mutex_unlock(&udmabuf_static_device_sem);
     return;
 }
 
@@ -1169,11 +1181,17 @@ static void udmabuf_static_device_create(int id, unsigned int size)
  */
 static void udmabuf_static_device_remove(int id)
 {
-    if (udmabuf_static_device_list[id] != NULL) {
-        platform_device_del(udmabuf_static_device_list[id]);
-        platform_device_put(udmabuf_static_device_list[id]);
-        udmabuf_static_device_list[id] = NULL;
+    struct platform_device* pdev;
+    mutex_lock(&udmabuf_static_device_sem);
+    pdev = udmabuf_static_device_list[id];
+    mutex_unlock(&udmabuf_static_device_sem);
+    if (pdev != NULL) {
+        platform_device_del(pdev);
+        platform_device_put(pdev);
     }
+    mutex_lock(&udmabuf_static_device_sem);
+    udmabuf_static_device_list[id] = NULL;
+    mutex_unlock(&udmabuf_static_device_sem);
 }
 
 /**
@@ -1518,6 +1536,7 @@ static int __init udmabuf_module_init(void)
     int retval = 0;
 
     ida_init(&udmabuf_device_ida);
+    mutex_init(&udmabuf_static_device_sem);
 
     retval = alloc_chrdev_region(&udmabuf_device_number, 0, 0, DRIVER_NAME);
     if (retval != 0) {
