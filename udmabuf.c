@@ -45,6 +45,7 @@
 #include <linux/sched.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/sysctl.h>
@@ -66,7 +67,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.4.2"
+#define DRIVER_VERSION     "1.4.3-rc1"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1019,7 +1020,6 @@ static int udmabuf_device_destroy(struct udmabuf_device_data* this)
  * * udmabuf_static_device_list         - list of udmabuf static device structure.
  * * udmabuf_static_device_create()     - Create udmabuf static device.
  * * udmabuf_static_device_remove()     - Remove the udmabuf static device.
- * * udmabuf_static_device_search()     - Search udmabuf static device from udmabuf_static_device_list.
  * * udmabuf_static_device_create_all() - Create udmabuf static device list.
  * * udmabuf_static_device_remove_all() - Remove udmabuf static device list.
  */
@@ -1027,17 +1027,60 @@ static int udmabuf_device_destroy(struct udmabuf_device_data* this)
 #define STATIC_DEVICE_NUM   8
 
 /**
- * struct udmabuf_static_device - udmabuf static device structure.
+ * udmabuf_static_device_list   - list of udmabuf static platform_device structure.
  */
-struct udmabuf_static_device {
-    struct platform_device* pdev;
-    unsigned int            size;
-};
+static struct platform_device* udmabuf_static_device_list[STATIC_DEVICE_NUM] = {};
 
 /**
- * udmabuf_static_device_list   - list of udmabuf static device structure.
+ * udmabuf_device_read_size_property()         - Read udmabuf device size property.
+ * udmabuf_device_read_minor_number_property() - Read udmabuf device minor-number property.
  */
-struct udmabuf_static_device udmabuf_static_device_list[STATIC_DEVICE_NUM] = {};
+#if (LINUX_VERSION_CODE < 0x040500)
+static u32                     udmabuf_static_buffer_size[STATIC_DEVICE_NUM] = {};
+
+static int  udmabuf_device_read_size_property(struct platform_device *pdev, u32* value)
+{
+    int id;
+    int status = -1;
+
+    for (id = 0; id < STATIC_DEVICE_NUM; id++) {
+        if ((udmabuf_static_device_list[id] != NULL) &&
+            (udmabuf_static_device_list[id] == pdev)) {
+            *value = udmabuf_static_buffer_size[id];
+            status = 0;
+            break;
+        }
+    }
+    return status;
+}
+
+static int  udmabuf_device_read_minor_number_property(struct platform_device *pdev, u32* value)
+{
+    int id;
+    int status = -1;
+
+    for (id = 0; id < STATIC_DEVICE_NUM; id++) {
+        if ((udmabuf_static_device_list[id] != NULL) &&
+            (udmabuf_static_device_list[id] == pdev)) {
+            *value = id;
+            status = 0;
+            break;
+        }
+    }
+    return status;
+}
+
+#else
+static int  udmabuf_device_read_size_property(struct platform_device *pdev, u32* value)
+{
+    return device_property_read_u32(&pdev->dev, "size", value);
+}
+
+static int  udmabuf_device_read_minor_number_property(struct platform_device *pdev, u32* value)
+{
+    return device_property_read_u32(&pdev->dev, "minor-number", value);
+}
+#endif
 
 /**
  * udmabuf_static_device_create() - Create udmabuf static device.
@@ -1053,8 +1096,7 @@ static void udmabuf_static_device_create(int id, unsigned int size)
         return;
 
     if (size == 0) {
-        udmabuf_static_device_list[id].pdev = NULL;
-        udmabuf_static_device_list[id].size = 0;
+        udmabuf_static_device_list[id] = NULL;
         return;
     }
 
@@ -1065,23 +1107,59 @@ static void udmabuf_static_device_create(int id, unsigned int size)
         printk(KERN_ERR "platform_device_alloc(%s,%d) failed. return=%d\n", DRIVER_NAME, id, retval);
         goto failed;
     }
+    udmabuf_static_device_list[id] = pdev;
 
+#if   (LINUX_VERSION_CODE >= 0x040700)
+    {
+        const struct property_entry   props[] = {
+            PROPERTY_ENTRY_U32("size"        , size),
+            PROPERTY_ENTRY_U32("minor-number", id)  ,
+            {},
+        };
+   
+        retval = device_add_properties(&pdev->dev, props);
+        if (retval != 0) {
+            dev_err(&pdev->dev, "device_add_properties failed. return=%d\n", retval);
+            goto failed;
+        }
+    }
+#elif (LINUX_VERSION_CODE >= 0x040500)
+    {
+        const struct property_entry   props[] = {
+            PROPERTY_ENTRY_U32("size"        , size),
+            PROPERTY_ENTRY_U32("minor-number", id)  ,
+            {},
+        };
+   
+        const struct property_set pset = {
+            .properties = props,
+        };
+   
+        retval = device_add_property_set(&pdev->dev, &pset);
+        if (retval != 0) {
+            dev_err(&pdev->dev, "device_add_propertiy_set failed. return=%d\n", retval);
+            goto failed;
+        }
+    }
+#else
+    {
+        udmabuf_static_buffer_size[id] = size;
+    }
+#endif
+    
     retval = platform_device_add(pdev);
     if (retval != 0) {
         dev_err(&pdev->dev, "platform_device_add failed. return=%d\n", retval);
         goto failed;
     }
 
-    udmabuf_static_device_list[id].pdev = pdev;
-    udmabuf_static_device_list[id].size = size;
     return;
 
  failed:
     if (pdev != NULL) {
         platform_device_put(pdev);
     }
-    udmabuf_static_device_list[id].pdev = NULL;
-    udmabuf_static_device_list[id].size = 0;
+    udmabuf_static_device_list[id] = NULL;
     return;
 }
 
@@ -1091,36 +1169,11 @@ static void udmabuf_static_device_create(int id, unsigned int size)
  */
 static void udmabuf_static_device_remove(int id)
 {
-    if (udmabuf_static_device_list[id].pdev != NULL) {
-        platform_device_del(udmabuf_static_device_list[id].pdev);
-        platform_device_put(udmabuf_static_device_list[id].pdev);
-        udmabuf_static_device_list[id].pdev = NULL;
-        udmabuf_static_device_list[id].size = 0;
+    if (udmabuf_static_device_list[id] != NULL) {
+        platform_device_del(udmabuf_static_device_list[id]);
+        platform_device_put(udmabuf_static_device_list[id]);
+        udmabuf_static_device_list[id] = NULL;
     }
-}
-
-/**
- * udmabuf_static_device_search() - Search udmabuf static device from udmabuf_static_device_list.
- * @pdev:       Handle to the platform device structure.
- * @pid:        Pointer to device id.
- * @psize:      Pointer to buffer size.
- * Return:      1 = found, 0 = not found
- */
-static int udmabuf_static_device_search(struct platform_device *pdev, int* pid, unsigned int* psize)
-{
-    int id;
-    int found = 0;
-
-    for (id = 0; id < STATIC_DEVICE_NUM; id++) {
-        if ((udmabuf_static_device_list[id].pdev != NULL) &&
-            (udmabuf_static_device_list[id].pdev == pdev)) {
-            *pid   = id;
-            *psize = udmabuf_static_device_list[id].size;
-            found  = 1;
-            break;
-        }
-    }
-    return found;
 }
 
 /**
@@ -1218,28 +1271,42 @@ static int udmabuf_platform_driver_cleanup(struct platform_device *pdev, struct 
 static int udmabuf_platform_driver_probe(struct platform_device *pdev)
 {
     int                         retval       = 0;
-    int                         of_status    = 0;
-    unsigned int                of_u32_value = 0;
+    int                         prop_status  = 0;
+    unsigned int                u32_value    = 0;
     unsigned int                size         = 0;
     int                         minor_number = -1;
     struct udmabuf_device_data* device_data  = NULL;
     const char*                 device_name  = NULL;
 
     dev_dbg(&pdev->dev, "driver probe start.\n");
-
-    if (udmabuf_static_device_search(pdev, &minor_number, &size) == 0) {
-
-        of_status = of_property_read_u32(pdev->dev.of_node, "size", &size);
-        if (of_status != 0) {
-            dev_err(&pdev->dev, "invalid property size. status=%d\n", of_status);
-            retval = -ENODEV;
-            goto failed;
-        }
-
-        of_status = of_property_read_u32(pdev->dev.of_node, "minor-number", &of_u32_value);
-        minor_number = (of_status == 0) ? of_u32_value : -1;
-
-        device_name = of_get_property(pdev->dev.of_node, "device-name", NULL);
+    /*
+     * size property
+     */
+    if        ((prop_status = udmabuf_device_read_size_property(pdev,         &u32_value)) == 0) {
+        size = u32_value;
+    } else if ((prop_status = of_property_read_u32(pdev->dev.of_node, "size", &u32_value)) == 0) {
+        size = u32_value;
+    } else {
+        dev_err(&pdev->dev, "invalid property size. status=%d\n", prop_status);
+        retval = -ENODEV;
+        goto failed;
+    }
+    /*
+     * minor-number property
+     */
+    if        (udmabuf_device_read_minor_number_property(pdev        , &u32_value) == 0) {
+        minor_number = u32_value;
+    } else if (of_property_read_u32(pdev->dev.of_node, "minor-number", &u32_value) == 0) {
+        minor_number = u32_value;
+    } else {
+        minor_number = -1;
+    }
+    /*
+     * devic-name property
+     */
+    prop_status = device_property_read_string(&pdev->dev, "device-name", &device_name);
+    if (prop_status != 0) {
+        device_name = of_get_property(pdev->dev.of_node , "device-name", NULL);
         if (IS_ERR_OR_NULL(device_name)) {
             if (minor_number < 0)
                 device_name = dev_name(&pdev->dev);
@@ -1310,13 +1377,13 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     /*
      * sync-mode property
      */
-    if (of_property_read_u32(pdev->dev.of_node, "sync-mode", &of_u32_value) == 0) {
-        if ((of_u32_value < SYNC_MODE_MIN) || (of_u32_value > SYNC_MODE_MAX)) {
-            dev_err(&pdev->dev, "invalid sync-mode property value=%d\n", of_u32_value);
+    if (of_property_read_u32(pdev->dev.of_node, "sync-mode", &u32_value) == 0) {
+        if ((u32_value < SYNC_MODE_MIN) || (u32_value > SYNC_MODE_MAX)) {
+            dev_err(&pdev->dev, "invalid sync-mode property value=%d\n", u32_value);
             goto failed;
         }
         device_data->sync_mode &= ~SYNC_MODE_MASK;
-        device_data->sync_mode |= (int)of_u32_value;
+        device_data->sync_mode |= (int)u32_value;
     }
     /*
      * sync-always property
@@ -1327,32 +1394,32 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     /*
      * sync-direction property
      */
-    if (of_property_read_u32(pdev->dev.of_node, "sync-direction", &of_u32_value) == 0) {
-        if (of_u32_value > 2) {
-            dev_err(&pdev->dev, "invalid sync-direction property value=%d\n", of_u32_value);
+    if (of_property_read_u32(pdev->dev.of_node, "sync-direction", &u32_value) == 0) {
+        if (u32_value > 2) {
+            dev_err(&pdev->dev, "invalid sync-direction property value=%d\n", u32_value);
             goto failed;
         }
-        device_data->sync_direction = (int)of_u32_value;
+        device_data->sync_direction = (int)u32_value;
     }
     /*
      * sync-offset property
      */
-    if (of_property_read_u32(pdev->dev.of_node, "sync-offset", &of_u32_value) == 0) {
-        if (of_u32_value >= device_data->size) {
-            dev_err(&pdev->dev, "invalid sync-offset property value=%d\n", of_u32_value);
+    if (of_property_read_u32(pdev->dev.of_node, "sync-offset", &u32_value) == 0) {
+        if (u32_value >= device_data->size) {
+            dev_err(&pdev->dev, "invalid sync-offset property value=%d\n", u32_value);
             goto failed;
         }
-        device_data->sync_offset = (int)of_u32_value;
+        device_data->sync_offset = (int)u32_value;
     }
     /*
      * sync-size property
      */
-    if (of_property_read_u32(pdev->dev.of_node, "sync-size", &of_u32_value) == 0) {
-        if (device_data->sync_offset + of_u32_value > device_data->size) {
-            dev_err(&pdev->dev, "invalid sync-size property value=%d\n", of_u32_value);
+    if (of_property_read_u32(pdev->dev.of_node, "sync-size", &u32_value) == 0) {
+        if (device_data->sync_offset + u32_value > device_data->size) {
+            dev_err(&pdev->dev, "invalid sync-size property value=%d\n", u32_value);
             goto failed;
         }
-        device_data->sync_size = (size_t)of_u32_value;
+        device_data->sync_size = (size_t)u32_value;
     } else {
         device_data->sync_size = device_data->size;
     }
