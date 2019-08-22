@@ -67,7 +67,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.4.3-rc4"
+#define DRIVER_VERSION     "1.4.3-rc5"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1210,8 +1210,16 @@ static void udmabuf_static_device_remove(int id)
     module_param(    udmabuf ## __num, int, S_IRUGO);                    \
     MODULE_PARM_DESC(udmabuf ## __num, DRIVER_NAME #__num " buffer size");
 
-#define CALL_UDMABUF_STATIC_DEVICE_CREATE(__num) \
-    udmabuf_static_device_create(__num, udmabuf ## __num);
+#define CALL_UDMABUF_STATIC_DEVICE_CREATE(__num)                         \
+    if (udmabuf ## __num != 0) {                                         \
+        ida_simple_remove(&udmabuf_device_ida, __num);                   \
+        udmabuf_static_device_create(__num, udmabuf ## __num);           \
+    }
+
+#define CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(__num)           \
+    if (udmabuf ## __num != 0) {                                         \
+        ida_simple_get(&udmabuf_device_ida, __num, __num+1, GFP_KERNEL); \
+    }
 
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(0);
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(1);
@@ -1221,6 +1229,21 @@ DEFINE_UDMABUF_STATIC_DEVICE_PARAM(4);
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(5);
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(6);
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(7);
+
+/**
+ * udmabuf_static_device_reserve_minor_number_all() - Reserve udmabuf static device's minor-number.
+ */
+static void udmabuf_static_device_reserve_minor_number_all(void)
+{
+    CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(0);
+    CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(1);
+    CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(2);
+    CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(3);
+    CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(4);
+    CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(5);
+    CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(6);
+    CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(7);
+}
 
 /**
  * udmabuf_static_device_create_all() - Create udmabuf static device list.
@@ -1564,7 +1587,7 @@ static int __init udmabuf_module_init(void)
 
     udmabuf_sys_class_set_attributes();
 
-    udmabuf_static_device_create_all();
+    udmabuf_static_device_reserve_minor_number_all();
 
     retval = platform_driver_register(&udmabuf_platform_driver);
     if (retval) {
@@ -1574,6 +1597,8 @@ static int __init udmabuf_module_init(void)
     } else {
         udmabuf_platform_driver_registerd = 1;
     }
+
+    udmabuf_static_device_create_all();
 
     return 0;
 
