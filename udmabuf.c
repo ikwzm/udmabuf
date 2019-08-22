@@ -67,7 +67,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.4.3-rc3"
+#define DRIVER_VERSION     "1.4.3-rc4"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -807,6 +807,7 @@ static struct udmabuf_device_data* udmabuf_device_create(const char* name, struc
     const unsigned int          DONE_ALLOC_MINOR   = (1 << 0);
     const unsigned int          DONE_CHRDEV_ADD    = (1 << 1);
     const unsigned int          DONE_DEVICE_CREATE = (1 << 3);
+    const unsigned int          DONE_SET_DMA_DEV   = (1 << 4);
     /*
      * allocate device minor number
      */
@@ -886,10 +887,13 @@ static struct udmabuf_device_data* udmabuf_device_create(const char* name, struc
     /*
      * set dma_dev
      */
-    if (parent != NULL)
-        this->dma_dev = parent;
-    else
-        this->dma_dev = this->sys_dev;
+    {
+        if (parent != NULL)
+            this->dma_dev = get_device(parent);
+        else
+            this->dma_dev = get_device(this->sys_dev);
+        done |= DONE_SET_DMA_DEV;
+    }
     /*
      * initialize other variables.
      */
@@ -919,6 +923,7 @@ static struct udmabuf_device_data* udmabuf_device_create(const char* name, struc
     return this;
 
  failed:
+    if (done & DONE_SET_DMA_DEV  ) { put_device(this->dma_dev);}
     if (done & DONE_CHRDEV_ADD   ) { cdev_del(&this->cdev); }
     if (done & DONE_DEVICE_CREATE) { device_destroy(udmabuf_sys_class, this->device_number);}
     if (done & DONE_ALLOC_MINOR  ) { ida_simple_remove(&udmabuf_device_ida, minor);}
@@ -981,6 +986,7 @@ static void udmabuf_device_info(struct udmabuf_device_data* this)
     dev_info(this->sys_dev, "minor number   = %d\n"  , MINOR(this->device_number));
     dev_info(this->sys_dev, "phys address   = %pad\n", &this->phys_addr);
     dev_info(this->sys_dev, "buffer size    = %zu\n" , this->alloc_size);
+    dev_info(this->sys_dev, "dma device     = %s\n"  , dev_name(this->dma_dev));
 #if (USE_DMA_COHERENT == 1)
     dev_info(this->sys_dev, "dma coherent   = %d\n"  , is_device_dma_coherent(this->dma_dev));
 #endif
@@ -1002,6 +1008,7 @@ static int udmabuf_device_destroy(struct udmabuf_device_data* this)
         dma_free_coherent(this->dma_dev, this->alloc_size, this->virt_addr, this->phys_addr);
         this->virt_addr = NULL;
     }
+    put_device(this->dma_dev);
     cdev_del(&this->cdev);
     device_destroy(udmabuf_sys_class, this->device_number);
     ida_simple_remove(&udmabuf_device_ida, MINOR(this->device_number));
