@@ -67,7 +67,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.4.3-rc2"
+#define DRIVER_VERSION     "1.4.3-rc3"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1027,19 +1027,19 @@ static int udmabuf_device_destroy(struct udmabuf_device_data* this)
 #define STATIC_DEVICE_NUM   8
 
 /**
- * udmabuf_static_device_list   - list of udmabuf static platform_device structure.
+ * udmabuf_static_device_list   - list of udmabuf static device structure.
  */
-static struct platform_device* udmabuf_static_device_list[STATIC_DEVICE_NUM] = {};
-static struct mutex            udmabuf_static_device_sem;
+static struct device* udmabuf_static_device_list[STATIC_DEVICE_NUM] = {};
+static struct mutex   udmabuf_static_device_sem;
 
 /**
  * udmabuf_device_read_size_property()         - Read udmabuf device size property.
  * udmabuf_device_read_minor_number_property() - Read udmabuf device minor-number property.
  */
 #if (LINUX_VERSION_CODE < 0x040500)
-static u32                     udmabuf_static_buffer_size[STATIC_DEVICE_NUM] = {};
+static u32            udmabuf_static_buffer_size[STATIC_DEVICE_NUM] = {};
 
-static int  udmabuf_device_read_size_property(struct platform_device *pdev, u32* value)
+static int  udmabuf_device_read_size_property(struct device *dev, u32* value)
 {
     int id;
     int status = -1;
@@ -1047,7 +1047,7 @@ static int  udmabuf_device_read_size_property(struct platform_device *pdev, u32*
     mutex_lock(&udmabuf_static_device_sem);
     for (id = 0; id < STATIC_DEVICE_NUM; id++) {
         if ((udmabuf_static_device_list[id] != NULL) &&
-            (udmabuf_static_device_list[id] == pdev)) {
+            (udmabuf_static_device_list[id] == dev )) {
             *value = udmabuf_static_buffer_size[id];
             status = 0;
             break;
@@ -1057,7 +1057,7 @@ static int  udmabuf_device_read_size_property(struct platform_device *pdev, u32*
     return status;
 }
 
-static int  udmabuf_device_read_minor_number_property(struct platform_device *pdev, u32* value)
+static int  udmabuf_device_read_minor_number_property(struct device *dev, u32* value)
 {
     int id;
     int status = -1;
@@ -1065,7 +1065,7 @@ static int  udmabuf_device_read_minor_number_property(struct platform_device *pd
     mutex_lock(&udmabuf_static_device_sem);
     for (id = 0; id < STATIC_DEVICE_NUM; id++) {
         if ((udmabuf_static_device_list[id] != NULL) &&
-            (udmabuf_static_device_list[id] == pdev)) {
+            (udmabuf_static_device_list[id] == dev )) {
             *value = id;
             status = 0;
             break;
@@ -1076,14 +1076,14 @@ static int  udmabuf_device_read_minor_number_property(struct platform_device *pd
 }
 
 #else
-static int  udmabuf_device_read_size_property(struct platform_device *pdev, u32* value)
+static int  udmabuf_device_read_size_property(struct device *dev, u32* value)
 {
-    return device_property_read_u32(&pdev->dev, "size", value);
+    return device_property_read_u32(dev, "size", value);
 }
 
-static int  udmabuf_device_read_minor_number_property(struct platform_device *pdev, u32* value)
+static int  udmabuf_device_read_minor_number_property(struct device *dev, u32* value)
 {
-    return device_property_read_u32(&pdev->dev, "minor-number", value);
+    return device_property_read_u32(dev, "minor-number", value);
 }
 #endif
 
@@ -1145,13 +1145,13 @@ static void udmabuf_static_device_create(int id, unsigned int size)
         }
 #endif
         mutex_lock(&udmabuf_static_device_sem);
-        udmabuf_static_device_list[id] = pdev;
+        udmabuf_static_device_list[id] = &pdev->dev;
         mutex_unlock(&udmabuf_static_device_sem);
     }
 #else
     {
         mutex_lock(&udmabuf_static_device_sem);
-        udmabuf_static_device_list[id] = pdev;
+        udmabuf_static_device_list[id] = &pdev->dev;
         udmabuf_static_buffer_size[id] = size;
         mutex_unlock(&udmabuf_static_device_sem);
     }
@@ -1181,11 +1181,12 @@ static void udmabuf_static_device_create(int id, unsigned int size)
  */
 static void udmabuf_static_device_remove(int id)
 {
-    struct platform_device* pdev;
+    struct device* dev;
     mutex_lock(&udmabuf_static_device_sem);
-    pdev = udmabuf_static_device_list[id];
+    dev = udmabuf_static_device_list[id];
     mutex_unlock(&udmabuf_static_device_sem);
-    if (pdev != NULL) {
+    if (dev != NULL) {
+        struct platform_device* pdev = to_platform_device(dev);
         platform_device_del(pdev);
         platform_device_put(pdev);
     }
@@ -1300,7 +1301,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     /*
      * size property
      */
-    if        ((prop_status = udmabuf_device_read_size_property(pdev,         &u32_value)) == 0) {
+    if        ((prop_status = udmabuf_device_read_size_property(&pdev->dev,   &u32_value)) == 0) {
         size = u32_value;
     } else if ((prop_status = of_property_read_u32(pdev->dev.of_node, "size", &u32_value)) == 0) {
         size = u32_value;
@@ -1312,7 +1313,7 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     /*
      * minor-number property
      */
-    if        (udmabuf_device_read_minor_number_property(pdev        , &u32_value) == 0) {
+    if        (udmabuf_device_read_minor_number_property(&pdev->dev  , &u32_value) == 0) {
         minor_number = u32_value;
     } else if (of_property_read_u32(pdev->dev.of_node, "minor-number", &u32_value) == 0) {
         minor_number = u32_value;
