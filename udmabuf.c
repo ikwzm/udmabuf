@@ -67,7 +67,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.4.3-rc5"
+#define DRIVER_VERSION     "1.4.3-rc6"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1271,25 +1271,22 @@ static void udmabuf_static_device_remove_all(void)
     }
 }
 
-
 /**
- * DOC: Udmabuf Platform Driver
+ * DOC: Udmabuf Device Driver
  *
- * This section defines the udmabuf platform driver.
+ * This section defines the udmabuf device driver.
  *
- * * udmabuf_platform_driver_probe()   - Probe call for the device.
- * * udmabuf_platform_driver_remove()  - Remove call for the device.
- * * udmabuf_of_match                  - Open Firmware Device Identifier Matching Table.
- * * udmabuf_platform_driver           - Platform Driver Structure.
+ * * udmabuf_device_probe()   - Probe  call for the device driver.
+ * * udmabuf_device_remove()  - Remove call for the device driver.
  */
 
 /**
- * udmabuf_platform_driver_cleanup()   - Clean Up udmabuf platform driver
- * @pdev:       handle to the platform device structure.
+ * udmabuf_device_remove()   - Remove udmabuf device driver.
+ * @dev:        handle to the device structure.
  * @devdata     Pointer to the udmabuf device data structure.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_platform_driver_cleanup(struct platform_device *pdev, struct udmabuf_device_data *devdata)
+static int udmabuf_device_remove(struct device *dev, struct udmabuf_device_data *devdata)
 {
     int retval = 0;
 
@@ -1298,10 +1295,10 @@ static int udmabuf_platform_driver_cleanup(struct platform_device *pdev, struct 
         bool of_reserved_mem = devdata->of_reserved_mem;
 #endif
         retval = udmabuf_device_destroy(devdata);
-        dev_set_drvdata(&pdev->dev, NULL);
+        dev_set_drvdata(dev, NULL);
 #if (USE_OF_RESERVED_MEM == 1)
         if (of_reserved_mem) {
-            of_reserved_mem_device_release(&pdev->dev);
+            of_reserved_mem_device_release(dev);
         }
 #endif
     } else {
@@ -1311,13 +1308,13 @@ static int udmabuf_platform_driver_cleanup(struct platform_device *pdev, struct 
 }
 
 /**
- * udmabuf_platform_driver_probe() -  Probe call for the device.
- * @pdev:       handle to the platform device structure.
+ * udmabuf_device_probe() -  Probe call for the device.
+ * @dev:        handle to the device structure.
  * Return:      Success(=0) or error status(<0).
  *
  * It does all the memory allocation and registration for the device.
  */
-static int udmabuf_platform_driver_probe(struct platform_device *pdev)
+static int udmabuf_device_probe(struct device *dev)
 {
     int                         retval       = 0;
     int                         prop_status  = 0;
@@ -1327,25 +1324,24 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     struct udmabuf_device_data* device_data  = NULL;
     const char*                 device_name  = NULL;
 
-    dev_dbg(&pdev->dev, "driver probe start.\n");
     /*
      * size property
      */
-    if        ((prop_status = udmabuf_device_read_size_property(&pdev->dev,   &u32_value)) == 0) {
+    if        ((prop_status = udmabuf_device_read_size_property(dev    , &u32_value)) == 0) {
         size = u32_value;
-    } else if ((prop_status = of_property_read_u32(pdev->dev.of_node, "size", &u32_value)) == 0) {
+    } else if ((prop_status = of_property_read_u32(dev->of_node, "size", &u32_value)) == 0) {
         size = u32_value;
     } else {
-        dev_err(&pdev->dev, "invalid property size. status=%d\n", prop_status);
+        dev_err(dev, "invalid property size. status=%d\n", prop_status);
         retval = -ENODEV;
         goto failed;
     }
     /*
      * minor-number property
      */
-    if        (udmabuf_device_read_minor_number_property(&pdev->dev  , &u32_value) == 0) {
+    if        (udmabuf_device_read_minor_number_property(dev    , &u32_value) == 0) {
         minor_number = u32_value;
-    } else if (of_property_read_u32(pdev->dev.of_node, "minor-number", &u32_value) == 0) {
+    } else if (of_property_read_u32(dev->of_node, "minor-number", &u32_value) == 0) {
         minor_number = u32_value;
     } else {
         minor_number = -1;
@@ -1353,12 +1349,12 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     /*
      * devic-name property
      */
-    prop_status = device_property_read_string(&pdev->dev, "device-name", &device_name);
+    prop_status = device_property_read_string(dev , "device-name", &device_name);
     if (prop_status != 0) {
-        device_name = of_get_property(pdev->dev.of_node , "device-name", NULL);
+        device_name = of_get_property(dev->of_node, "device-name", NULL);
         if (IS_ERR_OR_NULL(device_name)) {
             if (minor_number < 0)
-                device_name = dev_name(&pdev->dev);
+                device_name = dev_name(dev);
             else
                 device_name = NULL;
         }
@@ -1366,15 +1362,15 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     /*
      * udmabuf_device_create()
      */
-    device_data = udmabuf_device_create(device_name, &pdev->dev, minor_number);
+    device_data = udmabuf_device_create(device_name, dev, minor_number);
     if (IS_ERR_OR_NULL(device_data)) {
         retval = PTR_ERR(device_data);
-        dev_err(&pdev->dev, "driver create failed. return=%d.\n", retval);
+        dev_err(dev, "driver create failed. return=%d.\n", retval);
         device_data = NULL;
         retval = (retval == 0) ? -EINVAL : retval;
         goto failed;
     }
-    dev_set_drvdata(&pdev->dev, device_data);
+    dev_set_drvdata(dev, device_data);
     /*
      * set size
      */
@@ -1383,12 +1379,12 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
      * of_reserved_mem_device_init()
      */
 #if (USE_OF_RESERVED_MEM == 1)
-    if (pdev->dev.of_node != NULL) {
-        retval = of_reserved_mem_device_init(&pdev->dev);
+    if (dev->of_node != NULL) {
+        retval = of_reserved_mem_device_init(dev);
         if (retval == 0) {
             device_data->of_reserved_mem = 1;
         } else if (retval != -ENODEV) {
-            dev_err(&pdev->dev, "of_reserved_mem_device_init failed. return=%d\n", retval);
+            dev_err(dev, "of_reserved_mem_device_init failed. return=%d\n", retval);
             goto failed;
         }
     }
@@ -1410,25 +1406,25 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     {
 #if (LINUX_VERSION_CODE >= 0x040C00)
 #if (LINUX_VERSION_CODE >= 0x041200)
-        retval = of_dma_configure(&pdev->dev, pdev->dev.of_node, true);
+        retval = of_dma_configure(dev, dev->of_node, true);
 #else
-        retval = of_dma_configure(&pdev->dev, pdev->dev.of_node);
+        retval = of_dma_configure(dev, dev->of_node);
 #endif
         if (retval != 0) {
-            dev_err(&pdev->dev, "of_dma_configure failed. return=%d\n", retval);
+            dev_err(dev, "of_dma_configure failed. return=%d\n", retval);
             goto failed;
         }
 #else
-        of_dma_configure(&pdev->dev, pdev->dev.of_node);
+        of_dma_configure(dev, dev->of_node);
 #endif
     }
 #endif
     /*
      * sync-mode property
      */
-    if (of_property_read_u32(pdev->dev.of_node, "sync-mode", &u32_value) == 0) {
+    if (of_property_read_u32(dev->of_node, "sync-mode", &u32_value) == 0) {
         if ((u32_value < SYNC_MODE_MIN) || (u32_value > SYNC_MODE_MAX)) {
-            dev_err(&pdev->dev, "invalid sync-mode property value=%d\n", u32_value);
+            dev_err(dev, "invalid sync-mode property value=%d\n", u32_value);
             goto failed;
         }
         device_data->sync_mode &= ~SYNC_MODE_MASK;
@@ -1437,15 +1433,15 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     /*
      * sync-always property
      */
-    if (of_property_read_bool(pdev->dev.of_node, "sync-always")) {
+    if (of_property_read_bool(dev->of_node, "sync-always")) {
         device_data->sync_mode |= SYNC_ALWAYS;
     }
     /*
      * sync-direction property
      */
-    if (of_property_read_u32(pdev->dev.of_node, "sync-direction", &u32_value) == 0) {
+    if (of_property_read_u32(dev->of_node, "sync-direction", &u32_value) == 0) {
         if (u32_value > 2) {
-            dev_err(&pdev->dev, "invalid sync-direction property value=%d\n", u32_value);
+            dev_err(dev, "invalid sync-direction property value=%d\n", u32_value);
             goto failed;
         }
         device_data->sync_direction = (int)u32_value;
@@ -1453,9 +1449,9 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     /*
      * sync-offset property
      */
-    if (of_property_read_u32(pdev->dev.of_node, "sync-offset", &u32_value) == 0) {
+    if (of_property_read_u32(dev->of_node, "sync-offset", &u32_value) == 0) {
         if (u32_value >= device_data->size) {
-            dev_err(&pdev->dev, "invalid sync-offset property value=%d\n", u32_value);
+            dev_err(dev, "invalid sync-offset property value=%d\n", u32_value);
             goto failed;
         }
         device_data->sync_offset = (int)u32_value;
@@ -1463,9 +1459,9 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     /*
      * sync-size property
      */
-    if (of_property_read_u32(pdev->dev.of_node, "sync-size", &u32_value) == 0) {
+    if (of_property_read_u32(dev->of_node, "sync-size", &u32_value) == 0) {
         if (device_data->sync_offset + u32_value > device_data->size) {
-            dev_err(&pdev->dev, "invalid sync-size property value=%d\n", u32_value);
+            dev_err(dev, "invalid sync-size property value=%d\n", u32_value);
             goto failed;
         }
         device_data->sync_size = (size_t)u32_value;
@@ -1477,22 +1473,53 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
      */
     retval = udmabuf_device_setup(device_data);
     if (retval) {
-        dev_err(&pdev->dev, "driver setup failed. return=%d\n", retval);
+        dev_err(dev, "driver setup failed. return=%d\n", retval);
         goto failed;
     }
 
     if (info_enable) {
         udmabuf_device_info(device_data);
-        dev_info(&pdev->dev, "driver installed.\n");
     }
+
     return 0;
 
 failed:
-    udmabuf_platform_driver_cleanup(pdev, device_data);
+    udmabuf_device_remove(dev, device_data);
 
     return retval;
 }
 
+/**
+ * DOC: Udmabuf Platform Driver
+ *
+ * This section defines the udmabuf platform driver.
+ *
+ * * udmabuf_platform_driver_probe()   - Probe call for the device.
+ * * udmabuf_platform_driver_remove()  - Remove call for the device.
+ * * udmabuf_of_match                  - Open Firmware Device Identifier Matching Table.
+ * * udmabuf_platform_driver           - Platform Driver Structure.
+ */
+
+/**
+ * udmabuf_platform_driver_probe() -  Probe call for the device.
+ * @pdev:       Handle to the platform device structure.
+ * Return:      Success(=0) or error status(<0).
+ *
+ * It does all the memory allocation and registration for the device.
+ */
+static int udmabuf_platform_driver_probe(struct platform_device *pdev)
+{
+    int retval = 0;
+
+    dev_dbg(&pdev->dev, "driver probe start.\n");
+
+    retval = udmabuf_device_probe(&pdev->dev);
+    
+    if (info_enable) {
+        dev_info(&pdev->dev, "driver installed.\n");
+    }
+    return retval;
+}
 /**
  * udmabuf_platform_driver_remove() -  Remove call for the device.
  * @pdev:       Handle to the platform device structure.
@@ -1507,7 +1534,7 @@ static int udmabuf_platform_driver_remove(struct platform_device *pdev)
 
     dev_dbg(&pdev->dev, "driver remove start.\n");
 
-    retval = udmabuf_platform_driver_cleanup(pdev, this);
+    retval = udmabuf_device_remove(&pdev->dev, this);
 
     if (info_enable) {
         dev_info(&pdev->dev, "driver removed.\n");
