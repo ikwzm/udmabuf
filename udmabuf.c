@@ -67,7 +67,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.4.3"
+#define DRIVER_VERSION     "1.4.4-rc1"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -106,6 +106,10 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 #if     (USE_OF_RESERVED_MEM == 1)
 #include <linux/of_reserved_mem.h>
+#endif
+
+#ifndef U64_MAX
+#define U64_MAX ((u64)~0ULL)
 #endif
 
 /**
