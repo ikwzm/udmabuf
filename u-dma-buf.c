@@ -66,8 +66,8 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.4.4"
-#define DRIVER_NAME        "udmabuf"
+#define DRIVER_VERSION     "2.0.0-rc1"
+#define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
 #define UDMABUF_DEBUG       1
@@ -1560,6 +1560,7 @@ static int udmabuf_platform_driver_remove(struct platform_device *pdev)
  * Open Firmware Device Identifier Matching Table
  */
 static struct of_device_id udmabuf_of_match[] = {
+    { .compatible = "ikwzm,u-dma-buf", },
     { .compatible = "ikwzm,udmabuf-0.10.a", },
     { /* end of table */}
 };
@@ -1579,19 +1580,19 @@ static struct platform_driver udmabuf_platform_driver = {
 };
 
 /**
- * DOC: Udmabuf Module Operations
+ * DOC: u-dma-buf Kernel Module Operations
  *
- * * udmabuf_module_cleanup()
- * * udmabuf_module_init()
- * * udmabuf_module_exit()
+ * * u_dma_buf_cleanup()
+ * * u_dma_buf_init()
+ * * u_dma_buf_exit()
  */
 
 static bool udmabuf_platform_driver_registerd = 0;
 
 /**
- * udmabuf_module_cleanup()
+ * u_dma_buf_cleanup()
  */
-static void udmabuf_module_cleanup(void)
+static void u_dma_buf_cleanup(void)
 {
     udmabuf_static_device_remove_all();
     if (udmabuf_platform_driver_registerd){platform_driver_unregister(&udmabuf_platform_driver);}
@@ -1601,9 +1602,9 @@ static void udmabuf_module_cleanup(void)
 }
 
 /**
- * udmabuf_module_init()
+ * u_dma_buf_init()
  */
-static int __init udmabuf_module_init(void)
+static int __init u_dma_buf_init(void)
 {
     int retval = 0;
 
@@ -1644,17 +1645,17 @@ static int __init udmabuf_module_init(void)
     return 0;
 
  failed:
-    udmabuf_module_cleanup();
+    u_dma_buf_cleanup();
     return retval;
 }
 
 /**
- * udmabuf_module_exit()
+ * u_dma_buf_exit()
  */
-static void __exit udmabuf_module_exit(void)
+static void __exit u_dma_buf_exit(void)
 {
-    udmabuf_module_cleanup();
+    u_dma_buf_cleanup();
 }
 
-module_init(udmabuf_module_init);
-module_exit(udmabuf_module_exit);
+module_init(u_dma_buf_init);
+module_exit(u_dma_buf_exit);

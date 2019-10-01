@@ -58,7 +58,7 @@ void check_buf_test(unsigned int size, unsigned int sync_mode, int o_sync)
     int            error_count;
     unsigned char* buf;
 
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
       sprintf(attr, "%d", sync_mode);
       write(fd, attr, strlen(attr));
       close(fd);
@@ -84,7 +84,7 @@ void clear_buf_test(unsigned int size, unsigned int sync_mode, int o_sync)
     int            error_count;
     unsigned char* buf;
 
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
       sprintf(attr, "%d", sync_mode);
       write(fd, attr, strlen(attr));
       close(fd);
@@ -114,25 +114,25 @@ void main()
     int            error_count;
     struct timeval start_time, end_time;
 
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/phys_addr", O_RDONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/phys_addr", O_RDONLY)) != -1) {
       read(fd, attr, 1024);
       sscanf(attr, "%x", &phys_addr);
       close(fd);
     }
 
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/size"     , O_RDONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/size"     , O_RDONLY)) != -1) {
       read(fd, attr, 1024);
       sscanf(attr, "%d", &buf_size);
       close(fd);
     }
 
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
       sprintf(attr, "%d", sync_mode);
       write(fd, attr, strlen(attr));
       close(fd);
     }
 
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/debug_vma", O_WRONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/debug_vma", O_WRONLY)) != -1) {
       sprintf(attr, "%d", debug_vma);
       write(fd, attr, strlen(attr));
       close(fd);
