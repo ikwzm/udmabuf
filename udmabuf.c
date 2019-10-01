@@ -45,7 +45,6 @@
 #include <linux/sched.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
-#include <linux/property.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/sysctl.h>
@@ -67,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.4.3"
+#define DRIVER_VERSION     "1.4.4"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -106,6 +105,10 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 #if     (USE_OF_RESERVED_MEM == 1)
 #include <linux/of_reserved_mem.h>
+#endif
+
+#ifndef U64_MAX
+#define U64_MAX ((u64)~0ULL)
 #endif
 
 /**
@@ -1046,6 +1049,11 @@ static struct mutex   udmabuf_static_device_sem;
 #if (LINUX_VERSION_CODE < 0x040500)
 static u32            udmabuf_static_buffer_size[STATIC_DEVICE_NUM] = {};
 
+static int  udmabuf_device_read_device_name_property(struct device *dev, const char** name)
+{
+    return -1;
+}
+
 static int  udmabuf_device_read_size_property(struct device *dev, u32* value)
 {
     int id;
@@ -1083,6 +1091,13 @@ static int  udmabuf_device_read_minor_number_property(struct device *dev, u32* v
 }
 
 #else
+#include <linux/property.h>
+
+static int  udmabuf_device_read_device_name_property(struct device *dev, const char** name)
+{
+    return device_property_read_string(dev , "device-name", name);
+}
+
 static int  udmabuf_device_read_size_property(struct device *dev, u32* value)
 {
     return device_property_read_u32(dev, "size", value);
@@ -1347,10 +1362,9 @@ static int udmabuf_device_probe(struct device *dev)
         minor_number = -1;
     }
     /*
-     * devic-name property
+     * device-name property
      */
-    prop_status = device_property_read_string(dev , "device-name", &device_name);
-    if (prop_status != 0) {
+    if (udmabuf_device_read_device_name_property(dev, &device_name) != 0) {
         device_name = of_get_property(dev->of_node, "device-name", NULL);
         if (IS_ERR_OR_NULL(device_name)) {
             if (minor_number < 0)
