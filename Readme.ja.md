@@ -195,7 +195,7 @@ crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ### compatible
 
 
-compatible プロパティはデバイスツリーをロードした際に対応するデバイスドライバを指定します。compatible プロパティは必須です。compatible プロパティには必ず "ikwzm,u-dma-buf" か "ikwzm,udmabuf-0.10.a" を指定してください。
+compatible プロパティはデバイスツリーをロードした際に対応するデバイスドライバを指定します。compatible プロパティは必須です。compatible プロパティには必ず "ikwzm,u-dma-buf" を指定してください。
 
 
 

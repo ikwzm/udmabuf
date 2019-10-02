@@ -171,7 +171,7 @@ The following properties can be set in the device tree.
 
 The `compatible` property is used to set the corresponding device driver when loading
 u-dma-buf. The `compatible` property is mandatory. Be sure to specify `compatible`
-property as "ikwzm,u-dma-buf" or "ikwzm,udmabuf-0.10.a".
+property as "ikwzm,u-dma-buf".
 
 ### `size`
 

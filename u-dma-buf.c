@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "2.0.0-rc1"
+#define DRIVER_VERSION     "2.0.0-rc2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1561,7 +1561,6 @@ static int udmabuf_platform_driver_remove(struct platform_device *pdev)
  */
 static struct of_device_id udmabuf_of_match[] = {
     { .compatible = "ikwzm,u-dma-buf", },
-    { .compatible = "ikwzm,udmabuf-0.10.a", },
     { /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, udmabuf_of_match);
