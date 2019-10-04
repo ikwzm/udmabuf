@@ -25,13 +25,6 @@ The size of a DMA buffer and the device minor number can be specified when
 the device driver is loaded (e.g. when loaded via the `insmod` command).
 Some platforms allow to specify them in the device tree.
 
-## Predecessor of u-dma-buf
-
-The predecessor of u-dma-buf is udmabuf. The kernel module name has been changed
-from "udmabuf" to "u-dma-buf". The purpose of this is to avoid duplicate names
-because another kernel module with the same name as "udmabuf" has been added
-since Linux Kernel 5.x.
-
 ## Architecture of u-dma-buf
 
 ![Figure 1. Architecture ](./u-dma-buf-1.jpg "Figure 1. Architecture")
@@ -49,6 +42,24 @@ Figure 1. Architecture
   In addition, there is a limit to the following feature at the moment.
   - Can not control of the CPU cache by O_SYNC flag . Always CPU cache is valid.
   - Can not various settings by the device tree.
+
+## Note: udmabuf to u-dma-buf
+
+### Why u-dma-buf instead of udmabuf
+
+The predecessor of u-dma-buf is udmabuf. The kernel module name has been changed
+from "udmabuf" to "u-dma-buf". The purpose of this is to avoid duplicate names
+because another kernel module with the same name as "udmabuf" has been added since
+Linux Kernel 5.x.
+
+### Changes from udmabuf to u-dma-buf
+
+| Categoly            | udmabuf                | u-dma-buf               |
+|:--------------------|:-----------------------|:------------------------|
+| module name         | udmabuf.ko             | u-dma-buf.ko            |
+| source file         | udmabuf.c              | u-dma-buf.c             |
+| sys class name      | /sys/class/udmabuf/    | /sys/class/u-dma-buf/   |
+| DT compatible prop. | "ikwzm,udmabuf-0.10.a" | "ikwzm,u-dma-buf"       |
 
 # Usage
 
@@ -106,7 +117,7 @@ If the permission needs to be changed at the load of the kernel module,
 create `/etc/udev/rules.d/99-u-dma-buf.rules` with the following content.
 
 ```rules:99-u-dma-buf.rules
-KERNEL=="udmabuf[0-9]*", GROUP="root", MODE="0666"
+SUBSYSTEM=="u-dma-buf", GROUP="root", MODE="0666"
 ```
 
 The module can be uninstalled by the `rmmod` command.
@@ -171,7 +182,7 @@ The following properties can be set in the device tree.
 
 The `compatible` property is used to set the corresponding device driver when loading
 u-dma-buf. The `compatible` property is mandatory. Be sure to specify `compatible`
-property as "ikwzm,u-dma-buf".
+property as "ikwzm,u-dma-buf" or "ikwzm,udmabuf-0.10.a".
 
 ### `size`
 

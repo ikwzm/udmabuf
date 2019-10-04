@@ -21,11 +21,6 @@ openする際にO_SYNCフラグをセットすることによりCPUキャッシ�
 u-dma-bufのDMAバッファの大きさやデバイスのマイナー番号は、デバイスドライバのロード時(insmodによるロードなど)に指定できます。またプラットフォームによってはデバイスツリーに記述しておくこともできます。
 
 
-## u-dma-bufの前身
-
-u-dma-buf の前身は udmabuf です。"udmabuf" から "u-dma-buf" にカーネルモジュール名を変更しました。これは Linux Kernel 5.x から "udmabuf" と同じ名前の別のカーネルモジュールが追加されたため、名前の重複をさけるのが目的です。
-
-
 ## 構成
 
 
@@ -51,6 +46,22 @@ u-dma-buf の前身は udmabuf です。"udmabuf" から "u-dma-buf" にカー�
   * O_SYNCフラグによるCPUキャッシュの制御が出来ません。常にCPUキャッシュは有効です。
   * sync_for_cpu、sync_for_deviceによる手動でのCPUキャッシュの制御が出来ません。
   * デバイスツリーによる各種設定が出来ません。
+
+
+## 注意: udmabuf から u-dma-buf へ
+
+### u-dma-bufの前身
+
+u-dma-buf の前身は udmabuf です。"udmabuf" から "u-dma-buf" にカーネルモジュール名を変更しました。これは Linux Kernel 5.x から "udmabuf" と同じ名前の別のカーネルモジュールが追加されたため、名前の重複をさけるのが目的です。
+
+### udmabuf から u-dma-buf への変更点
+
+| Categoly            | udmabuf                | u-dma-buf               |
+|:--------------------|:-----------------------|:------------------------|
+| module name         | udmabuf.ko             | u-dma-buf.ko            |
+| source file         | udmabuf.c              | u-dma-buf.c             |
+| sys class name      | /sys/class/udmabuf/    | /sys/class/u-dma-buf/   |
+| DT compatible prop. | "ikwzm,udmabuf-0.10.a" | "ikwzm,u-dma-buf"       |
 
 
 # 使い方
