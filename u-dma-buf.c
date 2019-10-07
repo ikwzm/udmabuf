@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "2.0.0"
+#define DRIVER_VERSION     "2.1.0-rc1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -95,6 +95,12 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define USE_OF_DMA_CONFIG   1
 #else
 #define USE_OF_DMA_CONFIG   0
+#endif
+
+#if     (LINUX_VERSION_CODE >= 0x040500)
+#define USE_DEV_PROPERTY    1
+#else
+#define USE_DEV_PROPERTY    0
 #endif
 
 #if     (UDMABUF_DEBUG == 1)
@@ -1020,114 +1026,53 @@ static int udmabuf_device_destroy(struct udmabuf_device_data* this)
 }
 
 /**
- * DOC: Udmabuf Static Device
+ * DOC: Udmabuf Platform Device.
  *
- * This section defines the udmabuf device to be created with arguments when loaded
- * into ther kernel with insmod.
+ * This section defines the udmabuf platform device list.
  *
- * * STATIC_DEVICE_NUM                  - udmabuf static device list size.
- * * struct udmabuf_static_device       - udmabuf static device structure.
- * * udmabuf_static_device_list         - list of udmabuf static device structure.
- * * udmabuf_static_device_create()     - Create udmabuf static device.
- * * udmabuf_static_device_remove()     - Remove the udmabuf static device.
- * * udmabuf_static_device_create_all() - Create udmabuf static device list.
- * * udmabuf_static_device_remove_all() - Remove udmabuf static device list.
+ * * struct udmabuf_platform_device       - udmabuf platform device structure.
+ * * udmabuf_platform_device_list         - list of udmabuf platform device structure.
+ * * udmabuf_platform_device_sem          - semaphore of udmabuf platform device list.
+ * * udmabuf_platform_device_create()     - Create udmabuf platform device and add to list.
+ * * udmabuf_platform_device_remove()     - Remove udmabuf platform device and delete from list.
+ * * udmabuf_platform_device_remove_all() - Remove all udmabuf platform devices and clear list.
  */
 
-#define STATIC_DEVICE_NUM   8
+/**
+ * struct udmabuf_platform_device         - udmabuf platform device structure.
+ */
+struct udmabuf_platform_device {
+    struct device*       dev;
+#if (USE_DEV_PROPERTY == 0)
+    const char*          device_name;
+    u32                  minor_number;
+    u32                  buffer_size;
+#endif
+    struct list_head     list;
+};
 
 /**
  * udmabuf_static_device_list   - list of udmabuf static device structure.
+ * udmabuf_platform_device_sem  - semaphore of udmabuf platform device list.
  */
-static struct device* udmabuf_static_device_list[STATIC_DEVICE_NUM] = {};
-static struct mutex   udmabuf_static_device_sem;
+static struct list_head udmabuf_platform_device_list;
+static struct mutex     udmabuf_platform_device_sem;
 
 /**
- * udmabuf_device_read_size_property()         - Read udmabuf device size property.
- * udmabuf_device_read_minor_number_property() - Read udmabuf device minor-number property.
- */
-#if (LINUX_VERSION_CODE < 0x040500)
-static u32            udmabuf_static_buffer_size[STATIC_DEVICE_NUM] = {};
-
-static int  udmabuf_device_read_device_name_property(struct device *dev, const char** name)
-{
-    return -1;
-}
-
-static int  udmabuf_device_read_size_property(struct device *dev, u32* value)
-{
-    int id;
-    int status = -1;
-
-    mutex_lock(&udmabuf_static_device_sem);
-    for (id = 0; id < STATIC_DEVICE_NUM; id++) {
-        if ((udmabuf_static_device_list[id] != NULL) &&
-            (udmabuf_static_device_list[id] == dev )) {
-            *value = udmabuf_static_buffer_size[id];
-            status = 0;
-            break;
-        }
-    }
-    mutex_unlock(&udmabuf_static_device_sem);
-    return status;
-}
-
-static int  udmabuf_device_read_minor_number_property(struct device *dev, u32* value)
-{
-    int id;
-    int status = -1;
-
-    mutex_lock(&udmabuf_static_device_sem);
-    for (id = 0; id < STATIC_DEVICE_NUM; id++) {
-        if ((udmabuf_static_device_list[id] != NULL) &&
-            (udmabuf_static_device_list[id] == dev )) {
-            *value = id;
-            status = 0;
-            break;
-        }
-    }
-    mutex_unlock(&udmabuf_static_device_sem);
-    return status;
-}
-
-#else
-#include <linux/property.h>
-
-static int  udmabuf_device_read_device_name_property(struct device *dev, const char** name)
-{
-    return device_property_read_string(dev , "device-name", name);
-}
-
-static int  udmabuf_device_read_size_property(struct device *dev, u32* value)
-{
-    return device_property_read_u32(dev, "size", value);
-}
-
-static int  udmabuf_device_read_minor_number_property(struct device *dev, u32* value)
-{
-    return device_property_read_u32(dev, "minor-number", value);
-}
-#endif
-
-/**
- * udmabuf_static_device_create() - Create udmabuf static device.
+ * udmabuf_platform_device_create() - Create udmabuf platform device and add to list.
+ * @name:       device name or NULL.
  * @id:         device id.
  * @size:       buffer size.
  */
-static void udmabuf_static_device_create(int id, unsigned int size)
+static void udmabuf_platform_device_create(const char* name, int id, unsigned int size)
 {
-    struct platform_device* pdev;
-    int                     retval = 0;
+    struct platform_device*         pdev       = NULL;
+    struct udmabuf_platform_device* plat       = NULL;
+    int                             retval     = 0;
+    bool                            list_added = false;
 
-    if ((id < 0) || (id >= STATIC_DEVICE_NUM))
+    if (size == 0)
         return;
-
-    if (size == 0) {
-        mutex_lock(&udmabuf_static_device_sem);
-        udmabuf_static_device_list[id] = NULL;
-        mutex_unlock(&udmabuf_static_device_sem);
-        return;
-    }
 
     pdev = platform_device_alloc(DRIVER_NAME, id);
     if (IS_ERR_OR_NULL(pdev)) {
@@ -1137,15 +1082,63 @@ static void udmabuf_static_device_create(int id, unsigned int size)
         goto failed;
     }
 
-#if   (LINUX_VERSION_CODE >= 0x040500)
+    plat = kzalloc(sizeof(*plat), GFP_KERNEL);
+    if (IS_ERR_OR_NULL(plat)) {
+        retval = PTR_ERR(plat);
+        plat   = NULL;
+        dev_err(&pdev->dev, "kzalloc() failed. return=%d\n", retval);
+        goto failed;
+    }
+
+#if (USE_DEV_PROPERTY == 0)
+    if (name != NULL) {
+        plat->device_name = kstrdup(name, GFP_KERNEL);
+    } else {
+        plat->device_name = NULL;
+    }
+#else
+    if (name != NULL) {
+        const struct property_entry   props[] = {
+            PROPERTY_ENTRY_STRING("device-name" , name),
+            {},
+        };
+#if     (LINUX_VERSION_CODE >= 0x040700)
+        {
+            retval = device_add_properties(&pdev->dev, props);
+            if (retval != 0) {
+                dev_err(&pdev->dev, "device_add_properties failed. return=%d\n", retval);
+                goto failed;
+            }
+        }
+#else
+        {
+            const struct property_set pset = {
+                .properties = props,
+            };
+            retval = device_add_property_set(&pdev->dev, &pset);
+            if (retval != 0) {
+                dev_err(&pdev->dev, "device_add_propertiy_set failed. return=%d\n", retval);
+                goto failed;
+            }
+        }
+#endif
+    }
+#endif
+    
+#if (USE_DEV_PROPERTY == 0)
+    {
+        plat->minor_number = id;
+        plat->buffer_size  = size;
+    }
+#else
     {
         const struct property_entry   props[] = {
-            PROPERTY_ENTRY_U32("size"        , size),
-            PROPERTY_ENTRY_U32("minor-number", id)  ,
+            PROPERTY_ENTRY_U32(   "size"        , size),
+            PROPERTY_ENTRY_U32(   "minor-number", id  ),
             {},
         };
    
-#if   (LINUX_VERSION_CODE >= 0x040700)
+#if     (LINUX_VERSION_CODE >= 0x040700)
         {
             retval = device_add_properties(&pdev->dev, props);
             if (retval != 0) {
@@ -1166,18 +1159,14 @@ static void udmabuf_static_device_create(int id, unsigned int size)
             }
         }
 #endif
-        mutex_lock(&udmabuf_static_device_sem);
-        udmabuf_static_device_list[id] = &pdev->dev;
-        mutex_unlock(&udmabuf_static_device_sem);
-    }
-#else
-    {
-        mutex_lock(&udmabuf_static_device_sem);
-        udmabuf_static_device_list[id] = &pdev->dev;
-        udmabuf_static_buffer_size[id] = size;
-        mutex_unlock(&udmabuf_static_device_sem);
     }
 #endif
+
+    plat->dev  = &pdev->dev;
+    mutex_lock(&udmabuf_platform_device_sem);
+    list_add_tail(&plat->list, &udmabuf_platform_device_list);
+    list_added = true;
+    mutex_unlock(&udmabuf_platform_device_sem);
     
     retval = platform_device_add(pdev);
     if (retval != 0) {
@@ -1188,37 +1177,61 @@ static void udmabuf_static_device_create(int id, unsigned int size)
     return;
 
  failed:
+    if (list_added == true) {
+        mutex_lock(&udmabuf_platform_device_sem);
+        list_del(&plat->list);
+        mutex_unlock(&udmabuf_platform_device_sem);
+    }
     if (pdev != NULL) {
         platform_device_put(pdev);
     }
-    mutex_lock(&udmabuf_static_device_sem);
-    udmabuf_static_device_list[id] = NULL;
-    mutex_unlock(&udmabuf_static_device_sem);
+    if (plat != NULL) {
+#if (USE_DEV_PROPERTY == 0)
+        if (plat->device_name != NULL)
+            kfree(plat->device_name);
+#endif
+        kfree(plat);
+    }
     return;
 }
 
 /**
- * udmabuf_static_device_remove() - Remove the udmabuf static device.
- * @id:         device id.
+ * udmabuf_platform_device_remove() - Remove udmabuf platform device and delete from list.
+ * @plat:       udmabuf_platform_device*
  */
-static void udmabuf_static_device_remove(int id)
+static void udmabuf_platform_device_remove(struct udmabuf_platform_device* plat)
 {
-    struct device* dev;
-    mutex_lock(&udmabuf_static_device_sem);
-    dev = udmabuf_static_device_list[id];
-    mutex_unlock(&udmabuf_static_device_sem);
-    if (dev != NULL) {
-        struct platform_device* pdev = to_platform_device(dev);
-        platform_device_del(pdev);
-        platform_device_put(pdev);
-    }
-    mutex_lock(&udmabuf_static_device_sem);
-    udmabuf_static_device_list[id] = NULL;
-    mutex_unlock(&udmabuf_static_device_sem);
+    struct device*           dev  = plat->dev;
+    struct platform_device*  pdev = to_platform_device(dev);
+    platform_device_del(pdev);
+    platform_device_put(pdev);
+    mutex_lock(&udmabuf_platform_device_sem);
+    list_del(&plat->list);
+    mutex_unlock(&udmabuf_platform_device_sem);
+#if (USE_DEV_PROPERTY == 0)
+    if (plat->device_name != NULL)
+        kfree(plat->device_name);
+#endif
+    kfree(plat);
 }
 
 /**
- * udmabuf static device description.
+ * udmabuf_platform_device_remove_all() - Remove all udmabuf platform devices and clear list.
+ */
+static void udmabuf_platform_device_remove_all(void)
+{
+    while(!list_empty(&udmabuf_platform_device_list)) {
+        struct udmabuf_platform_device* plat = list_first_entry(&udmabuf_platform_device_list, typeof(*(plat)), list);
+        udmabuf_platform_device_remove(plat);
+    }
+}
+
+/**
+ * DOC: Udmabuf Static Devices.
+ *
+ * This section defines the udmabuf device to be created with arguments when loaded
+ * into ther kernel with insmod.
+ *
  */
 #define DEFINE_UDMABUF_STATIC_DEVICE_PARAM(__num)                        \
     static int       udmabuf ## __num = 0;                               \
@@ -1228,7 +1241,7 @@ static void udmabuf_static_device_remove(int id)
 #define CALL_UDMABUF_STATIC_DEVICE_CREATE(__num)                         \
     if (udmabuf ## __num != 0) {                                         \
         ida_simple_remove(&udmabuf_device_ida, __num);                   \
-        udmabuf_static_device_create(__num, udmabuf ## __num);           \
+        udmabuf_platform_device_create(NULL, __num, udmabuf ## __num);   \
     }
 
 #define CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(__num)           \
@@ -1261,7 +1274,7 @@ static void udmabuf_static_device_reserve_minor_number_all(void)
 }
 
 /**
- * udmabuf_static_device_create_all() - Create udmabuf static device list.
+ * udmabuf_static_device_create_all() - Create udmabuf static devices.
  */
 static void udmabuf_static_device_create_all(void)
 {
@@ -1276,24 +1289,92 @@ static void udmabuf_static_device_create_all(void)
 }
 
 /**
- * udmabuf_static_device_remove_all() - Remove udmabuf static device list.
- */
-static void udmabuf_static_device_remove_all(void)
-{
-    int id;
-    for (id = 0; id < STATIC_DEVICE_NUM; id++) {
-        udmabuf_static_device_remove(id);
-    }
-}
-
-/**
- * DOC: Udmabuf Device Driver
+ * DOC: Udmabuf Device Driver probe/remove section.
  *
  * This section defines the udmabuf device driver.
  *
- * * udmabuf_device_probe()   - Probe  call for the device driver.
- * * udmabuf_device_remove()  - Remove call for the device driver.
+ * * udmabuf_device_probe()                      - Probe  call for the device driver.
+ * * udmabuf_device_remove()                     - Remove call for the device driver.
+ * * udmabuf_device_read_device_name_property()  - Read "device-name"  property from udmabuf device.
+ * * udmabuf_device_read_size_property()         - Read "buffer-size"  property from udmabuf device.
+ * * udmabuf_device_read_minor_number_property() - Read "minor-number" property from udmabuf device.
  */
+
+#if (USE_DEV_PROPERTY == 0)
+
+static int  udmabuf_device_read_device_name_property(struct device *dev, const char** name)
+{
+    int                             status = -1;
+    struct udmabuf_platform_device* plat;
+
+    mutex_lock(&udmabuf_platform_device_sem);
+    list_for_each_entry(plat, &udmabuf_platform_device_list, list) {
+        if (plat->dev == dev) {
+            if (plat->device_name == NULL) {
+                status = -1;
+            } else {
+                *name  = plat->device_name;
+                status = 0;
+            }
+            break;
+        }
+    }
+    mutex_unlock(&udmabuf_platform_device_sem);
+    return status;
+}
+
+static int  udmabuf_device_read_size_property(struct device *dev, u32* value)
+{
+    int                             status = -1;
+    struct udmabuf_platform_device* plat;
+
+    mutex_lock(&udmabuf_platform_device_sem);
+    list_for_each_entry(plat, &udmabuf_platform_device_list, list) {
+        if (plat->dev == dev) {
+            *value = plat->buffer_size;
+            status = 0;
+            break;
+        }
+    }
+    mutex_unlock(&udmabuf_platform_device_sem);
+    return status;
+}
+
+static int  udmabuf_device_read_minor_number_property(struct device *dev, u32* value)
+{
+    int                             status = -1;
+    struct udmabuf_platform_device* plat;
+
+    mutex_lock(&udmabuf_platform_device_sem);
+    list_for_each_entry(plat, &udmabuf_platform_device_list, list) {
+        if (plat->dev == dev) {
+            *value = plat->minor_number;
+            status = 0;
+            break;
+        }
+    }
+    mutex_unlock(&udmabuf_platform_device_sem);
+    return status;
+}
+
+#else
+#include <linux/property.h>
+
+static int  udmabuf_device_read_device_name_property(struct device *dev, const char** name)
+{
+    return device_property_read_string(dev , "device-name", name);
+}
+
+static int  udmabuf_device_read_size_property(struct device *dev, u32* value)
+{
+    return device_property_read_u32(dev, "size", value);
+}
+
+static int  udmabuf_device_read_minor_number_property(struct device *dev, u32* value)
+{
+    return device_property_read_u32(dev, "minor-number", value);
+}
+#endif
 
 /**
  * udmabuf_device_remove()   - Remove udmabuf device driver.
@@ -1364,14 +1445,13 @@ static int udmabuf_device_probe(struct device *dev)
     /*
      * device-name property
      */
-    if (udmabuf_device_read_device_name_property(dev, &device_name) != 0) {
+    if (udmabuf_device_read_device_name_property(dev, &device_name) != 0)
         device_name = of_get_property(dev->of_node, "device-name", NULL);
-        if (IS_ERR_OR_NULL(device_name)) {
-            if (minor_number < 0)
-                device_name = dev_name(dev);
-            else
-                device_name = NULL;
-        }
+    if (IS_ERR_OR_NULL(device_name)) {
+        if (minor_number < 0)
+            device_name = dev_name(dev);
+        else
+            device_name = NULL;
     }
     /*
      * udmabuf_device_create()
@@ -1593,7 +1673,7 @@ static bool udmabuf_platform_driver_registerd = 0;
  */
 static void u_dma_buf_cleanup(void)
 {
-    udmabuf_static_device_remove_all();
+    udmabuf_platform_device_remove_all();
     if (udmabuf_platform_driver_registerd){platform_driver_unregister(&udmabuf_platform_driver);}
     if (udmabuf_sys_class     != NULL    ){class_destroy(udmabuf_sys_class);}
     if (udmabuf_device_number != 0       ){unregister_chrdev_region(udmabuf_device_number, 0);}
@@ -1608,7 +1688,8 @@ static int __init u_dma_buf_init(void)
     int retval = 0;
 
     ida_init(&udmabuf_device_ida);
-    mutex_init(&udmabuf_static_device_sem);
+    INIT_LIST_HEAD(&udmabuf_platform_device_list);
+    mutex_init(&udmabuf_platform_device_sem);
 
     retval = alloc_chrdev_region(&udmabuf_device_number, 0, 0, DRIVER_NAME);
     if (retval != 0) {
