@@ -1230,18 +1230,13 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
     }
 #else
     {
-        struct property_entry   props0[] = {
+        struct property_entry   props_list[] = {
             PROPERTY_ENTRY_STRING("device-name" , name),
             PROPERTY_ENTRY_U32(   "size"        , size),
             PROPERTY_ENTRY_U32(   "minor-number", id  ),
             {},
         };
-        struct property_entry   props1[] = {
-            PROPERTY_ENTRY_U32(   "size"        , size),
-            PROPERTY_ENTRY_U32(   "minor-number", id  ),
-            {},
-        };
-        struct property_entry* props = (name != NULL) ? props0 : props1;
+        struct property_entry* props = (name != NULL) ? &props_list[0] : &props_list[1];
 #if     (LINUX_VERSION_CODE >= 0x040700)
         {
             retval = device_add_properties(&pdev->dev, props);
