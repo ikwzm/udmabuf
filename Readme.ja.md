@@ -752,6 +752,41 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 手動でキャッシュを制御する方法は次の節で説明します。
 
 
+## /dev/u-dma-buf-mgr による u-dma-buf の作成と削除
+
+u-dma-buf v2.1以降、 /dev/u-dma-buf-mgr デバイスドライバーが追加されました。 u-dma-buf は
+/dev/u-dma-buf-mgr に文字列としてコマンドを書き込むことにより作成/削除されます。
+
+### u-dma-buf の作成
+
+u-dma-bufは、次のように文字列 "create <device-name> <size>"を /dev/u-dma-buf-mgr に書き込むことで作成できます。
+\<device-name\> には、生成される u-dma-buf のデバイス名を指定します。
+\<size\> には、割り当てるバッファのサイズを指定します。
+
+```console
+zynq$ sudo echo "create udmabuf8 0x10000" > /dev/u-dma-buf-mgr
+[   58.790695] u-dma-buf-mgr : create udmabuf8 65536
+[   58.798637] u-dma-buf udmabuf8: driver version = 2.1.0
+[   58.804114] u-dma-buf udmabuf8: major number   = 245
+[   58.809000] u-dma-buf udmabuf8: minor number   = 0
+[   58.815628] u-dma-buf udmabuf8: phys address   = 0x1f050000
+[   58.822041] u-dma-buf udmabuf8: buffer size    = 65536
+[   58.827098] u-dma-buf udmabuf8: dma device     = u-dma-buf.0.auto
+[   58.834918] u-dma-buf udmabuf8: dma coherent   = 0
+[   58.839632] u-dma-buf u-dma-buf.0.auto: driver installed.
+```
+
+### u-dma-buf の削除
+
+u-dma-bufは、次のように文字列 "delete <device-name>" を /dev/u-dma-buf-mgr に書き込むことで削除できます。
+\<device-name\> には、作成コマンドで指定された \<device-name\> を指定します。
+
+```console
+zynq$ sudo echo "delete udmabuf8" > /dev/u-dma-buf-mgr
+[  179.089702] u-dma-buf-mgr : delete udmabuf8
+[  179.094212] u-dma-buf u-dma-buf.0.auto: driver removed.
+```
+
 # DMAバッファとCPUキャッシュのコヒーレンシ
 
 
