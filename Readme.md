@@ -664,6 +664,41 @@ The sync_offset/sync_size/sync_direction specified by ```sync_for_device``` is t
 
 Details of manual cache management is described in the next section.
 
+## Configuration via the `/dev/u-dma-buf-mgr`
+
+Since u-dma-buf v2.1, `/dev/u-dma-buf-mgr` device driver has been added. u-dma-buf can be
+created/deleted by writing the command to `/dev/u-dma-buf-mgr` as a string.
+
+### Create u-dma-buf
+
+u-dma-buf can be created by writing the string "create <device-name> <size>" to `/dev/u-dma-buf-mgr` as follows:
+For `<device-name>`, specify the device name of the u-dma-buf to be generated.
+For `<size>`, specify the size of the buffer to be allocated.
+
+```console
+zynq$ sudo echo "create udmabuf8 0x10000" > /dev/u-dma-buf-mgr
+[   58.790695] u-dma-buf-mgr : create udmabuf8 65536
+[   58.798637] u-dma-buf udmabuf8: driver version = 2.1.0
+[   58.804114] u-dma-buf udmabuf8: major number   = 245
+[   58.809000] u-dma-buf udmabuf8: minor number   = 0
+[   58.815628] u-dma-buf udmabuf8: phys address   = 0x1f050000
+[   58.822041] u-dma-buf udmabuf8: buffer size    = 65536
+[   58.827098] u-dma-buf udmabuf8: dma device     = u-dma-buf.0.auto
+[   58.834918] u-dma-buf udmabuf8: dma coherent   = 0
+[   58.839632] u-dma-buf u-dma-buf.0.auto: driver installed.
+```
+
+### Delete u-dma-buf
+
+u-dma-buf can be deleted by writing the string "delete <device-name>" to `/dev/u-dma-buf-mgr` as follows:
+For `<device-name>`, specify `<device-name>` specified with the create command.
+
+```console
+zynq$ sudo echo "delete udmabuf8" > /dev/u-dma-buf-mgr
+[  179.089702] u-dma-buf-mgr : delete udmabuf8
+[  179.094212] u-dma-buf u-dma-buf.0.auto: driver removed.
+```
+
 # Coherency of data on DMA buffer and CPU cache
 
 CPU usually accesses to a DMA buffer on the main memory using cache, and a hardware
@@ -700,7 +735,6 @@ If the `dma-coherent` property is specified in the device tree, specify that
 coherency can be guaranteed with hardware. In this case, the cache control described
 in "2. Manual cache management with the CPU canche still being enabled" described
 later is not performed.
-
 
 ## When hardware does not maintain the coherency
 
