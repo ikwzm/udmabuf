@@ -75,31 +75,31 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define UDMABUF_MGR_ENABLE  1
 #define UDMABUF_MGR_NAME   "u-dma-buf-mgr"
 
-#if     ((LINUX_VERSION_CODE >= 0x031300) && (defined(CONFIG_ARM) || defined(CONFIG_ARM64)))
+#if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0) && (defined(CONFIG_ARM) || defined(CONFIG_ARM64)))
 #define USE_DMA_COHERENT    1
 #else
 #define USE_DMA_COHERENT    0
 #endif
 
-#if     (LINUX_VERSION_CODE >= 0x030B00)
+#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0))
 #define USE_DEV_GROUPS      1
 #else
 #define USE_DEV_GROUPS      0
 #endif
 
-#if     ((LINUX_VERSION_CODE >= 0x040100) && defined(CONFIG_OF))
+#if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0) && defined(CONFIG_OF))
 #define USE_OF_RESERVED_MEM 1
 #else
 #define USE_OF_RESERVED_MEM 0
 #endif
 
-#if     ((LINUX_VERSION_CODE >= 0x040100) && defined(CONFIG_OF))
+#if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)) && defined(CONFIG_OF))
 #define USE_OF_DMA_CONFIG   1
 #else
 #define USE_OF_DMA_CONFIG   0
 #endif
 
-#if     (LINUX_VERSION_CODE >= 0x040C00)
+#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0))
 #define USE_DEV_PROPERTY    1
 #else
 #define USE_DEV_PROPERTY    0
@@ -471,7 +471,7 @@ static inline int _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct v
     unsigned long available_size     = this->alloc_size -offset;
     unsigned long virt_addr;
 
-#if (LINUX_VERSION_CODE >= 0x040A00)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0))
     virt_addr = vmf->address;
 #else
     virt_addr = (unsigned long)vmf->virtual_address;
@@ -488,7 +488,7 @@ static inline int _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct v
     if (!pfn_valid(page_frame_num))
         return VM_FAULT_SIGBUS;
 
-#if (LINUX_VERSION_CODE >= 0x041200)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))
     return vmf_insert_pfn(vma, virt_addr, page_frame_num);
 #else
     {
@@ -503,7 +503,7 @@ static inline int _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct v
 #endif
 }
 
-#if (LINUX_VERSION_CODE >= 0x040B00)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
 /**
  * udmabuf_device_vma_fault() - udmabuf device vm area fault operation.
  * @vfm:        Pointer to the vm fault structure.
@@ -1237,7 +1237,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
             {},
         };
         struct property_entry* props = (name != NULL) ? &props_list[0] : &props_list[1];
-#if     (LINUX_VERSION_CODE >= 0x040700)
+#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0))
         {
             retval = device_add_properties(&pdev->dev, props);
             if (retval != 0) {
@@ -1517,8 +1517,8 @@ static int udmabuf_device_probe(struct device *dev)
     if (device_data->of_reserved_mem == 0)
 #endif
     {
-#if (LINUX_VERSION_CODE >= 0x040C00)
-#if (LINUX_VERSION_CODE >= 0x041200)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))
         retval = of_dma_configure(dev, dev->of_node, true);
 #else
         retval = of_dma_configure(dev, dev->of_node);
