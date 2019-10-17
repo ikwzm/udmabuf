@@ -503,7 +503,17 @@ static inline int _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct v
 #endif
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0))
+/**
+ * udmabuf_device_vma_fault() - udmabuf device vm area fault operation.
+ * @vfm:        Pointer to the vm fault structure.
+ * Return:      Success(=0) or error status(<0).
+ */
+static vm_fault_t udmabuf_device_vma_fault(struct vm_fault* vmf)
+{
+    return _udmabuf_device_vma_fault(vmf->vma, vmf);
+}
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
 /**
  * udmabuf_device_vma_fault() - udmabuf device vm area fault operation.
  * @vfm:        Pointer to the vm fault structure.
