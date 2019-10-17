@@ -75,7 +75,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define UDMABUF_MGR_ENABLE  1
 #define UDMABUF_MGR_NAME   "u-dma-buf-mgr"
 
-#if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0) && (defined(CONFIG_ARM) || defined(CONFIG_ARM64)))
+#if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0)) && (defined(CONFIG_ARM) || defined(CONFIG_ARM64)))
 #define USE_DMA_COHERENT    1
 #else
 #define USE_DMA_COHERENT    0
@@ -87,7 +87,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define USE_DEV_GROUPS      0
 #endif
 
-#if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0) && defined(CONFIG_OF))
+#if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)) && defined(CONFIG_OF))
 #define USE_OF_RESERVED_MEM 1
 #else
 #define USE_OF_RESERVED_MEM 0
