@@ -456,12 +456,21 @@ static void udmabuf_device_vma_close(struct vm_area_struct* vma)
 }
 
 /**
+ * VM_FAULT_RESULT_TYPE - Type of udmabuf_device_vma_fault() return value.
+ */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0))
+typedef vm_fault_t VM_FAULT_RESULT_TYPE;
+#else
+typedef int        VM_FAULT_RESULT_TYPE;
+#endif
+
+/**
  * _udmabuf_device_vma_fault() - udmabuf device vm area fault operation.
  * @vma:        Pointer to the vm area structure.
  * @vfm:        Pointer to the vm fault structure.
- * Return:      Success(=0) or error status(<0).
+ * Return:      VM_FAULT_RESULT_TYPE (Success(=0) or error status(!=0)).
  */
-static inline int _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
+static inline VM_FAULT_RESULT_TYPE _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
 {
     struct udmabuf_device_data* this = vma->vm_private_data;
     unsigned long offset             = vmf->pgoff << PAGE_SHIFT;
@@ -503,23 +512,13 @@ static inline int _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct v
 #endif
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
 /**
  * udmabuf_device_vma_fault() - udmabuf device vm area fault operation.
  * @vfm:        Pointer to the vm fault structure.
- * Return:      Success(=0) or error status(<0).
+ * Return:      VM_FAULT_RESULT_TYPE (Success(=0) or error status(!=0)).
  */
-static vm_fault_t udmabuf_device_vma_fault(struct vm_fault* vmf)
-{
-    return _udmabuf_device_vma_fault(vmf->vma, vmf);
-}
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
-/**
- * udmabuf_device_vma_fault() - udmabuf device vm area fault operation.
- * @vfm:        Pointer to the vm fault structure.
- * Return:      Success(=0) or error status(<0).
- */
-static int udmabuf_device_vma_fault(struct vm_fault* vmf)
+static VM_FAULT_RESULT_TYPE udmabuf_device_vma_fault(struct vm_fault* vmf)
 {
     return _udmabuf_device_vma_fault(vmf->vma, vmf);
 }
@@ -528,9 +527,9 @@ static int udmabuf_device_vma_fault(struct vm_fault* vmf)
  * udmabuf_device_vma_fault() - udmabuf device vm area fault operation.
  * @vma:        Pointer to the vm area structure.
  * @vfm:        Pointer to the vm fault structure.
- * Return:      Success(=0) or error status(<0).
+ * Return:      VM_FAULT_RESULT_TYPE (Success(=0) or error status(!=0)).
  */
-static int udmabuf_device_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
+static VM_FAULT_RESULT_TYPE udmabuf_device_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
 {
     return _udmabuf_device_vma_fault(vma, vmf);
 }
