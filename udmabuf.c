@@ -586,7 +586,7 @@ static int udmabuf_device_file_release(struct inode *inode, struct file *file)
 #define _PGPROT_WRITECOMBINE(vm_page_prot) pgprot_writecombine(vm_page_prot)
 #define _PGPROT_DMACOHERENT(vm_page_prot)  pgprot_dmacoherent(vm_page_prot)
 #elif   defined(CONFIG_ARM64)
-#define _PGPROT_NONCACHED(vm_page_prot)    pgprot_writecombine(vm_page_prot)
+#define _PGPROT_NONCACHED(vm_page_prot)    pgprot_noncached(vm_page_prot)
 #define _PGPROT_WRITECOMBINE(vm_page_prot) pgprot_writecombine(vm_page_prot)
 #define _PGPROT_DMACOHERENT(vm_page_prot)  pgprot_writecombine(vm_page_prot)
 #else
