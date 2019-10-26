@@ -1101,7 +1101,7 @@ int clear_buf(unsigned char* buf, unsigned int size)
 
 v1.4.4 以前では、udmabuf は ARM64 で sync_mode = 1（noncached）の時、 ```pgprot_writecombine()``` を使用していました。その理由は、 ```pgprot_noncached()``` を使用すると udmabuf_test.c の memset() でバスエラーが発生したためです。
 
-しかしながら、issue #28 で報告されているように、ARM64 で ```pgprot_writecombine()``` を使用すると、キャッシュの一貫性に問題があることがわかりました。
+しかしながら、https://github.com/ikwzm/udmabuf/pull/28 で報告されているように、ARM64 で ```pgprot_writecombine()``` を使用すると、キャッシュの一貫性に問題があることがわかりました。
 
 したがって、v1.4.5 以降、sync_mode = 1の場合は ```pgprot_noncached()``` を使用するように変更されました。 これは、キャッシュの一貫性の問題を理解するのが非常に難しくデバッグが難しいためです。キャッシュの一貫性の問題を心配するのではなく、バスエラーを起したほうが簡単だと判断しました。
 

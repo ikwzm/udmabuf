@@ -1008,7 +1008,7 @@ Table-2　The execution time of the sample program `clearbuf`
 
 For v1.4.4 or earier, udmabuf used ```pgprot_writecombine()``` on ARM64 and sync_mode=1(noncached). The reason is that a bus error occurred in memset() in udmabuf_test.c when using ```pgprot_noncached()```.
 
-However, as reported in issue #28, when using ```pgprot_writecombine()``` on ARM64, it was found that there was a problem with cache coherency.
+However, as reported in https://github.com/ikwzm/udmabuf/pull/28, when using ```pgprot_writecombine()``` on ARM64, it was found that there was a problem with cache coherency.
 
 Therefore, since v1.4.5, when sync_mode = 1, it was changed to use ```pgprot_noncached()```. This is because cache coherency issues are very difficult to understand and difficult to debug. Rather than worrying about the cache coherency problem, we decided that it was easier to understand when the bus error occurred.
 
