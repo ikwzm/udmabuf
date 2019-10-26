@@ -51,6 +51,10 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
   * sync_for_cpu、sync_for_deviceによる手動でのCPUキャッシュの制御が出来ません。
   * デバイスツリーによる各種設定が出来ません。
 
+## 注意事項: udmabuf から u-dma-buf へ
+
+"udmabuf" と同じ名前の別のカーネルモジュールが Linux Kernel 5.0 に追加されました。したがって、Linux Kernel 5.0 以降では、この udmabuf は使用できません。代わりに、このリポジトリで u-dma-buf が提供されます。 u-dma-bufを使用する場合は、https：//github.com/ikwzm/udmabuf/tree/u-dma-buf-master を参照してください。
+
 
 # 使い方
 
@@ -1093,7 +1097,17 @@ int clear_buf(unsigned char* buf, unsigned int size)
 </table>
 
 
+**注意事項: ARM64 で `O_SYNC` を使う場合**
 
+v1.4.4 以前では、udmabuf は ARM64 で sync_mode = 1（noncached）の時、 ```pgprot_writecombine()``` を使用していました。その理由は、 ```pgprot_noncached()``` を使用すると udmabuf_test.c の memset() でバスエラーが発生したためです。
+
+しかしながら、https://github.com/ikwzm/udmabuf/pull/28 で報告されているように、ARM64 で ```pgprot_writecombine()``` を使用すると、キャッシュの一貫性に問題があることがわかりました。
+
+したがって、v1.4.5 以降、sync_mode = 1の場合は ```pgprot_noncached()``` を使用するように変更されました。 これは、キャッシュの一貫性の問題を理解するのが非常に難しくデバッグが難しいためです。キャッシュの一貫性の問題を心配するのではなく、バスエラーを起したほうが簡単だと判断しました。
+
+この変更により、ARM64 で `O_SYNC` フラグによるキャッシュ制御を行う場合は注意が必要になります。おそらく、memset() を使用することはできません。
+
+問題が発生した場合、キャッシュの一貫性はハードウェアによって維持するか、後述のCPUキャッシュを有効にしたまま手動でキャッシュを制御する方法を使用してください。
 
 ### CPUキャッシュを有効にしたまま手動でCPUキャッシュを制御する方法
 
