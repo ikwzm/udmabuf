@@ -44,6 +44,10 @@ Figure 1. Architecture
   - Can not control of the CPU cache by O_SYNC flag . Always CPU cache is valid.
   - Can not various settings by the device tree.
 
+## Note: udmabuf to u-dma-buf
+
+Another kernel module with the same name as "udmabuf" was added in Linux Kernel 5.0. Therefore, since Linux Kernel 5.0, this "udmabuf" cannot be used. Instead, "u-dma-buf" is provided in this repository. If you use "u-dma-buf", see https://github.com/ikwzm/udmabuf/tree/u-dma-buf-master 
+
 # Usage
 
 ## Compile
@@ -1000,7 +1004,7 @@ Table-2　The execution time of the sample program `clearbuf`
   </tr>
 </table>
 
-***Note: on using `O_SYNC` flag on ARM64***
+**Note: on using `O_SYNC` flag on ARM64**
 
 For v1.4.4 or earier, udmabuf used ```pgprot_writecombine()``` on ARM64 and sync_mode=1(noncached). The reason is that a bus error occurred in memset() in udmabuf_test.c when using ```pgprot_noncached()```.
 

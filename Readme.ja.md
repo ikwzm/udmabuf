@@ -51,6 +51,10 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
   * sync_for_cpu、sync_for_deviceによる手動でのCPUキャッシュの制御が出来ません。
   * デバイスツリーによる各種設定が出来ません。
 
+## 注意事項: udmabuf から u-dma-buf へ
+
+"udmabuf" と同じ名前の別のカーネルモジュールが Linux Kernel 5.0 に追加されました。したがって、Linux Kernel 5.0 以降では、この udmabuf は使用できません。代わりに、このリポジトリで u-dma-buf が提供されます。 u-dma-bufを使用する場合は、https：//github.com/ikwzm/udmabuf/tree/u-dma-buf-master を参照してください。
+
 
 # 使い方
 
