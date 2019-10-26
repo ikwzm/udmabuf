@@ -1051,6 +1051,17 @@ Table-2　The execution time of the sample program `clearbuf`
   </tr>
 </table>
 
+**Note: on using `O_SYNC` flag on ARM64**
+
+For v2.1.1 or earier, udmabuf used ```pgprot_writecombine()``` on ARM64 and sync_mode=1(noncached). The reason is that a bus error occurred in memset() in udmabuf_test.c when using ```pgprot_noncached()```.
+
+However, as reported in https://github.com/ikwzm/udmabuf/pull/28, when using ```pgprot_writecombine()``` on ARM64, it was found that there was a problem with cache coherency.
+
+Therefore, since v2.1.2, when sync_mode = 1, it was changed to use ```pgprot_noncached()```. This is because cache coherency issues are very difficult to understand and difficult to debug. Rather than worrying about the cache coherency problem, we decided that it was easier to understand when the bus error occurred.
+
+This change requires alignment attention when using O_SYNC cache control on ARM64. You probably won't be able to use memset().
+
+If a problem occurs, either cache coherency is maintained by hardware, or use a method described bellow that manually cache management with CPU cache still being enabled.
 
 ### 2. Manual cache management with the CPU canche still being enabled
 
