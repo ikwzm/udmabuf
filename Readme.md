@@ -733,7 +733,7 @@ necessary when hardware maintains the coherency.
 
 If the `dma-coherent` property is specified in the device tree, specify that
 coherency can be guaranteed with hardware. In this case, the cache control described
-in "2. Manual cache management with the CPU canche still being enabled" described
+in "2. Manual cache management with the CPU cache still being enabled" described
 later is not performed.
 
 ## When hardware does not maintain the coherency
@@ -1063,7 +1063,7 @@ This change requires alignment attention when using O_SYNC cache control on ARM6
 
 If a problem occurs, either cache coherency is maintained by hardware, or use a method described bellow that manually cache management with CPU cache still being enabled.
 
-### 2. Manual cache management with the CPU canche still being enabled
+### 2. Manual cache management with the CPU cache still being enabled
 
 As explained above, by opening u-dma-buf without specifying the `O_SYNC` flag, CPU cache can be left turned on.
 
