@@ -36,7 +36,7 @@ Figure 1. Architecture
 
 ## Supported platforms
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14, 4.19).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: x86(64bit) However, verification is not enough. I hope the results from everyone.
@@ -1001,7 +1001,7 @@ Table-2　The execution time of the sample program `clearbuf`
 </table>
 
 
-### 2. Manual cache management with the CPU canche still being enabled
+### 2. Manual cache management with the CPU cache still being enabled
 
 As explained above, by opening udmabuf without specifying the `O_SYNC` flag, CPU cache can be left turned on.
 
