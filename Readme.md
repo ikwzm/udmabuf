@@ -685,7 +685,7 @@ necessary when hardware maintains the coherency.
 
 If the `dma-coherent` property is specified in the device tree, specify that
 coherency can be guaranteed with hardware. In this case, the cache control described
-in "2. Manual cache management with the CPU canche still being enabled" described
+in "2. Manual cache management with the CPU cache still being enabled" described
 later is not performed.
 
 
