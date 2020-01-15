@@ -6,18 +6,6 @@
 #include        <sys/mman.h>
 #include        <sys/utsname.h>
 
-static int   arm64 = 0;
-static void  check_arm64(void)
-{
-    struct utsname name;
-    if (uname(&name) == -1) {
-        printf("uname error\n");
-        exit(-1);
-    }
-    printf("machine = %s\n", name.machine);
-    arm64 = (strcmp(name.machine, "aarch64") == 0) ? 1 : 0;
-}
-
 void print_diff_time(struct timeval start_time, struct timeval end_time)
 {
     struct timeval diff_time;
@@ -58,7 +46,7 @@ int clear_buf(unsigned char* buf, unsigned int size)
     int n = 100;
     int error_count = 0;
     while(--n > 0) {
-      memset((void*)buf, 0, size);
+      memset((void*)buf, 0xFF, size);
     }
     return error_count;
 }
@@ -105,11 +93,6 @@ void clear_buf_test(unsigned int size, unsigned int sync_mode, int o_sync)
 
     printf("sync_mode=%d, O_SYNC=%d, ", sync_mode, (o_sync)?1:0);
 
-    if ((arm64 == 1) && (((o_sync == O_SYNC) && (sync_mode == 1)) || (sync_mode == 5))) {
-      printf("cannot execute on arm64 due to bus error.\n", sync_mode, o_sync);
-      return;
-    }      
-
     if ((fd  = open("/dev/udmabuf0", O_RDWR | o_sync)) != -1) {
       buf = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
       gettimeofday(&start_time, NULL);
@@ -132,8 +115,6 @@ void main()
     int            error_count;
     struct timeval start_time, end_time;
 
-    check_arm64();
-    
     if ((fd  = open("/sys/class/udmabuf/udmabuf0/phys_addr", O_RDONLY)) != -1) {
       read(fd, attr, 1024);
       sscanf(attr, "%x", &phys_addr);

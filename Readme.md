@@ -36,7 +36,7 @@ Figure 1. Architecture
 
 ## Supported platforms
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14, 4.19).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: x86(64bit) However, verification is not enough. I hope the results from everyone.
@@ -685,7 +685,7 @@ necessary when hardware maintains the coherency.
 
 If the `dma-coherent` property is specified in the device tree, specify that
 coherency can be guaranteed with hardware. In this case, the cache control described
-in "2. Manual cache management with the CPU canche still being enabled" described
+in "2. Manual cache management with the CPU cache still being enabled" described
 later is not performed.
 
 
@@ -1016,7 +1016,7 @@ This change requires alignment attention when using O_SYNC cache control on ARM6
 
 If a problem occurs, either cache coherency is maintained by hardware, or use a method described bellow that manually cache management with CPU cache still being enabled.
 
-### 2. Manual cache management with the CPU canche still being enabled
+### 2. Manual cache management with the CPU cache still being enabled
 
 As explained above, by opening udmabuf without specifying the `O_SYNC` flag, CPU cache can be left turned on.
 
