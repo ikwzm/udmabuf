@@ -4,6 +4,7 @@
 #include        <time.h>
 #include        <sys/types.h>
 #include        <sys/mman.h>
+#include        <sys/utsname.h>
 
 void print_diff_time(struct timeval start_time, struct timeval end_time)
 {
@@ -45,7 +46,7 @@ int clear_buf(unsigned char* buf, unsigned int size)
     int n = 100;
     int error_count = 0;
     while(--n > 0) {
-      memset((void*)buf, 0, size);
+      memset((void*)buf, 0xFF, size);
     }
     return error_count;
 }
