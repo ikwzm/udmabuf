@@ -678,7 +678,7 @@ For `<size>`, specify the size of the buffer to be allocated.
 ```console
 zynq$ sudo echo "create udmabuf8 0x10000" > /dev/u-dma-buf-mgr
 [   58.790695] u-dma-buf-mgr : create udmabuf8 65536
-[   58.798637] u-dma-buf udmabuf8: driver version = 2.1.0
+[   58.798637] u-dma-buf udmabuf8: driver version = 2.1.3
 [   58.804114] u-dma-buf udmabuf8: major number   = 245
 [   58.809000] u-dma-buf udmabuf8: minor number   = 0
 [   58.815628] u-dma-buf udmabuf8: phys address   = 0x1f050000
