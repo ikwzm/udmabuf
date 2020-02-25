@@ -642,7 +642,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_owner
 
 
-/sys/class/u-dma-buf/\<device-name\>/sync_owner は u-dma-bufのキャッシュ制御を手動で行った際に、現在のバッファのオーナーがCPUかDEVICEを読み取ります。
+/sys/class/u-dma-buf/\<device-name\>/sync_owner は u-dma-bufのキャッシュ制御を手動で行った際に、現在のバッファのオーナーがCPUかDEVICEを読み取ります。バッファのオーナーが CPU の場合は 0 が読めます。バッファのオーナーが DEVICE の場合は 1 が読めます。
 
 
 ```C:u-dma-buf_test.c
@@ -665,7 +665,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_for_cpu
 
 
-/sys/class/u-dma-buf/\<device-name\>/sync_for_cpu はu-dma-bufのキャッシュ制御を手動で行う際、このデバイスファイルに0以外の値を書き込むことでバッファのオーナーをCPUにします。
+/sys/class/u-dma-buf/\<device-name\>/sync_for_cpu はu-dma-bufのキャッシュ制御を手動で行う際、このデバイスファイルに0以外の値を書き込むことでバッファのオーナーをCPUにします。このデバイスファイルは書き込みオンリーです。
 
 このデバイスファイルに 1 を書いた場合、sync_directionが2(=DMA_FROM_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュが無効化されます。
 
@@ -710,7 +710,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_for_device
 
 
-/sys/class/u-dma-buf/\<device-name\>/sync_for_deviceはu-dma-bufのキャッシュ制御を手動で行う際、このデバイスドライバに0以外の値を書き込むことでバッファのオーナーをDEVICEにします。
+/sys/class/u-dma-buf/\<device-name\>/sync_for_deviceはu-dma-bufのキャッシュ制御を手動で行う際、このデバイスドライバに0以外の値を書き込むことでバッファのオーナーをDEVICEにします。このデバイスファイルは書き込みオンリーです。
 
 このデバイスファイルに 1 を書いた場合、sync_directionが1(=DMA_TO_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュがフラッシュされます。
 
