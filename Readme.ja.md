@@ -41,8 +41,8 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
 ## 対応プラットフォーム
 
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14    
-(私が動作を確認したのは3.18, 4.4, 4.8, 4.12, 4.14です).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19    
+(私が動作を確認したのは3.18, 4.4, 4.8, 4.12, 4.14, 4.19です).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: x86(64bit) ただし検証が不十分です。皆さんからの結果を期待しています。また、現時点では以下の機能に制限があります。
@@ -51,9 +51,11 @@ udmabufのDMAバッファの大きさやデバイスのマイナー番号は、�
   * sync_for_cpu、sync_for_deviceによる手動でのCPUキャッシュの制御が出来ません。
   * デバイスツリーによる各種設定が出来ません。
 
+
 ## 注意事項: udmabuf から u-dma-buf へ
 
-"udmabuf" と同じ名前の別のカーネルモジュールが Linux Kernel 5.0 に追加されました。したがって、Linux Kernel 5.0 以降では、この udmabuf は使用できません。代わりに、このリポジトリで u-dma-buf が提供されます。 u-dma-bufを使用する場合は、https：//github.com/ikwzm/udmabuf/tree/u-dma-buf-master を参照してください。
+
+このデバイスドライバとは別の "udmabuf" という名前のカーネルモジュールが Linux Kernel 5.0 に追加されました。したがって、Linux Kernel 5.0 以降では、この udmabuf は使用できません。代わりに、このリポジトリで u-dma-buf を提供しています。u-dma-buf は udmabuf と同じ機能を提供しています。u-dma-buf を使用する場合は https://github.com/ikwzm/udmabuf/tree/u-dma-buf-master を参照してください。
 
 
 # 使い方
@@ -634,7 +636,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_owner
 
 
-/sys/class/udmabuf/\<device-name\>/sync_owner は udmabufのキャッシュ制御を手動で行った際に、現在のバッファのオーナーがCPUかDEVICEを読み取ります。
+/sys/class/udmabuf/\<device-name\>/sync_owner は udmabufのキャッシュ制御を手動で行った際に、現在のバッファのオーナーがCPUかDEVICEを読み取ります。バッファのオーナーが CPU の場合は 0 が読めます。バッファのオーナーが DEVICE の場合は 1 が読めます。
 
 
 ```C:udmabuf_test.c
@@ -657,7 +659,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_for_cpu
 
 
-/sys/class/udmabuf/\<device-name\>/sync_for_cpu はudmabufのキャッシュ制御を手動で行う際、このデバイスファイルに0以外の値を書き込むことでバッファのオーナーをCPUにします。
+/sys/class/udmabuf/\<device-name\>/sync_for_cpu はudmabufのキャッシュ制御を手動で行う際、このデバイスファイルに0以外の値を書き込むことでバッファのオーナーをCPUにします。このデバイスファイルは書き込みオンリーです。
 
 このデバイスファイルに 1 を書いた場合、sync_directionが2(=DMA_FROM_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュが無効化されます。
 
@@ -702,7 +704,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
 ### sync_for_device
 
 
-/sys/class/udmabuf/\<device-name\>/sync_for_deviceはudmabufのキャッシュ制御を手動で行う際、このデバイスドライバに0以外の値を書き込むことでバッファのオーナーをDEVICEにします。
+/sys/class/udmabuf/\<device-name\>/sync_for_deviceはudmabufのキャッシュ制御を手動で行う際、このデバイスドライバに0以外の値を書き込むことでバッファのオーナーをDEVICEにします。このデバイスファイルは書き込みオンリーです。
 
 このデバイスファイルに 1 を書いた場合、sync_directionが1(=DMA_TO_DEVICE)または0(=DMA_BIDIRECTIONAL)だった時、sync_offsetとsync_size で指定された領域のCPUキャッシュがフラッシュされます。
 
@@ -1097,17 +1099,19 @@ int clear_buf(unsigned char* buf, unsigned int size)
 </table>
 
 
-**注意事項: ARM64 で `O_SYNC` を使う場合**
+### 注意事項: ARM64 で O_SYNC を使う場合 
 
-v1.4.4 以前では、udmabuf は ARM64 で sync_mode = 1（noncached）の時、 ```pgprot_writecombine()``` を使用していました。その理由は、 ```pgprot_noncached()``` を使用すると udmabuf_test.c の memset() でバスエラーが発生したためです。
 
-しかしながら、https://github.com/ikwzm/udmabuf/pull/28 で報告されているように、ARM64 で ```pgprot_writecombine()``` を使用すると、キャッシュの一貫性に問題があることがわかりました。
+v1.4.4 以前では、udmabuf は ARM64 で sync_mode = 1 (nocached) の時、pgprot_writecombine() を使用していました。その理由は、 pgprot_noncached() を使用すると udmabuf_test.c の memset() でバスエラーが発生したためです。
 
-したがって、v1.4.5 以降、sync_mode = 1の場合は ```pgprot_noncached()``` を使用するように変更されました。 これは、キャッシュの一貫性の問題を理解するのが非常に難しくデバッグが難しいためです。キャッシュの一貫性の問題を心配するのではなく、バスエラーを起したほうが簡単だと判断しました。
+しかしながら、https://github.com/ikwzm/udmabuf/pull/28 で報告されているように、ARM64 で pgprot_writecombile() を使用するとキャッシュの一貫性に問題があることがわかりました。
 
-この変更により、ARM64 で `O_SYNC` フラグによるキャッシュ制御を行う場合は注意が必要になります。おそらく、memset() を使用することはできません。
+したがって、v1.4.5 以降、sync_mode = 1 の場合は pgprog_noncached() を使用するように変更しました。これは、キャッシュの一貫性の問題を理解するのが非常に難しくデバッグが難しいためです。キャッシュの一貫性の問題を心配するのではなくバスエラーを起こした方が安全だと判断しました。
+
+この変更により、ARM64 で O_SYNC フラグのるキャッシュ制御を行う場合は注意が必要になります。おそらく、memset() を使用することはできません。
 
 問題が発生した場合、キャッシュの一貫性はハードウェアによって維持するか、後述のCPUキャッシュを有効にしたまま手動でキャッシュを制御する方法を使用してください。
+
 
 ### CPUキャッシュを有効にしたまま手動でCPUキャッシュを制御する方法
 
