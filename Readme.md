@@ -562,6 +562,7 @@ guaranteed by hardware.
 
 The device file `/sys/class/udmabuf/<device-name>/sync_owner` reports the owner of
 the memory block in the manual cache management mode.
+If this value is 1, the buffer is owned by the device. If this value is 0, the buffer is owned by the cpu.
 
 ```C:udmabuf_test.c
     unsigned char  attr[1024];
@@ -580,6 +581,7 @@ Details of manual cache management is described in the next section.
 
 In the manual cache management mode, CPU can be the owner of the buffer by writing
 non-zero to the device file `/sys/class/udmabuf/<device-name>/sync_for_cpu`.
+This device file is write only.
 
 If '1' is written to device file, if `sync_direction` is 2(=DMA_FROM_DEVICE) or 0(=DMA_BIDIRECTIONAL),
 the write to the device file invalidates a cache specified by `sync_offset` and `sync_size`.
@@ -617,6 +619,7 @@ Details of manual cache management is described in the next section.
 
 In the manual cache management mode, DEVICE can be the owner of the buffer by
 writing non-zero to the device file `/sys/class/udmabuf/<device-name>/sync_for_device`.
+This device file is write only.
 
 If '1' is written to device file, if `sync_direction` is 1(=DMA_TO_DEVICE) or 0(=DMA_BIDIRECTIONAL),
 the write to the device file flushes a cache specified by `sync_offset` and `sync_size` (i.e. the
