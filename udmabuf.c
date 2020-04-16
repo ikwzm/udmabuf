@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "1.4.6"
+#define DRIVER_VERSION     "1.4.7"
 #define DRIVER_NAME        "udmabuf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -109,6 +109,10 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 #ifndef U64_MAX
 #define U64_MAX ((u64)~0ULL)
+#endif
+
+#if     (LINUX_VERSION_CODE < 0x041100)
+typedef int vm_fault_t;
 #endif
 
 /**
@@ -453,7 +457,7 @@ static void udmabuf_device_vma_close(struct vm_area_struct* vma)
  * @vfm:        Pointer to the vm fault structure.
  * Return:      Success(=0) or error status(<0).
  */
-static inline int _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
+static inline vm_fault_t _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
 {
     struct udmabuf_device_data* this = vma->vm_private_data;
     unsigned long offset             = vmf->pgoff << PAGE_SHIFT;
@@ -501,7 +505,7 @@ static inline int _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct v
  * @vfm:        Pointer to the vm fault structure.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_device_vma_fault(struct vm_fault* vmf)
+static vm_fault_t udmabuf_device_vma_fault(struct vm_fault* vmf)
 {
     return _udmabuf_device_vma_fault(vmf->vma, vmf);
 }
@@ -512,7 +516,7 @@ static int udmabuf_device_vma_fault(struct vm_fault* vmf)
  * @vfm:        Pointer to the vm fault structure.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_device_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
+static vm_fault_t udmabuf_device_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
 {
     return _udmabuf_device_vma_fault(vma, vmf);
 }
