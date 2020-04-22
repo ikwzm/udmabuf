@@ -14,6 +14,7 @@ ifeq ($(ARCH), arm64)
 endif
 
 obj-m := udmabuf.o
+obj-$(CONFIG_UDMABUF) += udmabuf.o
 
 all:
 	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) modules
