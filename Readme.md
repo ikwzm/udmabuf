@@ -70,13 +70,14 @@ ifeq ($(ARCH), arm64)
  endif
 endif
 
-obj-m := udmabuf.o
+u-dma-buf-obj           := udmabuf.o
+obj-$(CONFIG_U_DMA_BUF) += $(u-dma-buf-obj)
 
 all:
-	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) modules
+	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) obj-m=$(u-dma-buf-obj) modules
 
 clean:
-	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) clean
+	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) obj-m=$(u-dma-buf-obj) clean
 
 ```
 
