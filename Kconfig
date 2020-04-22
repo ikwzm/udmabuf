@@ -4,7 +4,7 @@
 
 menu "User space mappable DMA Buffer"
 
-config UDMABUF
+config U_DMA_BUF
 	tristate "User space mappable DMA Buffer"
 	default m
 	depends on OF
