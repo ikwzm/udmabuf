@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "2.1.4"
+#define DRIVER_VERSION     "2.2.0-rc1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -85,6 +85,12 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define USE_DEV_GROUPS      1
 #else
 #define USE_DEV_GROUPS      0
+#endif
+
+#if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)) && defined(CONFIG_OF))
+#define USE_IORESOURCE_MEM  1
+#else
+#define USE_IORESOURCE_MEM  0
 #endif
 
 #if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)) && defined(CONFIG_OF))
@@ -174,6 +180,10 @@ struct udmabuf_device_data {
     bool                 sync_owner;
     u64                  sync_for_cpu;
     u64                  sync_for_device;
+#if (USE_IORESOURCE_MEM  == 1)
+    struct resource*     mem_resource;
+    struct resource*     mem_region;
+#endif
 #if (USE_OF_RESERVED_MEM == 1)
     bool                 of_reserved_mem;
 #endif
@@ -657,6 +667,15 @@ static int udmabuf_device_file_mmap(struct file *file, struct vm_area_struct* vm
     }
 #endif
 
+#if (USE_IORESOURCE_MEM == 1)
+    if (this->mem_resource != NULL) {
+        int retval;
+        if (dma_mmap_from_dev_coherent(this->dma_dev, vma, this->virt_addr, this->alloc_size, &retval)) {
+            return retval;
+        }
+    }
+#endif
+
     return dma_mmap_coherent(this->dma_dev, vma, this->virt_addr, this->phys_addr, this->alloc_size);
 }
 
@@ -928,6 +947,12 @@ static struct udmabuf_device_data* udmabuf_device_create(const char* name, struc
         this->sync_for_cpu    = 0;
         this->sync_for_device = 0;
     }
+#if (USE_IORESOURCE_MEM  == 1)
+    {
+        this->mem_resource    = NULL;
+        this->mem_region      = NULL;
+    }
+#endif
 #if (USE_OF_RESERVED_MEM == 1)
     {
         this->of_reserved_mem = 0;
@@ -1415,11 +1440,23 @@ static int udmabuf_device_remove(struct device *dev, struct udmabuf_device_data 
     int retval = 0;
 
     if (devdata != NULL) {
+#if (USE_IORESOURCE_MEM == 1)
+        struct resource* mem_resource = devdata->mem_resource;
+        struct resource* mem_region   = devdata->mem_region;
+#endif         
 #if (USE_OF_RESERVED_MEM == 1)
         bool of_reserved_mem = devdata->of_reserved_mem;
 #endif
         retval = udmabuf_device_destroy(devdata);
         dev_set_drvdata(dev, NULL);
+#if (USE_IORESOURCE_MEM == 1)
+        if (mem_resource != NULL) {
+            dma_release_declared_memory(dev);
+        }
+        if (mem_region != NULL) {
+          release_mem_region(mem_region->start, resource_size(mem_region));
+        }
+#endif        
 #if (USE_OF_RESERVED_MEM == 1)
         if (of_reserved_mem) {
             of_reserved_mem_device_release(dev);
@@ -1434,11 +1471,12 @@ static int udmabuf_device_remove(struct device *dev, struct udmabuf_device_data 
 /**
  * udmabuf_device_probe() -  Probe call for the device.
  * @dev:        handle to the device structure.
+ * @res:        handle to the resource structure.
  * Return:      Success(=0) or error status(<0).
  *
  * It does all the memory allocation and registration for the device.
  */
-static int udmabuf_device_probe(struct device *dev)
+static int udmabuf_device_probe(struct device *dev, struct resource* res)
 {
     int                         retval       = 0;
     int                         prop_status  = 0;
@@ -1455,6 +1493,8 @@ static int udmabuf_device_probe(struct device *dev)
         size = u32_value;
     } else if ((prop_status = of_property_read_u32(dev->of_node, "size", &u32_value)) == 0) {
         size = u32_value;
+    } else if (res != NULL) {
+        size = resource_size(res);
     } else {
         dev_err(dev, "invalid property size. status=%d\n", prop_status);
         retval = -ENODEV;
@@ -1498,6 +1538,37 @@ static int udmabuf_device_probe(struct device *dev)
      */
     device_data->size = size;
     /*
+     * dma_declare_coherent_memory()
+     */
+#if (USE_IORESOURCE_MEM == 1)
+    if (res != NULL) {
+        struct resource* mem;
+        if (of_property_read_bool(dev->of_node, "reg-shareable")) {
+            mem = res;
+        } else {
+            mem = request_mem_region(res->start, resource_size(res), dev_name(dev));
+            if (mem == NULL) {
+                dev_err(dev, "request_mem_region failed.\n");
+                retval = -EBUSY;
+                goto failed;
+            }
+            device_data->mem_region = mem;
+        }
+        retval = dma_declare_coherent_memory(
+                     dev,
+                     mem->start,
+                     mem->start,
+                     resource_size(mem),
+                     DMA_MEMORY_EXCLUSIVE
+                 );
+        if (retval != 0) {
+            dev_err(dev, "dma_declare_coherent_memory failed. return=%d\n", retval);
+            goto failed;
+        }
+        device_data->mem_resource = mem;
+    }
+#endif
+    /*
      * of_reserved_mem_device_init()
      */
 #if (USE_OF_RESERVED_MEM == 1)
@@ -1511,7 +1582,6 @@ static int udmabuf_device_probe(struct device *dev)
         }
     }
 #endif
-#if (USE_OF_DMA_CONFIG == 1)
     /*
      * of_dma_configure()
      * - set pdev->dev->dma_mask
@@ -1519,6 +1589,7 @@ static int udmabuf_device_probe(struct device *dev)
      * - call of_dma_is_coherent()
      * - call arch_setup_dma_ops()
      */
+#if (USE_OF_DMA_CONFIG == 1)
 #if (USE_OF_RESERVED_MEM == 1)
     /* If "memory-region" property is spsecified, of_dma_configure() will not be executed.
      * Because in that case, it is already executed in of_reserved_mem_device_init().
@@ -1632,10 +1703,15 @@ failed:
 static int udmabuf_platform_driver_probe(struct platform_device *pdev)
 {
     int retval = 0;
+    struct resource* res = NULL;
 
     dev_dbg(&pdev->dev, "driver probe start.\n");
 
-    retval = udmabuf_device_probe(&pdev->dev);
+#if (USE_IORESOURCE_MEM == 1)    
+    res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+#endif
+    
+    retval = udmabuf_device_probe(&pdev->dev, res);
     
     if (info_enable) {
         dev_info(&pdev->dev, "driver installed.\n");
