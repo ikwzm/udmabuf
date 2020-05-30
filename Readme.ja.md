@@ -195,6 +195,8 @@ crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 
   *  compatible
   *  size
+  *  reg
+  *  reg-shareable
   *  minor-number
   *  device-name
   *  sync-mode
@@ -219,8 +221,8 @@ compatible プロパティはデバイスツリーをロードした際に対応
 ### size
 
 
-size プロパティはDMAバッファの容量をバイト数で指定します。size プロパティは必須です。
-
+size プロパティはDMAバッファの容量をバイト数で指定します。size プロパティは reg プロパティが指定されたとき以外は必須です。
+reg プロパティが指定されていない時、u-dma-buf は size プロパティで指定された大きさのバッファを Linux Kernel から確保します。
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
@@ -231,8 +233,39 @@ size プロパティはDMAバッファの容量をバイト数で指定します
 ```
 
 
+### reg
+
+reg プロパティは物理アドレスとサイズを指定します。
+reg プロパティは u-dma-buf が Linux Kernel の管理外のメモリをバッファとして確保するときに使います。
+
+```devicetree:devicetree.dts
+		#address-cells = <1>;
+		#size-cells = <1>;
+		udmabuf@0x00 {
+			compatible = "ikwzm,u-dma-buf";
+			reg = <0xFFFC0000 0x00040000>;
+		};
+```
 
 
+### reg-shareable
+
+reg-shareable プロパティは複数の u-dma-buf が reg プロパティで指定されたアドレス空間を共有する場合に指定します。
+
+```devicetree:devicetree.dts
+		#address-cells = <1>;
+		#size-cells = <1>;
+		udmabuf@0x00 {
+			compatible = "ikwzm,u-dma-buf";
+			reg = <0xFFFC0000 0x00040000>;
+			reg-shareable;
+		};
+		udmabuf@0x01 {
+			compatible = "ikwzm,u-dma-buf";
+			reg = <0xFFFC0000 0x00040000>;
+			reg-shareable;
+		};
+```
 
 ### minor-number
 

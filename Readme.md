@@ -168,6 +168,8 @@ The following properties can be set in the device tree.
 
   *  `compatible`
   *  `size`
+  *  `reg`
+  *  `reg-shareable`
   *  `minor-number`
   *  `device-name`
   *  `sync-mode`
@@ -178,7 +180,6 @@ The following properties can be set in the device tree.
   *  `dma-coherent`
   *  `memory-region`
 
-
 ### `compatible`
 
 The `compatible` property is used to set the corresponding device driver when loading
@@ -188,7 +189,8 @@ property as "ikwzm,u-dma-buf" or "ikwzm,udmabuf-0.10.a".
 ### `size`
 
 The `size` property is used to set the capacity of DMA buffer in bytes.
-The `size` property is mandatory.
+The `size` property is mandatory except when `reg` property is specified.
+If no `reg` property is specified, u-dma-buf allocates a buffer of size specified by the `size` property from the Linux Kernel.
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
@@ -196,6 +198,39 @@ The `size` property is mandatory.
 			size = <0x00100000>;
 		};
 
+```
+
+### `reg`
+
+The `reg` property specifies the physical address and size.
+The `reg` property is used when u-dma-buf allocates a buffer outside the management of Linux Kernel.
+
+```devicetree:devicetree.dts
+		#address-cells = <1>;
+		#size-cells = <1>;
+		udmabuf@0x00 {
+			compatible = "ikwzm,u-dma-buf";
+			reg = <0xFFFC0000 0x00040000>;
+		};
+```
+
+### `reg-shareable`
+
+The `reg-shareable` property is specified when multiple u-dma-buf shares the memory space specified by `reg` property.
+
+```devicetree:devicetree.dts
+		#address-cells = <1>;
+		#size-cells = <1>;
+		udmabuf@0x00 {
+			compatible = "ikwzm,u-dma-buf";
+			reg = <0xFFFC0000 0x00040000>;
+			reg-shareable;
+		};
+		udmabuf@0x01 {
+			compatible = "ikwzm,u-dma-buf";
+			reg = <0xFFFC0000 0x00040000>;
+			reg-shareable;
+		};
 ```
 
 ### `minor-number`
