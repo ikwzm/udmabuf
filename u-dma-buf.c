@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "2.1.4"
+#define DRIVER_VERSION     "2.1.5"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -163,7 +163,7 @@ struct udmabuf_device_data {
     dev_t                device_number;
     struct mutex         sem;
     bool                 is_open;
-    int                  size;
+    size_t               size;
     size_t               alloc_size;
     void*                virt_addr;
     dma_addr_t           phys_addr;
@@ -343,7 +343,7 @@ static ssize_t udmabuf_set_ ## __attr_name(struct device *dev, struct device_att
 }
 
 DEF_ATTR_SHOW(driver_version , "%s\n"    , DRIVER_VERSION                                 );
-DEF_ATTR_SHOW(size           , "%d\n"    , this->size                                     );
+DEF_ATTR_SHOW(size           , "%zu\n"   , this->size                                     );
 DEF_ATTR_SHOW(phys_addr      , "%pad\n"  , &this->phys_addr                               );
 DEF_ATTR_SHOW(sync_mode      , "%d\n"    , this->sync_mode                                );
 DEF_ATTR_SET( sync_mode                  , 0, 7,        NO_ACTION, NO_ACTION              );
@@ -988,7 +988,7 @@ static int udmabuf_device_setup(struct udmabuf_device_data* this)
     this->virt_addr  = dma_alloc_coherent(this->dma_dev, this->alloc_size, &this->phys_addr, GFP_KERNEL);
     if (IS_ERR_OR_NULL(this->virt_addr)) {
         int retval = PTR_ERR(this->virt_addr);
-        printk(KERN_ERR "dma_alloc_coherent() failed. return(%d)\n", retval);
+        printk(KERN_ERR "dma_alloc_coherent(size=%zu) failed. return(%d)\n", this->alloc_size, retval);
         this->virt_addr = NULL;
         return (retval == 0) ? -ENOMEM : retval;
     }
@@ -1443,7 +1443,7 @@ static int udmabuf_device_probe(struct device *dev)
     int                         retval       = 0;
     int                         prop_status  = 0;
     unsigned int                u32_value    = 0;
-    unsigned int                size         = 0;
+    size_t                      size         = 0;
     int                         minor_number = -1;
     struct udmabuf_device_data* device_data  = NULL;
     const char*                 device_name  = NULL;
@@ -1457,6 +1457,11 @@ static int udmabuf_device_probe(struct device *dev)
         size = u32_value;
     } else {
         dev_err(dev, "invalid property size. status=%d\n", prop_status);
+        retval = -ENODEV;
+        goto failed;
+    }
+    if (size <= 0) {
+        dev_err(dev, "invalid size, size=%zu\n", size);
         retval = -ENODEV;
         goto failed;
     }
