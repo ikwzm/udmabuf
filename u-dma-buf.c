@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "2.2.0-rc2"
+#define DRIVER_VERSION     "2.2.0-rc3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -204,6 +204,140 @@ struct udmabuf_device_data {
 #define SYNC_MODE_MAX           (0x03)
 #define SYNC_ALWAYS             (0x04)
 
+
+#if ((USE_IORESOURCE_MEM  == 1) && defined(CONFIG_ARM64))
+/**
+ * DOC: Data Cache Clean/Invalid for arm64 architecture.
+ *
+ * This section defines mem_sync_sinfle_for_cpu() and mem_sync_single_for_device().
+ *
+ * * arm64_read_dcache_line_size()     - read data cache line size of arm64.
+ * * arm64_inval_dcache_area()         - invalid data cache.
+ * * arm64_clean_dcache_area()         - clean(flush and invalidiate) data cache.
+ * * mem_sync_single_for_cpu()         - sync_single_for_cpu()    for mem_resource.
+ * * mem_sync_single_for_device()      - sync_single_for_device() for mem_resource.
+ */
+static inline u64  arm64_read_dcache_line_size(void)
+{
+    u64       ctr;
+    u64       dcache_line_size;
+    const u64 bytes_per_word = 4;
+    asm volatile ("mrs %0, ctr_el0" : "=r"(ctr) : : );
+    asm volatile ("nop" : : : );
+    dcache_line_size = (ctr >> 16) & 0xF;
+    return (bytes_per_word << dcache_line_size);
+}
+static inline void arm64_inval_dcache_area(void* start, size_t size)
+{
+    u64   vaddr           = (u64)start;
+    u64   __end           = (u64)start + size;
+    u64   cache_line_size = arm64_read_dcache_line_size();
+    u64   cache_line_mask = cache_line_size - 1;
+    if ((__end & cache_line_mask) != 0) {
+        __end &= ~cache_line_mask;
+        asm volatile ("dc civac, %0" :  : "r"(__end) : );
+    }
+    if ((vaddr & cache_line_mask) != 0) {
+        vaddr &= ~cache_line_mask;
+        asm volatile ("dc civac, %0" :  : "r"(vaddr) : );
+    }
+    while (vaddr < __end) {
+        asm volatile ("dc ivac, %0"  :  : "r"(vaddr) : );
+        vaddr += cache_line_size;
+    }
+    asm volatile ("dsb	sy"  :  :  : );
+}
+static inline void arm64_clean_dcache_area(void* start, size_t size)
+{
+    u64   vaddr           = (u64)start;
+    u64   __end           = (u64)start + size;
+    u64   cache_line_size = arm64_read_dcache_line_size();
+    u64   cache_line_mask = cache_line_size - 1;
+    vaddr &= ~cache_line_mask;
+    while (vaddr < __end) {
+        asm volatile ("dc cvac, %0"  :  : "r"(vaddr) : );
+        vaddr += cache_line_size;
+    }
+    asm volatile ("dsb	sy"  :  :  : );
+}
+static void mem_sync_single_for_cpu(struct device* dev, void* start, size_t size, enum dma_data_direction direction)
+{
+    if (is_device_dma_coherent(dev))
+        return;
+    if (direction != DMA_TO_DEVICE)
+        arm64_inval_dcache_area(start, size);
+}
+static void mem_sync_single_for_device(struct device* dev, void* start, size_t size, enum dma_data_direction direction)
+{
+    if (is_device_dma_coherent(dev))
+        return;
+    if (direction == DMA_FROM_DEVICE)
+        arm64_inval_dcache_area(start, size);
+    else
+        arm64_clean_dcache_area(start, size);
+}
+#endif
+
+/**
+ * DOC: Data Cache Clean/Invalid for architecuture independent.
+ *
+ * This section defines the following functions.
+ *
+ * * _udmabuf_sync_for_cpu()           - synchronous for cpu. 
+ * * _udmabuf_sync_for_device()        - synchronous for device.
+ */
+/**
+ * _udmabuf_sync_for_cpu() - call dma_sync_single_for_cpu() or mem_sync_single_for_cpu().
+ * @this:       Pointer to the udmabuf device data structure.
+ * @virt_addr:  Virtua address.
+ * @phys_addr:  Physical address.
+ * @size:       Sync size.
+ * @direction:  Sync direction.
+ * Return:      Success(=0) or error status(<0).
+ */
+static inline void _udmabuf_sync_for_cpu(
+  struct udmabuf_device_data *this      ,
+  void*                       virt_addr ,
+  dma_addr_t                  phys_addr ,
+  size_t                      size      ,
+  enum dma_data_direction     direction
+) {
+#if (USE_IORESOURCE_MEM == 1)
+    if (this->mem_resource != NULL)
+        mem_sync_single_for_cpu(this->dma_dev, virt_addr, size, direction);
+    else
+        dma_sync_single_for_cpu(this->dma_dev, phys_addr, size, direction);
+#else
+        dma_sync_single_for_cpu(this->dma_dev, phys_addr, size, direction);
+#endif
+}
+
+/**
+ * _udmabuf_sync_for_dev() - call dma_sync_single_for_device() or mem_sync_single_for_device().
+ * @this:       Pointer to the udmabuf device data structure.
+ * @virt_addr:  Virtua address.
+ * @phys_addr:  Physical address.
+ * @size:       Sync size.
+ * @direction:  Sync direction.
+ * Return:      Success(=0) or error status(<0).
+ */
+static inline void _udmabuf_sync_for_dev(
+  struct udmabuf_device_data *this      ,
+  void*                       virt_addr ,
+  dma_addr_t                  phys_addr ,
+  size_t                      size      ,
+  enum dma_data_direction     direction
+) {
+#if (USE_IORESOURCE_MEM == 1)
+    if (this->mem_resource != NULL)
+        mem_sync_single_for_device(this->dma_dev, virt_addr, size, direction);
+    else
+        dma_sync_single_for_device(this->dma_dev, phys_addr, size, direction);
+#else
+        dma_sync_single_for_device(this->dma_dev, phys_addr, size, direction);
+#endif
+}
+
 /**
  * DOC: Udmabuf System Class Device File Description
  *
@@ -234,18 +368,19 @@ struct udmabuf_device_data {
 #define  SYNC_COMMAND_OFFSET_SHIFT    (32)
 #define  SYNC_COMMAND_ARGMENT_MASK    (0xFFFFFFFFFFFFFFFE)
 /**
- * udmabuf_sync_command_argments() - get argment for dma_sync_single_for_cpu() or dma_sync_single_for_device()
+ * udmabuf_sync_command_argments() - get argment for _udmabuf_sync_for_cpu() or _udmabuf_sync_for_dev()
  *                                  
  * @this:       Pointer to the udmabuf device data structure.
- * @command     sync command (this->sync_for_cpu or this->sync_for_device)
- * @phys_addr   Pointer to the phys_addr for dma_sync_single_for_...()
- * @size        Pointer to the size for dma_sync_single_for_...()
- * @direction   Pointer to the direction for dma_sync_single_for_...()
+ * @command:    sync command (this->sync_for_cpu or this->sync_for_device)
+ * @phys_addr:  Pointer to the phys_addr for dma_sync_single_for_...()
+ * @size:       Pointer to the size for dma_sync_single_for_...()
+ * @direction:  Pointer to the direction for dma_sync_single_for_...()
  * Return:      Success(=0) or error status(<0).
  */
 static int udmabuf_sync_command_argments(
     struct udmabuf_device_data *this     ,
     u64                         command  ,
+    void*                      *virt_addr,
     dma_addr_t                 *phys_addr,
     size_t                     *size     ,
     enum dma_data_direction    *direction
@@ -269,13 +404,14 @@ static int udmabuf_sync_command_argments(
         case 2 : *direction = DMA_FROM_DEVICE  ; break;
         default: *direction = DMA_BIDIRECTIONAL; break;
     }
+    *virt_addr = this->virt_addr + sync_offset;
     *phys_addr = this->phys_addr + sync_offset;
     *size      = sync_size;
     return 0;
 } 
 
 /**
- * udmabuf_sync_for_cpu() - call dma_sync_single_for_cpu() when (sync_for_cpu != 0)
+ * udmabuf_sync_for_cpu() - call _udmabuf_sync_for_cpu() when (sync_for_cpu != 0)
  * @this:       Pointer to the udmabuf device data structure.
  * Return:      Success(=0) or error status(<0).
  */
@@ -284,12 +420,14 @@ static int udmabuf_sync_for_cpu(struct udmabuf_device_data* this)
     int status = 0;
 
     if (this->sync_for_cpu) {
+        u64                     command = this->sync_for_cpu;
+        void*                   virt_addr;
         dma_addr_t              phys_addr;
         size_t                  size;
         enum dma_data_direction direction;
-        status = udmabuf_sync_command_argments(this, this->sync_for_cpu, &phys_addr, &size, &direction);
+        status = udmabuf_sync_command_argments(this, command, &virt_addr, &phys_addr, &size, &direction);
         if (status == 0) {
-            dma_sync_single_for_cpu(this->dma_dev, phys_addr, size, direction);
+            _udmabuf_sync_for_cpu(this, virt_addr, phys_addr, size, direction);
             this->sync_for_cpu = 0;
             this->sync_owner   = 0;
         }
@@ -298,7 +436,7 @@ static int udmabuf_sync_for_cpu(struct udmabuf_device_data* this)
 }
 
 /**
- * udmabuf_sync_for_device() - call dma_sync_single_for_device() when (sync_for_device != 0)
+ * udmabuf_sync_for_device() - call _udmabuf_sync_for_dev() when (sync_for_device != 0)
  * @this:       Pointer to the udmabuf device data structure.
  * Return:      Success(=0) or error status(<0).
  */
@@ -307,12 +445,14 @@ static int udmabuf_sync_for_device(struct udmabuf_device_data* this)
     int status = 0;
 
     if (this->sync_for_device) {
+        u64                     command = this->sync_for_device;
+        void*                   virt_addr;
         dma_addr_t              phys_addr;
         size_t                  size;
         enum dma_data_direction direction;
-        status = udmabuf_sync_command_argments(this, this->sync_for_device, &phys_addr, &size, &direction);
+        status = udmabuf_sync_command_argments(this, command, &virt_addr, &phys_addr, &size, &direction);
         if (status == 0) {
-            dma_sync_single_for_device(this->dma_dev, phys_addr, size, direction);
+            _udmabuf_sync_for_dev(this, virt_addr, phys_addr, size, direction);
             this->sync_for_device = 0;
             this->sync_owner      = 1;
         }
@@ -709,7 +849,7 @@ static ssize_t udmabuf_device_file_read(struct file* file, char __user* buff, si
     xfer_size = (*ppos + count >= this->size) ? this->size - *ppos : count;
 
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
-        dma_sync_single_for_cpu(this->dma_dev, phys_addr, xfer_size, DMA_FROM_DEVICE);
+        _udmabuf_sync_for_cpu(this, virt_addr, phys_addr, xfer_size, DMA_FROM_DEVICE);
 
     if ((remain_size = copy_to_user(buff, virt_addr, xfer_size)) != 0) {
         result = 0;
@@ -717,7 +857,7 @@ static ssize_t udmabuf_device_file_read(struct file* file, char __user* buff, si
     }
 
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
-        dma_sync_single_for_device(this->dma_dev, phys_addr, xfer_size, DMA_FROM_DEVICE);
+        _udmabuf_sync_for_dev(this, virt_addr, phys_addr, xfer_size, DMA_FROM_DEVICE);
 
     *ppos += xfer_size;
     result = xfer_size;
@@ -756,7 +896,7 @@ static ssize_t udmabuf_device_file_write(struct file* file, const char __user* b
     xfer_size = (*ppos + count >= this->size) ? this->size - *ppos : count;
 
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
-        dma_sync_single_for_cpu(this->dma_dev, phys_addr, xfer_size, DMA_TO_DEVICE);
+        _udmabuf_sync_for_cpu(this, virt_addr, phys_addr, xfer_size, DMA_TO_DEVICE);
 
     if ((remain_size = copy_from_user(virt_addr, buff, xfer_size)) != 0) {
         result = 0;
@@ -764,7 +904,7 @@ static ssize_t udmabuf_device_file_write(struct file* file, const char __user* b
     }
 
     if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS))
-        dma_sync_single_for_device(this->dma_dev, phys_addr, xfer_size, DMA_TO_DEVICE);
+        _udmabuf_sync_for_dev(this, virt_addr, phys_addr, xfer_size, DMA_TO_DEVICE);
 
     *ppos += xfer_size;
     result = xfer_size;
