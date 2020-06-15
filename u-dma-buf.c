@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "2.1.5"
+#define DRIVER_VERSION     "2.1.6-rc1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -76,9 +76,12 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define UDMABUF_MGR_NAME   "u-dma-buf-mgr"
 
 #if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0)) && (defined(CONFIG_ARM) || defined(CONFIG_ARM64)))
-#define USE_DMA_COHERENT    1
+#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+#include <linux/dma-noncoherent.h>
+#define IS_DMA_COHERENT(dev) dev_is_dma_coherent(dev)
 #else
-#define USE_DMA_COHERENT    0
+#define IS_DMA_COHERENT(dev) is_device_dma_coherent(dev)
+#endif
 #endif
 
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0))
@@ -358,8 +361,8 @@ DEF_ATTR_SHOW(sync_for_cpu   , "%llu\n"  , this->sync_for_cpu                   
 DEF_ATTR_SET( sync_for_cpu               , 0, U64_MAX,  NO_ACTION, udmabuf_sync_for_cpu   );
 DEF_ATTR_SHOW(sync_for_device, "%llu\n"  , this->sync_for_device                          );
 DEF_ATTR_SET( sync_for_device            , 0, U64_MAX,  NO_ACTION, udmabuf_sync_for_device);
-#if (USE_DMA_COHERENT == 1)
-DEF_ATTR_SHOW(dma_coherent   , "%d\n"    , is_device_dma_coherent(this->dma_dev)          );
+#if defined(IS_DMA_COHERENT)
+DEF_ATTR_SHOW(dma_coherent   , "%d\n"    , IS_DMA_COHERENT(this->dma_dev)                 );
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
 DEF_ATTR_SHOW(debug_vma      , "%d\n"    , this->debug_vma                                );
@@ -377,7 +380,7 @@ static struct device_attribute udmabuf_device_attrs[] = {
   __ATTR(sync_owner     , 0444, udmabuf_show_sync_owner      , NULL                       ),
   __ATTR(sync_for_cpu   , 0664, udmabuf_show_sync_for_cpu    , udmabuf_set_sync_for_cpu   ),
   __ATTR(sync_for_device, 0664, udmabuf_show_sync_for_device , udmabuf_set_sync_for_device),
-#if (USE_DMA_COHERENT == 1)
+#if defined(IS_DMA_COHERENT)
   __ATTR(dma_coherent   , 0444, udmabuf_show_dma_coherent    , NULL                       ),
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
@@ -1007,8 +1010,8 @@ static void udmabuf_device_info(struct udmabuf_device_data* this)
     dev_info(this->sys_dev, "phys address   = %pad\n", &this->phys_addr);
     dev_info(this->sys_dev, "buffer size    = %zu\n" , this->alloc_size);
     dev_info(this->sys_dev, "dma device     = %s\n"  , dev_name(this->dma_dev));
-#if (USE_DMA_COHERENT == 1)
-    dev_info(this->sys_dev, "dma coherent   = %d\n"  , is_device_dma_coherent(this->dma_dev));
+#if defined(IS_DMA_COHERENT)
+    dev_info(this->sys_dev, "dma coherent   = %d\n"  , IS_DMA_COHERENT(this->dma_dev));
 #endif
 }
 
