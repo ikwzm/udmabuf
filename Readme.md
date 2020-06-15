@@ -1,16 +1,16 @@
-udmabuf(User space mappable DMA Buffer)
+u-dma-buf(User space mappable DMA Buffer)
 ==================================================================================
 
 # Overview
 
-## Introduction of udmabuf
+## Introduction of u-dma-buf
 
-udmabuf is a Linux device driver that allocates contiguous memory blocks in the
+u-dma-buf is a Linux device driver that allocates contiguous memory blocks in the
 kernel space as DMA buffers and makes them available from the user space.
 It is intended that these memory blocks are used as DMA buffers when a user 
 application implements device driver in user space using UIO (User space I/O).
 
-A DMA buffer allocated by udmabuf can be accessed from the user space by opneing
+A DMA buffer allocated by u-dma-buf can be accessed from the user space by opneing
 the device file (e.g. /dev/udmabuf0) and mapping to the user memory space, or
 using the read()/write() functions.
 
@@ -18,17 +18,16 @@ CPU cache for the allocated DMA buffer can be disabled by setting the `O_SYNC` f
 when opening the device file. It is also possible to flush or invalidate CPU cache
 while retaining CPU cache enabled.
 
-The physical address of a DMA buffer allocated by udmabuf can be obtained by
-reading `/sys/class/udmabuf/udmabuf0/phys_addr`.
+The physical address of a DMA buffer allocated by u-dma-buf can be obtained by
+reading `/sys/class/u-dma-buf/udmabuf0/phys_addr`.
 
 The size of a DMA buffer and the device minor number can be specified when 
 the device driver is loaded (e.g. when loaded via the `insmod` command).
 Some platforms allow to specify them in the device tree.
 
+## Architecture of u-dma-buf
 
-## Architecture of udmabuf
-
-![Figure 1. Architecture ](./udmabuf1.jpg "Figure 1. Architecture")
+![Figure 1. Architecture ](./u-dma-buf-1.jpg "Figure 1. Architecture")
 
 Figure 1. Architecture
 
@@ -36,13 +35,31 @@ Figure 1. Architecture
 
 ## Supported platforms
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.0 - 5.4 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.4).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: x86(64bit) However, verification is not enough. I hope the results from everyone.
   In addition, there is a limit to the following feature at the moment.
   - Can not control of the CPU cache by O_SYNC flag . Always CPU cache is valid.
   - Can not various settings by the device tree.
+
+## Note: udmabuf to u-dma-buf
+
+### Why u-dma-buf instead of udmabuf
+
+The predecessor of u-dma-buf is udmabuf. The kernel module name has been changed
+from "udmabuf" to "u-dma-buf". The purpose of this is to avoid duplicate names
+because another kernel module with the same name as "udmabuf" has been added since
+Linux Kernel 5.x.
+
+### Changes from udmabuf to u-dma-buf
+
+| Categoly            | udmabuf                | u-dma-buf               |
+|:--------------------|:-----------------------|:------------------------|
+| module name         | udmabuf.ko             | u-dma-buf.ko            |
+| source file         | udmabuf.c              | u-dma-buf.c             |
+| sys class name      | /sys/class/udmabuf/    | /sys/class/u-dma-buf/   |
+| DT compatible prop. | "ikwzm,udmabuf-0.10.a" | "ikwzm,u-dma-buf"       |
 
 # Usage
 
@@ -66,10 +83,11 @@ ifeq ($(ARCH), arm64)
  endif
 endif
 
-obj-m := udmabuf.o
+u-dma-buf-obj           := u-dma-buf.o
+obj-$(CONFIG_U_DMA_BUF) += $(u-dma-buf-obj)
 
 all:
-	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) modules
+	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) obj-m=$(u-dma-buf-obj) u-dma-buf.ko
 
 clean:
 	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) clean
@@ -78,55 +96,55 @@ clean:
 
 ## Install
 
-Load the udmabuf kernel driver using `insmod`. The size of a DMA buffer should be
+Load the u-dma-buf kernel driver using `insmod`. The size of a DMA buffer should be
 provided as an argument as follows.
 The device driver is created, and allocates a DMA buffer with the specified size.
 The maximum number of DMA buffers that can be allocated using `insmod` is 8 (udmabuf0/1/2/3/4/5/6/7).
 
 ```console
-zynq$ insmod udmabuf.ko udmabuf0=1048576
-udmabuf udmabuf0: driver installed
-udmabuf udmabuf0: major number   = 248
-udmabuf udmabuf0: minor number   = 0
-udmabuf udmabuf0: phys address   = 0x1e900000
-udmabuf udmabuf0: buffer size    = 1048576
-udmabuf udmabuf0: dma coherent   = 0
+zynq$ insmod u-dma-buf.ko udmabuf0=1048576
+u-dma-buf udmabuf0: driver installed
+u-dma-buf udmabuf0: major number   = 248
+u-dma-buf udmabuf0: minor number   = 0
+u-dma-buf udmabuf0: phys address   = 0x1e900000
+u-dma-buf udmabuf0: buffer size    = 1048576
+u-dma-buf udmabuf0: dma coherent   = 0
 zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
 
 In the above result, the device is only read/write accessible by root.
 If the permission needs to be changed at the load of the kernel module,
-create `/etc/udev/rules.d/99-udmabuf.rules` with the following content.
+create `/etc/udev/rules.d/99-u-dma-buf.rules` with the following content.
 
-```rules:99-udmabuf.rules
-KERNEL=="udmabuf[0-9]*", GROUP="root", MODE="0666"
+```rules:99-u-dma-buf.rules
+SUBSYSTEM=="u-dma-buf", GROUP="root", MODE="0666"
 ```
 
 The module can be uninstalled by the `rmmod` command.
 
 ```console
-zynq$ rmmod udmabuf
-udmabuf udmabuf0: driver uninstalled
+zynq$ rmmod u-dma-buf
+u-dma-buf udmabuf0: driver uninstalled
 ```
 
 ### Installation with the Debian package
 
 For details, refer to the following URL.
 
-*  https://github.com/ikwzm/udmabuf-kmod-dpkg
+*  https://github.com/ikwzm/u-dma-buf-kmod-dpkg
 
 
 ## Configuration via the device tree file
 
 In addition to the allocation via the `insmod` command and its arguments, DMA
 buffers can be allocated by specifying the size in the device tree file.
-When a device tree file contains an entry like the following, udmabuf will
+When a device tree file contains an entry like the following, u-dma-buf will
 allocate buffers and create device drivers when loaded by `insmod`.
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
-			compatible = "ikwzm,udmabuf-0.10.a";
+			compatible = "ikwzm,u-dma-buf";
 			device-name = "udmabuf0";
 			minor-number = <0>;
 			size = <0x00100000>;
@@ -135,13 +153,13 @@ allocate buffers and create device drivers when loaded by `insmod`.
 ```
 
 ```console
-zynq$ insmod udmabuf.ko
-udmabuf udmabuf0: driver installed
-udmabuf udmabuf0: major number   = 248
-udmabuf udmabuf0: minor number   = 0
-udmabuf udmabuf0: phys address   = 0x1e900000
-udmabuf udmabuf0: buffer size    = 1048576
-udmabuf udmabuf0: dma coherent  = 0
+zynq$ insmod u-dma-buf.ko
+u-dma-buf udmabuf0: driver installed
+u-dma-buf udmabuf0: major number   = 248
+u-dma-buf udmabuf0: minor number   = 0
+u-dma-buf udmabuf0: phys address   = 0x1e900000
+u-dma-buf udmabuf0: buffer size    = 1048576
+u-dma-buf udmabuf0: dma coherent  = 0
 zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
@@ -164,8 +182,8 @@ The following properties can be set in the device tree.
 ### `compatible`
 
 The `compatible` property is used to set the corresponding device driver when loading
-udmabuf. The `compatible` property is mandatory. Be sure to specify `compatible`
-property as "ikwzm,udmabuf-0.10.a".
+u-dma-buf. The `compatible` property is mandatory. Be sure to specify `compatible`
+property as "ikwzm,u-dma-buf" or "ikwzm,udmabuf-0.10.a".
 
 ### `size`
 
@@ -174,7 +192,7 @@ The `size` property is mandatory.
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
-			compatible = "ikwzm,udmabuf-0.10.a";
+			compatible = "ikwzm,u-dma-buf";
 			size = <0x00100000>;
 		};
 
@@ -188,11 +206,11 @@ argument will has higher precedence, and when definition in the device tree has
 colliding number, creation of the device defined in the device tree will fail.
 
 The `minor-number` property is optional. When the `minor-number` property is not
-specified, udmabuf automatically assigns an appropriate one.
+specified, u-dma-buf automatically assigns an appropriate one.
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
-			compatible = "ikwzm,udmabuf-0.10.a";
+			compatible = "ikwzm,u-dma-buf";
 			minor-number = <0>;
 			size = <0x00100000>;
 		};
@@ -213,7 +231,7 @@ The `device-name` property is optional. The device name is determined as follow:
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
-			compatible = "ikwzm,udmabuf-0.10.a";
+			compatible = "ikwzm,u-dma-buf";
 			device-name = "udmabuf0";
 			size = <0x00100000>;
 		};
@@ -222,7 +240,7 @@ The `device-name` property is optional. The device name is determined as follow:
 
 ### `sync-mode`
 
-The `sync-mode` property is used to configure the behavior when udmabuf is opened
+The `sync-mode` property is used to configure the behavior when u-dma-buf is opened
 with the `O_SYNC` flag.
 
   * `sync-mode`=<1>: If `O_SYNC` is specified or `sync-always` property is specified,
@@ -239,7 +257,7 @@ When the `sync-mode` property is not specified, `sync-mode` is set to <1>.
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
-			compatible = "ikwzm,udmabuf-0.10.a";
+			compatible = "ikwzm,u-dma-buf";
 			size = <0x00100000>;
 			sync-mode = <2>;
 		};
@@ -250,7 +268,7 @@ Details on `O_SYNC` and cache management will be described in the next section.
 
 ### `sync-always`
 
-If the `sync-always` property is specified, when opening udmabuf, it specifies that
+If the `sync-always` property is specified, when opening u-dma-buf, it specifies that
 the operation specified by the `sync-mode` property will always be performed
 regardless of `O_SYNC` specification.
 
@@ -258,7 +276,7 @@ The `sync-always` property is optional.
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
-			compatible = "ikwzm,udmabuf-0.10.a";
+			compatible = "ikwzm,u-dma-buf";
 			size = <0x00100000>;
 			sync-mode = <2>;
 			sync-always;
@@ -271,7 +289,7 @@ Details on `O_SYNC` and cache management will be described in the next section.
 ### `sync-offset`
 
 The `sync-offset` property is used to set the start of the buffer range when manually
-controlling the cache of udmabuf. 
+controlling the cache of u-dma-buf. 
 
 The `sync-offset` property is optional.
 When the `sync-offset` property is not specified, `sync-offset` is set to <0>.
@@ -282,7 +300,7 @@ Details on cache management will be described in the next section.
 ### `sync-size`
 
 The `sync-size` property is used to set the size of the buffer range when manually
-controlling the cache of udmabuf.
+controlling the cache of u-dma-buf.
 
 The `sync-size` property is optional.
 When the `sync-size` property is not specified, `sync-size` is set to <0>.
@@ -293,7 +311,7 @@ Details on cache management will be described in the next section.
 ### `sync-direction`
 
 The `sync-direction` property is used to set the direction of DMA when manually
-controlling the cache of udmabuf.
+controlling the cache of u-dma-buf.
 
   * `sync-direction`=<0>: DMA_BIDIRECTIONAL
   * `sync-direction`=<1>: DMA_TO_DEVICE
@@ -304,7 +322,7 @@ When the `sync-direction` property is not specified, `sync-direction` is set to 
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
-			compatible = "ikwzm,udmabuf-0.10.a";
+			compatible = "ikwzm,u-dma-buf";
 			size = <0x00100000>;
 			sync-offset = <0x00010000>;
 			sync-size = <0x000F0000>;
@@ -327,7 +345,7 @@ guaranteed by hardware.
 
 ```devicetree:devicetree.dts
 		udmabuf@0x00 {
-			compatible = "ikwzm,udmabuf-0.10.a";
+			compatible = "ikwzm,u-dma-buf";
 			size = <0x00100000>;
 			dma-coherent;
 		};
@@ -346,7 +364,7 @@ In order to access this reserved memory area, it is nessasary to use a
 general-purpose memory access driver such as `/dev/mem`, or associate it with
 the device driver in the device tree.
 
-By the `memory-region` property, it can be associated the reserved memory area with udmabuf.
+By the `memory-region` property, it can be associated the reserved memory area with u-dma-buf.
 
 ```devicetree:devicetree.dts
 	reserved-memory {
@@ -361,7 +379,7 @@ By the `memory-region` property, it can be associated the reserved memory area w
 		};
 	};
 	udmabuf@0 {
-		compatible = "ikwzm,udmabuf-0.10.a";
+		compatible = "ikwzm,u-dma-buf";
 		device-name = "udmabuf0";
 		size = <0x04000000>; // 64MiB
 		memory-region = <&image_buf0>;
@@ -379,32 +397,32 @@ With this association, "udmabuf@0" reserves physical memory from the CMA area
 specifed by "image_buf0".
 
 The `memory-region` property is optional.
-When the `memory-region` property is not specified, udmabuf allocates the DMA buffer
+When the `memory-region` property is not specified, u-dma-buf allocates the DMA buffer
 from the CMA area allocated to the Linux kernel.
 
 ## Device file
 
-When udmabuf is loaded into the kernel, the following device files are created.
+When u-dma-buf is loaded into the kernel, the following device files are created.
 `<device-name>` is a placeholder for the device name described in the previous section.
 
   * `/dev/<device-name>`
-  * `/sys/class/udmabuf/<device-name>/phys_addr`
-  * `/sys/class/udmabuf/<device-name>/size`
-  * `/sys/class/udmabuf/<device-name>/sync_mode`
-  * `/sys/class/udmabuf/<device-name>/sync_offset`
-  * `/sys/class/udmabuf/<device-name>/sync_size`
-  * `/sys/class/udmabuf/<device-name>/sync_direction`
-  * `/sys/class/udmabuf/<device-name>/sync_owner`
-  * `/sys/class/udmabuf/<device-name>/sync_for_cpu`
-  * `/sys/class/udmabuf/<device-name>/sync_for_device`
-  * `/sys/class/udmabuf/<device-name>/dma_coherent`
+  * `/sys/class/u-dma-buf/<device-name>/phys_addr`
+  * `/sys/class/u-dma-buf/<device-name>/size`
+  * `/sys/class/u-dma-buf/<device-name>/sync_mode`
+  * `/sys/class/u-dma-buf/<device-name>/sync_offset`
+  * `/sys/class/u-dma-buf/<device-name>/sync_size`
+  * `/sys/class/u-dma-buf/<device-name>/sync_direction`
+  * `/sys/class/u-dma-buf/<device-name>/sync_owner`
+  * `/sys/class/u-dma-buf/<device-name>/sync_for_cpu`
+  * `/sys/class/u-dma-buf/<device-name>/sync_for_device`
+  * `/sys/class/u-dma-buf/<device-name>/dma_coherent`
 
 
 ### `/dev/<device-name>`
 
 `/dev/<device-name>` is used when `mmap()`-ed to the user space or accessed via `read()`/`write()`.
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
         buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
         /* Do some read/write access to buf */
@@ -431,12 +449,12 @@ zynq$dd if=/dev/udmabuf4 of=random.bin
 
 ### `phys_addr`
 
-The physical address of a DMA buffer can be retrieved by reading `/sys/class/udmabuf/<device-name>/phys_addr`.
+The physical address of a DMA buffer can be retrieved by reading `/sys/class/u-dma-buf/<device-name>/phys_addr`.
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     unsigned char  attr[1024];
     unsigned long  phys_addr;
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/phys_addr", O_RDONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/phys_addr", O_RDONLY)) != -1) {
         read(fd, attr, 1024);
         sscanf(attr, "%x", &phys_addr);
         close(fd);
@@ -446,12 +464,12 @@ The physical address of a DMA buffer can be retrieved by reading `/sys/class/udm
 
 ### `size`
 
-The size of a DMA buffer can be retrieved by reading `/sys/class/udmabuf/<device-name>/size`.
+The size of a DMA buffer can be retrieved by reading `/sys/class/u-dma-buf/<device-name>/size`.
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     unsigned char  attr[1024];
     unsigned int   buf_size;
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/size", O_RDONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/size", O_RDONLY)) != -1) {
         read(fd, attr, 1024);
         sscanf(attr, "%d", &buf_size);
         close(fd);
@@ -461,13 +479,13 @@ The size of a DMA buffer can be retrieved by reading `/sys/class/udmabuf/<device
 
 ### `sync_mode`
 
-The device file `/sys/class/udmabuf/<device-name>/sync_mode` is used to configure
-the behavior when udmabuf is opened with the `O_SYNC` flag.
+The device file `/sys/class/u-dma-buf/<device-name>/sync_mode` is used to configure
+the behavior when u-dma-buf is opened with the `O_SYNC` flag.
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     unsigned char  attr[1024];
     unsigned long  sync_mode = 2;
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
         sprintf(attr, "%d", sync_mode);
         write(fd, attr, strlen(attr));
         close(fd);
@@ -478,13 +496,13 @@ Details on `O_SYNC` and cache management will be described in the next section.
 
 ### `sync_offset`
 
-The device file `/sys/class/udmabuf/<device-name>/sync_offset` is used to specify
+The device file `/sys/class/u-dma-buf/<device-name>/sync_offset` is used to specify
 the start address of a memory block of which cache is manually managed.
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     unsigned char  attr[1024];
     unsigned long  sync_offset = 0x00000000;
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_offset", O_WRONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_offset", O_WRONLY)) != -1) {
         sprintf(attr, "%d", sync_offset); /* or sprintf(attr, "0x%x", sync_offset); */
         write(fd, attr, strlen(attr));
         close(fd);
@@ -495,13 +513,13 @@ Details of manual cache management is described in the next section.
 
 ### `sync_size`
 
-The device file `/sys/class/udmabuf/<device-name>/sync_size` is used to specify
+The device file `/sys/class/u-dma-buf/<device-name>/sync_size` is used to specify
 the size of a memory block of which cache is manually managed.
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     unsigned char  attr[1024];
     unsigned long  sync_size = 1024;
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_size", O_WRONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_size", O_WRONLY)) != -1) {
         sprintf(attr, "%d", sync_size); /* or sprintf(attr, "0x%x", sync_size); */
         write(fd, attr, strlen(attr));
         close(fd);
@@ -512,17 +530,17 @@ Details of manual cache management is described in the next section.
 
 ### `sync_direction`
 
-The device file `/sys/class/udmabuf/<device-name>/sync_direction` is used to set the
+The device file `/sys/class/u-dma-buf/<device-name>/sync_direction` is used to set the
 direction of DMA transfer to/from the DMA buffer of which cache is manually managed.
 
   - 0: sets DMA_BIDIRECTIONAL
   - 1: sets DMA_TO_DEVICE
   - 2: sets DMA_FROM_DEVICE
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     unsigned char  attr[1024];
     unsigned long  sync_direction = 1;
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_direction", O_WRONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_direction", O_WRONLY)) != -1) {
         sprintf(attr, "%d", sync_direction);
         write(fd, attr, strlen(attr));
         close(fd);
@@ -534,7 +552,7 @@ Details of manual cache management is described in the next section.
 
 ### `dma_coherent`
 
-The device file `/sys/class/udmabuf/<device-name>/dma_coherent` can read whether
+The device file `/sys/class/u-dma-buf/<device-name>/dma_coherent` can read whether
 the coherency of DMA buffer and CPU cache can be guaranteed by hardware.
 It is able to specify whether or not it is able to guarantee by hardware with the
 `dma-coherent` property in the device tree, but this device file is read-only.
@@ -543,10 +561,10 @@ If this value is 1, the coherency of DMA buffer and CPU cache can be guaranteed 
 hardware. If this value is 0, the coherency of DMA buffer and CPU cache can be not
 guaranteed by hardware.
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     unsigned char  attr[1024];
     int dma_coherent;
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/dma_coherent", O_RDONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/dma_coherent", O_RDONLY)) != -1) {
         read(fd, attr, 1024);
         sscanf(attr, "%x", &dma_coherent);
         close(fd);
@@ -556,13 +574,15 @@ guaranteed by hardware.
 
 ### `sync_owner`
 
-The device file `/sys/class/udmabuf/<device-name>/sync_owner` reports the owner of
+The device file `/sys/class/u-dma-buf/<device-name>/sync_owner` reports the owner of
 the memory block in the manual cache management mode.
+If this value is 1, the buffer is owned by the device.
+If this value is 0, the buffer is owned by the cpu.
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     unsigned char  attr[1024];
     int sync_owner;
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_owner", O_RDONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_owner", O_RDONLY)) != -1) {
         read(fd, attr, 1024);
         sscanf(attr, "%x", &sync_owner);
         close(fd);
@@ -575,15 +595,16 @@ Details of manual cache management is described in the next section.
 ### `sync_for_cpu`
 
 In the manual cache management mode, CPU can be the owner of the buffer by writing
-non-zero to the device file `/sys/class/udmabuf/<device-name>/sync_for_cpu`.
+non-zero to the device file `/sys/class/u-dma-buf/<device-name>/sync_for_cpu`.
+This device file is write only.
 
 If '1' is written to device file, if `sync_direction` is 2(=DMA_FROM_DEVICE) or 0(=DMA_BIDIRECTIONAL),
 the write to the device file invalidates a cache specified by `sync_offset` and `sync_size`.
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     unsigned char  attr[1024];
     unsigned long  sync_for_cpu = 1;
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_for_cpu", O_WRONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_for_cpu", O_WRONLY)) != -1) {
         sprintf(attr, "%d", sync_for_cpu);
         write(fd, attr, strlen(attr));
         close(fd);
@@ -592,13 +613,13 @@ the write to the device file invalidates a cache specified by `sync_offset` and 
 
 The value written to this device file can include sync_offset, sync_size, and sync_direction. 
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     unsigned char  attr[1024];
     unsigned long  sync_offset    = 0;
     unsigned long  sync_size      = 0x10000;
     unsigned int   sync_direction = 1;
     unsigned long  sync_for_cpu   = 1;
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_for_cpu", O_WRONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_for_cpu", O_WRONLY)) != -1) {
         sprintf(attr, "0x%08X%08X", (sync_offset & 0xFFFFFFFF), (sync_size & 0xFFFFFFF0) | (sync_direction << 2) | sync_for_cpu);
         write(fd, attr, strlen(attr));
         close(fd);
@@ -612,16 +633,17 @@ Details of manual cache management is described in the next section.
 ### `sync_for_device`
 
 In the manual cache management mode, DEVICE can be the owner of the buffer by
-writing non-zero to the device file `/sys/class/udmabuf/<device-name>/sync_for_device`.
+writing non-zero to the device file `/sys/class/u-dma-buf/<device-name>/sync_for_device`.
+This device file is write only.
 
 If '1' is written to device file, if `sync_direction` is 1(=DMA_TO_DEVICE) or 0(=DMA_BIDIRECTIONAL),
 the write to the device file flushes a cache specified by `sync_offset` and `sync_size` (i.e. the
 cached data, if any, will be updated with data on DDR memory).
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     unsigned char  attr[1024];
     unsigned long  sync_for_device = 1;
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_for_device", O_WRONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_for_device", O_WRONLY)) != -1) {
         sprintf(attr, "%d", sync_for_device);
         write(fd, attr, strlen(attr));
         close(fd);
@@ -630,13 +652,13 @@ cached data, if any, will be updated with data on DDR memory).
 
 The value written to this device file can include sync_offset, sync_size, and sync_direction. 
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     unsigned char  attr[1024];
     unsigned long  sync_offset     = 0;
     unsigned long  sync_size       = 0x10000;
     unsigned int   sync_direction  = 1;
     unsigned long  sync_for_device = 1;
-    if ((fd  = open("/sys/class/udmabuf/udmabuf0/sync_for_device", O_WRONLY)) != -1) {
+    if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_for_device", O_WRONLY)) != -1) {
         sprintf(attr, "0x%08X%08X", (sync_offset & 0xFFFFFFFF), (sync_size & 0xFFFFFFF0) | (sync_direction << 2) | sync_for_device);
         write(fd, attr, strlen(attr));
         close(fd);
@@ -646,6 +668,41 @@ The value written to this device file can include sync_offset, sync_size, and sy
 The sync_offset/sync_size/sync_direction specified by ```sync_for_device``` is temporary and does not affect the ```sync_offset``` or ```sync_size``` or ```sync_direction``` device files.
 
 Details of manual cache management is described in the next section.
+
+## Configuration via the `/dev/u-dma-buf-mgr`
+
+Since u-dma-buf v2.1, `/dev/u-dma-buf-mgr` device driver has been added. u-dma-buf can be
+created/deleted by writing the command to `/dev/u-dma-buf-mgr` as a string.
+
+### Create u-dma-buf
+
+u-dma-buf can be created by writing the string "create <device-name> <size>" to `/dev/u-dma-buf-mgr` as follows:
+For `<device-name>`, specify the device name of the u-dma-buf to be generated.
+For `<size>`, specify the size of the buffer to be allocated.
+
+```console
+zynq$ sudo echo "create udmabuf8 0x10000" > /dev/u-dma-buf-mgr
+[   58.790695] u-dma-buf-mgr : create udmabuf8 65536
+[   58.798637] u-dma-buf udmabuf8: driver version = 2.1.3
+[   58.804114] u-dma-buf udmabuf8: major number   = 245
+[   58.809000] u-dma-buf udmabuf8: minor number   = 0
+[   58.815628] u-dma-buf udmabuf8: phys address   = 0x1f050000
+[   58.822041] u-dma-buf udmabuf8: buffer size    = 65536
+[   58.827098] u-dma-buf udmabuf8: dma device     = u-dma-buf.0.auto
+[   58.834918] u-dma-buf udmabuf8: dma coherent   = 0
+[   58.839632] u-dma-buf u-dma-buf.0.auto: driver installed.
+```
+
+### Delete u-dma-buf
+
+u-dma-buf can be deleted by writing the string "delete <device-name>" to `/dev/u-dma-buf-mgr` as follows:
+For `<device-name>`, specify `<device-name>` specified with the create command.
+
+```console
+zynq$ sudo echo "delete udmabuf8" > /dev/u-dma-buf-mgr
+[  179.089702] u-dma-buf-mgr : delete udmabuf8
+[  179.094212] u-dma-buf u-dma-buf.0.auto: driver removed.
+```
 
 # Coherency of data on DMA buffer and CPU cache
 
@@ -662,12 +719,12 @@ coherency is maintained by hardware as long as the accelerator accesses to the m
 memory via this port.
 
 In this case, accesses from CPU to the main memory can be fast by using CPU cache
-as usual. To enable CPU cache on the DMA buffer allocated by udmabuf, open udmabuf
+as usual. To enable CPU cache on the DMA buffer allocated by u-dma-buf, open u-dma-buf
 without specifying the `O_SYNC` flag.
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     /* To enable CPU cache on the DMA buffer, */
-    /* open udmabuf without specifying the `O_SYNC` flag. */
+    /* open u-dma-buf without specifying the `O_SYNC` flag. */
     if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
         buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
         /* Read/write access to the buffer */
@@ -681,24 +738,23 @@ necessary when hardware maintains the coherency.
 
 If the `dma-coherent` property is specified in the device tree, specify that
 coherency can be guaranteed with hardware. In this case, the cache control described
-in "2. Manual cache management with the CPU canche still being enabled" described
+in "2. Manual cache management with the CPU cache still being enabled" described
 later is not performed.
-
 
 ## When hardware does not maintain the coherency
 
 To maintain coherency of data between CPU and the main memory, another coherency
-mechanism is necessary. udmabuf supports two different ways of coherency maintenance;
+mechanism is necessary. u-dma-buf supports two different ways of coherency maintenance;
 one is to disable CPU cache, and the other is to involve manual cache flush/invalidation
 with CPU cache being enabled.
 
 ### 1. Disabling CPU cache
 
-To disable CPU cache of allocated DMA buffer, specify the `O_SYNC` flag when opening udmabuf.
+To disable CPU cache of allocated DMA buffer, specify the `O_SYNC` flag when opening u-dma-buf.
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
     /* To disable CPU cache on the DMA buffer, */
-    /* open udmabuf with the `O_SYNC` flag. */
+    /* open u-dma-buf with the `O_SYNC` flag. */
     if ((fd  = open("/dev/udmabuf0", O_RDWR | O_SYNC)) != -1) {
         buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
         /* Read/write access to the buffer */
@@ -727,7 +783,7 @@ As listed below, `sync_mode` can be used to configure the cache behavior when th
 As a practical example, the execution times of a sample program listed below were
 measured under several test conditions as presented in the table.
 
-```C:udmabuf_test.c
+```C:u-dma-buf_test.c
 int check_buf(unsigned char* buf, unsigned int size)
 {
     int m = 256;
@@ -1000,14 +1056,25 @@ Table-2　The execution time of the sample program `clearbuf`
   </tr>
 </table>
 
+**Note: on using `O_SYNC` flag on ARM64**
 
-### 2. Manual cache management with the CPU canche still being enabled
+For v2.1.1 or earier, udmabuf used ```pgprot_writecombine()``` on ARM64 and sync_mode=1(noncached). The reason is that a bus error occurred in memset() in udmabuf_test.c when using ```pgprot_noncached()```.
 
-As explained above, by opening udmabuf without specifying the `O_SYNC` flag, CPU cache can be left turned on.
+However, as reported in https://github.com/ikwzm/udmabuf/pull/28, when using ```pgprot_writecombine()``` on ARM64, it was found that there was a problem with cache coherency.
 
-```C:udmabuf_test.c
+Therefore, since v2.1.2, when sync_mode = 1, it was changed to use ```pgprot_noncached()```. This is because cache coherency issues are very difficult to understand and difficult to debug. Rather than worrying about the cache coherency problem, we decided that it was easier to understand when the bus error occurred.
+
+This change requires alignment attention when using O_SYNC cache control on ARM64. You probably won't be able to use memset().
+
+If a problem occurs, either cache coherency is maintained by hardware, or use a method described bellow that manually cache management with CPU cache still being enabled.
+
+### 2. Manual cache management with the CPU cache still being enabled
+
+As explained above, by opening u-dma-buf without specifying the `O_SYNC` flag, CPU cache can be left turned on.
+
+```C:u-dma-buf_test.c
     /* To enable CPU cache on the DMA buffer, */
-    /* open udmabuf without specifying the `O_SYNC` flag. */
+    /* open u-dma-buf without specifying the `O_SYNC` flag. */
     if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
         buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
         /* Read/write access to the buffer */
@@ -1046,11 +1113,11 @@ However, if the `dma-coherent` property is specified in the device tree, CPU cac
 is not invalidated and flushed.
 
 
-# Example using udmabuf with Python
+# Example using u-dma-buf with Python
 
 The programming language "Python" provides an extension called "NumPy".
 This section explains how to do the same operation as "ndarry" by mapping the DMA
-buffer allocated in the kernel with `memmap` of "NumPy" with udmabuf.
+buffer allocated in the kernel with `memmap` of "NumPy" with u-dma-buf.
 
 
 ## Udmabuf Class
@@ -1061,11 +1128,11 @@ buffer allocated in the kernel with `memmap` of "NumPy" with udmabuf.
 import numpy as np
 
 class Udmabuf:
-    """A simple udmabuf class"""
+    """A simple u-dma-buf class"""
     def __init__(self, name):
         self.name           = name
-        self.device_name    = '/dev/%s'               % self.name
-        self.class_path     = '/sys/class/udmabuf/%s' % self.name
+        self.device_name    = '/dev/%s'                 % self.name
+        self.class_path     = '/sys/class/u-dma-buf/%s' % self.name
         self.phys_addr      = self.get_value('phys_addr', 16)
         self.buf_size       = self.get_value('size')
         self.sync_offset    = None
@@ -1143,30 +1210,30 @@ if __name__ == '__main__':
     start        = time.time()
     test_1(udmabuf.mem_map)
     elapsed_time = time.time() - start
-    print ("udmabuf0   : elapsed_time:{0}".format(elapsed_time)) + "[sec]"
+    print ("udmabuf-0   : elapsed_time:{0}".format(elapsed_time)) + "[sec]"
     start        = time.time()
     test_1(comparison)
     elapsed_time = time.time() - start
     print ("comparison : elapsed_time:{0}".format(elapsed_time)) + "[sec]"
     if np.array_equal(udmabuf.mem_map, comparison):
-        print ("udmabuf0 == comparison : OK")
+        print ("udmabuf-0 == comparison : OK")
     else:
-        print ("udmabuf0 != comparison : NG")
+        print ("udmabuf-0 != comparison : NG")
 
 ```
 
 ## Execution result
 
-Install udmabuf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
+Install u-dma-buf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
 
 ```console
-zynq# insmod udmabuf.ko udmabuf0=8388608
-[34654.622746] udmabuf udmabuf0: driver installed
-[34654.627153] udmabuf udmabuf0: major number   = 237
-[34654.631889] udmabuf udmabuf0: minor number   = 0
-[34654.636685] udmabuf udmabuf0: phys address   = 0x1f300000
-[34654.642002] udmabuf udmabuf0: buffer size    = 8388608
-[34654.642002] udmabuf udmabuf0: dma-coherent   = 0
+zynq# insmod u-dma-buf.ko udmabuf0=8388608
+[34654.622746] u-dma-buf udmabuf0: driver installed
+[34654.627153] u-dma-buf udmabuf0: major number   = 237
+[34654.631889] u-dma-buf udmabuf0: minor number   = 0
+[34654.636685] u-dma-buf udmabuf0: phys address   = 0x1f300000
+[34654.642002] u-dma-buf udmabuf0: buffer size    = 8388608
+[34654.642002] u-dma-buf udmabuf0: dma-coherent   = 0
 
 ```
 
