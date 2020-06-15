@@ -35,7 +35,7 @@ Figure 1. Architecture
 
 ## Supported platforms
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.0 - 5.2 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14, 4.19).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.0 - 5.4 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.4).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: x86(64bit) However, verification is not enough. I hope the results from everyone.
@@ -86,11 +86,21 @@ endif
 u-dma-buf-obj           := u-dma-buf.o
 obj-$(CONFIG_U_DMA_BUF) += $(u-dma-buf-obj)
 
+ifndef MAKE_TARGET
+  KERNEL_VERSION ?= $(shell awk '/^VERSION/{print $$3}' $(KERNEL_SRC_DIR)/Makefile)
+  KERNEL_VERSION_LT_5 = $(shell echo $(KERNEL_VERSION) | awk '{print (int($$1) < 5)}')
+  ifeq ($(KERNEL_VERSION_LT_5), 1)
+    MAKE_TARGET ?= modules
+  else
+    MAKE_TARGET ?= u-dma-buf.ko
+  endif
+endif
+
 all:
-	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) obj-m=$(u-dma-buf-obj) modules
+	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) obj-m=$(u-dma-buf-obj) $(MAKE_TARGET)
 
 clean:
-	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) obj-m=$(u-dma-buf-obj) clean
+	make -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) clean
 
 ```
 
