@@ -230,9 +230,16 @@ size プロパティはDMAバッファの容量をバイト数で指定します
 
 ```
 
+バッファの容量に 4GiB 以上を指定したいときは、次のように 64bit の値を指定します。
+64bit の値は 上位 32bit、下位 32bit の順に二つ並べて表現します。
 
+```devicetree:devicetree.dts
+		udmabuf@0x00 {
+			compatible = "ikwzm,u-dma-buf";
+			size = <0x01 0x00000000>;  // size = 0x1_0000_0000
+		};
 
-
+```
 
 ### minor-number
 
