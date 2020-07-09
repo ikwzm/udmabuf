@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "3.1.0"
+#define DRIVER_VERSION     "3.2.0-rc.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1554,8 +1554,10 @@ static int udmabuf_device_probe(struct device *dev)
      * - call of_dma_is_coherent()
      * - call arch_setup_dma_ops()
      */
-#if (USE_OF_RESERVED_MEM == 1)
-    /* If "memory-region" property is spsecified, of_dma_configure() will not be executed.
+#if ((USE_OF_RESERVED_MEM == 1) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 1, 0)))
+    /* 
+     * Under less than Linux Kernel 5.1, if "memory-region" property is specified, 
+     * of_dma_configure() will not be executed.
      * Because in that case, it is already executed in of_reserved_mem_device_init().
      */
     if (device_data->of_reserved_mem == 0)
