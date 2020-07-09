@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "3.2.0-rc.2"
+#define DRIVER_VERSION     "3.2.0-rc.3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -141,6 +141,7 @@ static struct class*  udmabuf_sys_class = NULL;
 static int        info_enable = 1;
 module_param(     info_enable , int, S_IRUGO);
 MODULE_PARM_DESC( info_enable , "udmabuf install/uninstall infomation enable");
+#define           DMA_INFO_ENABLE  (info_enable & 0x02)
 
 /**
  * dma_mask_bit module parameter
@@ -1009,11 +1010,13 @@ static void udmabuf_device_info(struct udmabuf_device_data* this)
     dev_info(this->sys_dev, "minor number   = %d\n"  , MINOR(this->device_number));
     dev_info(this->sys_dev, "phys address   = %pad\n", &this->phys_addr);
     dev_info(this->sys_dev, "buffer size    = %zu\n" , this->alloc_size);
-    dev_info(this->sys_dev, "dma device     = %s\n"  , dev_name(this->dma_dev));
+    if (DMA_INFO_ENABLE) {
+        dev_info(this->sys_dev, "dma device     = %s\n"       , dev_name(this->dma_dev));
 #if defined(IS_DMA_COHERENT)
-    dev_info(this->sys_dev, "dma coherent   = %d\n"  , IS_DMA_COHERENT(this->dma_dev));
+        dev_info(this->sys_dev, "dma coherent   = %d\n"       , IS_DMA_COHERENT(this->dma_dev));
 #endif
-    dev_info(this->sys_dev, "dma mask       = 0x%016llx\n", dma_get_mask(this->dma_dev));
+        dev_info(this->sys_dev, "dma mask       = 0x%016llx\n", dma_get_mask(this->dma_dev));
+    }
 }
 
 /**
