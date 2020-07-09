@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "3.2.0-rc.1"
+#define DRIVER_VERSION     "3.2.0-rc.2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -915,6 +915,24 @@ static struct udmabuf_device_data* udmabuf_device_create(const char* name, struc
             this->dma_dev = get_device(parent);
         else
             this->dma_dev = get_device(this->sys_dev);
+        /*
+         * set this->dma_dev->dma_mask
+         */
+        if (this->dma_dev->dma_mask == NULL) {
+            this->dma_dev->dma_mask = &this->dma_dev->coherent_dma_mask;
+        }
+        /*
+         * set this->dma_dev->dma_mask
+         */
+        if (*this->dma_dev->dma_mask == 0) {
+            if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
+                dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
+            } else {
+                printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
+                dma_set_mask(this->dma_dev, DMA_BIT_MASK(32));
+                dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(32));
+           }
+        }
         done |= DONE_SET_DMA_DEV;
     }
     /*
@@ -964,24 +982,6 @@ static int udmabuf_device_setup(struct udmabuf_device_data* this)
     if (!this)
         return -ENODEV;
     /*
-     * set this->dma_dev->dma_mask
-     */
-    if (this->dma_dev->dma_mask == NULL) {
-        this->dma_dev->dma_mask = &this->dma_dev->coherent_dma_mask;
-    }
-    /*
-     * set this->dma_dev->dma_mask
-     */
-    if (*this->dma_dev->dma_mask == 0) {
-        if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
-           dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
-        } else {
-            printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
-            dma_set_mask(this->dma_dev, DMA_BIT_MASK(32));
-            dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(32));
-       }
-    }
-    /*
      * setup buffer size and allocation size
      */
     this->alloc_size = ((this->size + ((1 << PAGE_SHIFT) - 1)) >> PAGE_SHIFT) << PAGE_SHIFT;
@@ -1013,6 +1013,7 @@ static void udmabuf_device_info(struct udmabuf_device_data* this)
 #if defined(IS_DMA_COHERENT)
     dev_info(this->sys_dev, "dma coherent   = %d\n"  , IS_DMA_COHERENT(this->dma_dev));
 #endif
+    dev_info(this->sys_dev, "dma mask       = 0x%016llx\n", dma_get_mask(this->dma_dev));
 }
 
 /**
@@ -1532,6 +1533,21 @@ static int udmabuf_device_probe(struct device *dev)
      * set size
      */
     device_data->size = size;
+    /*
+     * dma-mask property
+     */
+    if (of_property_read_u32(dev->of_node, "dma-mask", &u32_value) == 0) {
+        if (u32_value > 64) {
+            dev_err(dev, "invalid dma-mask property value=%d\n", u32_value);
+            goto failed;
+        }
+        if (dma_set_mask(device_data->dma_dev, DMA_BIT_MASK(u32_value)) == 0) {
+            dma_set_coherent_mask(device_data->dma_dev, DMA_BIT_MASK(u32_value));
+        } else {
+            dev_err(dev, "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", u32_value);
+            goto failed;
+        }
+    }
     /*
      * of_reserved_mem_device_init()
      */
