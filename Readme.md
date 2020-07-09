@@ -207,6 +207,17 @@ The `size` property is mandatory.
 
 ```
 
+If you want to specify a buffer size of 4GiB or more, specify a 64bit value as follows.
+A 64-bit value is expressed by arranging two in the order of upper 32 bits and lower 32 bits.
+
+```devicetree:devicetree.dts
+		udmabuf@0x00 {
+			compatible = "ikwzm,u-dma-buf";
+			size = <0x01 0x00000000>;  // size = 0x1_0000_0000
+		};
+
+```
+
 ### `minor-number`
 
 The `minor-number` property is used to set the minor number.

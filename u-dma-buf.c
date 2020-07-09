@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "3.0.1"
+#define DRIVER_VERSION     "3.1.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1068,13 +1068,13 @@ struct udmabuf_platform_device {
 #if (USE_DEV_PROPERTY == 0)
     const char*          device_name;
     u32                  minor_number;
-    u32                  buffer_size;
+    u64                  buffer_size;
 #endif
     struct list_head     list;
 };
 
 /**
- * udmabuf_static_device_list     - list of udmabuf static device structure.
+ * udmabuf_platform_device_list   - list of udmabuf static device structure.
  * udmabuf_platform_device_sem    - semaphore of udmabuf platform device list.
  */
 static struct list_head udmabuf_platform_device_list;
@@ -1117,7 +1117,7 @@ static int  udmabuf_get_device_name_property(struct device *dev, const char** na
  * @value:      address of buffer size value.
  * Return:      Success(=0) or error status(<0).
  */
-static int  udmabuf_get_size_property(struct device *dev, u32* value)
+static int  udmabuf_get_size_property(struct device *dev, u64* value)
 {
 #if (USE_DEV_PROPERTY == 0)
     int                             status = -1;
@@ -1134,7 +1134,7 @@ static int  udmabuf_get_size_property(struct device *dev, u32* value)
     mutex_unlock(&udmabuf_platform_device_sem);
     return status;
 #else
-    return device_property_read_u32(dev, "size", value);
+    return device_property_read_u64(dev, "size", value);
 #endif
 }
 
@@ -1244,7 +1244,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
     {
         struct property_entry   props_list[] = {
             PROPERTY_ENTRY_STRING("device-name" , name),
-            PROPERTY_ENTRY_U32(   "size"        , size),
+            PROPERTY_ENTRY_U64(   "size"        , size),
             PROPERTY_ENTRY_U32(   "minor-number", id  ),
             {},
         };
@@ -1435,6 +1435,32 @@ static int udmabuf_device_remove(struct device *dev, struct udmabuf_device_data 
 }
 
 /**
+ * of_property_read_ulong() -  Probe call for the device.
+ * @node:       handle to node  
+ * @propname:   property name
+ * @out_value:  address of value.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int of_property_read_ulong(const struct device_node* node, const char* propname, u64* out_value)
+{
+    u32    u32_value;
+    u64    u64_value;
+    int    retval;
+
+    if ((retval = of_property_read_u64(node, propname, &u64_value)) == 0) {
+        *out_value = u64_value;
+        return 0;
+    }
+      
+    if ((retval = of_property_read_u32(node, propname, &u32_value)) == 0) {
+        *out_value = (u64)u32_value;
+        return 0;
+    }
+      
+    return retval;
+}
+
+/**
  * udmabuf_device_probe() -  Probe call for the device.
  * @dev:        handle to the device structure.
  * Return:      Success(=0) or error status(<0).
@@ -1445,7 +1471,8 @@ static int udmabuf_device_probe(struct device *dev)
 {
     int                         retval       = 0;
     int                         prop_status  = 0;
-    unsigned int                u32_value    = 0;
+    u32                         u32_value    = 0;
+    u64                         u64_value    = 0;
     size_t                      size         = 0;
     int                         minor_number = -1;
     struct udmabuf_device_data* device_data  = NULL;
@@ -1454,10 +1481,10 @@ static int udmabuf_device_probe(struct device *dev)
     /*
      * size property
      */
-    if        ((prop_status = udmabuf_get_size_property(dev, &u32_value)) == 0) {
-        size = u32_value;
-    } else if ((prop_status = of_property_read_u32(dev->of_node, "size", &u32_value)) == 0) {
-        size = u32_value;
+    if        ((prop_status = udmabuf_get_size_property(dev, &u64_value)) == 0) {
+        size = u64_value;
+    } else if ((prop_status = of_property_read_ulong(dev->of_node, "size", &u64_value)) == 0) {
+        size = u64_value;
     } else {
         dev_err(dev, "invalid property size. status=%d\n", prop_status);
         retval = -ENODEV;
@@ -1579,22 +1606,22 @@ static int udmabuf_device_probe(struct device *dev)
     /*
      * sync-offset property
      */
-    if (of_property_read_u32(dev->of_node, "sync-offset", &u32_value) == 0) {
-        if (u32_value >= device_data->size) {
-            dev_err(dev, "invalid sync-offset property value=%d\n", u32_value);
+    if (of_property_read_ulong(dev->of_node, "sync-offset", &u64_value) == 0) {
+        if (u64_value >= device_data->size) {
+            dev_err(dev, "invalid sync-offset property value=%llu\n", u64_value);
             goto failed;
         }
-        device_data->sync_offset = (int)u32_value;
+        device_data->sync_offset = (int)u64_value;
     }
     /*
      * sync-size property
      */
-    if (of_property_read_u32(dev->of_node, "sync-size", &u32_value) == 0) {
-        if (device_data->sync_offset + u32_value > device_data->size) {
-            dev_err(dev, "invalid sync-size property value=%d\n", u32_value);
+    if (of_property_read_ulong(dev->of_node, "sync-size", &u64_value) == 0) {
+        if (device_data->sync_offset + u64_value > device_data->size) {
+            dev_err(dev, "invalid sync-size property value=%llu\n", u64_value);
             goto failed;
         }
-        device_data->sync_size = (size_t)u32_value;
+        device_data->sync_size = (size_t)u64_value;
     } else {
         device_data->sync_size = device_data->size;
     }
