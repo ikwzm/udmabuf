@@ -203,6 +203,7 @@ crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
   *  sync-size
   *  sync-direction
   *  dma-coherent
+  *  dma-mask
   *  memory-region
 
 
@@ -397,6 +398,17 @@ dma-coherent プロパティは省略可能です。dma-cohernet プロパティ
 
 手動でキャッシュを制御する方法は次の節で説明します。
 
+### dma-mask
+
+** 注意事項: dma-mask の値はシステムに依存します。dma-mask の意味をよく理解して設定してください。 **
+
+```devicetree:devicetree.dts
+		udmabuf@0x00 {
+			compatible = "ikwzm,u-dma-buf";
+			size = <0x00100000>;
+			dma-mask = <64>;
+		};
+```
 
 ### memory-region
 
