@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "3.2.0-rc.3"
+#define DRIVER_VERSION     "3.2.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1439,10 +1439,10 @@ static int udmabuf_device_remove(struct device *dev, struct udmabuf_device_data 
 }
 
 /**
- * of_property_read_ulong() -  Probe call for the device.
- * @node:       handle to node  
- * @propname:   property name
- * @out_value:  address of value.
+ * of_property_read_ulong() -  Find and read a unsigned long intger from a property.
+ * @node:       device node which the property value is to be read.
+ * @propname:   name of property to be searched.
+ * @out_value:  pointer to return value, modified only if return value is 0.
  * Return:      Success(=0) or error status(<0).
  */
 static int of_property_read_ulong(const struct device_node* node, const char* propname, u64* out_value)
