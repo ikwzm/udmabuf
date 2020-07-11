@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "3.1.0"
+#define DRIVER_VERSION     "3.2.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -141,6 +141,7 @@ static struct class*  udmabuf_sys_class = NULL;
 static int        info_enable = 1;
 module_param(     info_enable , int, S_IRUGO);
 MODULE_PARM_DESC( info_enable , "udmabuf install/uninstall infomation enable");
+#define           DMA_INFO_ENABLE  (info_enable & 0x02)
 
 /**
  * dma_mask_bit module parameter
@@ -915,6 +916,24 @@ static struct udmabuf_device_data* udmabuf_device_create(const char* name, struc
             this->dma_dev = get_device(parent);
         else
             this->dma_dev = get_device(this->sys_dev);
+        /*
+         * set this->dma_dev->dma_mask
+         */
+        if (this->dma_dev->dma_mask == NULL) {
+            this->dma_dev->dma_mask = &this->dma_dev->coherent_dma_mask;
+        }
+        /*
+         * set this->dma_dev->dma_mask
+         */
+        if (*this->dma_dev->dma_mask == 0) {
+            if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
+                dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
+            } else {
+                printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
+                dma_set_mask(this->dma_dev, DMA_BIT_MASK(32));
+                dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(32));
+           }
+        }
         done |= DONE_SET_DMA_DEV;
     }
     /*
@@ -964,24 +983,6 @@ static int udmabuf_device_setup(struct udmabuf_device_data* this)
     if (!this)
         return -ENODEV;
     /*
-     * set this->dma_dev->dma_mask
-     */
-    if (this->dma_dev->dma_mask == NULL) {
-        this->dma_dev->dma_mask = &this->dma_dev->coherent_dma_mask;
-    }
-    /*
-     * set this->dma_dev->dma_mask
-     */
-    if (*this->dma_dev->dma_mask == 0) {
-        if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
-           dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
-        } else {
-            printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
-            dma_set_mask(this->dma_dev, DMA_BIT_MASK(32));
-            dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(32));
-       }
-    }
-    /*
      * setup buffer size and allocation size
      */
     this->alloc_size = ((this->size + ((1 << PAGE_SHIFT) - 1)) >> PAGE_SHIFT) << PAGE_SHIFT;
@@ -1009,10 +1010,13 @@ static void udmabuf_device_info(struct udmabuf_device_data* this)
     dev_info(this->sys_dev, "minor number   = %d\n"  , MINOR(this->device_number));
     dev_info(this->sys_dev, "phys address   = %pad\n", &this->phys_addr);
     dev_info(this->sys_dev, "buffer size    = %zu\n" , this->alloc_size);
-    dev_info(this->sys_dev, "dma device     = %s\n"  , dev_name(this->dma_dev));
+    if (DMA_INFO_ENABLE) {
+        dev_info(this->sys_dev, "dma device     = %s\n"       , dev_name(this->dma_dev));
 #if defined(IS_DMA_COHERENT)
-    dev_info(this->sys_dev, "dma coherent   = %d\n"  , IS_DMA_COHERENT(this->dma_dev));
+        dev_info(this->sys_dev, "dma coherent   = %d\n"       , IS_DMA_COHERENT(this->dma_dev));
 #endif
+        dev_info(this->sys_dev, "dma mask       = 0x%016llx\n", dma_get_mask(this->dma_dev));
+    }
 }
 
 /**
@@ -1435,10 +1439,10 @@ static int udmabuf_device_remove(struct device *dev, struct udmabuf_device_data 
 }
 
 /**
- * of_property_read_ulong() -  Probe call for the device.
- * @node:       handle to node  
- * @propname:   property name
- * @out_value:  address of value.
+ * of_property_read_ulong() -  Find and read a unsigned long intger from a property.
+ * @node:       device node which the property value is to be read.
+ * @propname:   name of property to be searched.
+ * @out_value:  pointer to return value, modified only if return value is 0.
  * Return:      Success(=0) or error status(<0).
  */
 static int of_property_read_ulong(const struct device_node* node, const char* propname, u64* out_value)
@@ -1533,6 +1537,21 @@ static int udmabuf_device_probe(struct device *dev)
      */
     device_data->size = size;
     /*
+     * dma-mask property
+     */
+    if (of_property_read_u32(dev->of_node, "dma-mask", &u32_value) == 0) {
+        if (u32_value > 64) {
+            dev_err(dev, "invalid dma-mask property value=%d\n", u32_value);
+            goto failed;
+        }
+        if (dma_set_mask(device_data->dma_dev, DMA_BIT_MASK(u32_value)) == 0) {
+            dma_set_coherent_mask(device_data->dma_dev, DMA_BIT_MASK(u32_value));
+        } else {
+            dev_err(dev, "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", u32_value);
+            goto failed;
+        }
+    }
+    /*
      * of_reserved_mem_device_init()
      */
 #if (USE_OF_RESERVED_MEM == 1)
@@ -1554,8 +1573,10 @@ static int udmabuf_device_probe(struct device *dev)
      * - call of_dma_is_coherent()
      * - call arch_setup_dma_ops()
      */
-#if (USE_OF_RESERVED_MEM == 1)
-    /* If "memory-region" property is spsecified, of_dma_configure() will not be executed.
+#if ((USE_OF_RESERVED_MEM == 1) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 1, 0)))
+    /* 
+     * Under less than Linux Kernel 5.1, if "memory-region" property is specified, 
+     * of_dma_configure() will not be executed.
      * Because in that case, it is already executed in of_reserved_mem_device_init().
      */
     if (device_data->of_reserved_mem == 0)

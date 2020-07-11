@@ -185,6 +185,7 @@ The following properties can be set in the device tree.
   *  `sync-size`
   *  `sync-direction`
   *  `dma-coherent`
+  *  `dma-mask`
   *  `memory-region`
 
 
@@ -374,6 +375,19 @@ guaranteed by hardware.
 
 Details on cache management will be described in the next section.
 
+
+### `dma-mask`
+
+** Note: The value of dma-mask is system dependent.
+Make sure you are familiar with the meaning of dma-mask before setting. **
+
+```devicetree:devicetree.dts
+		udmabuf@0x00 {
+			compatible = "ikwzm,u-dma-buf";
+			size = <0x00100000>;
+			dma-mask = <64>;
+		};
+```
 
 ### `memory-region`
 
