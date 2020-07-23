@@ -926,6 +926,11 @@ static struct udmabuf_device_data* udmabuf_device_create(const char* name, struc
          * set this->dma_dev->dma_mask
          */
         if (*this->dma_dev->dma_mask == 0) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))
+            of_dma_configure(this->dma_dev, NULL, true);
+#else
+            of_dma_configure(this->dma_dev, NULL);
+#endif
             if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
                 dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
             } else {
