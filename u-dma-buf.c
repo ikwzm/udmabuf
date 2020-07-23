@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "3.2.0"
+#define DRIVER_VERSION     "3.2.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1229,6 +1229,12 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
         printk(KERN_ERR "platform_device_alloc(%s,%d) failed. return=%d\n", DRIVER_NAME, id, retval);
         goto failed;
     }
+
+    if (!pdev->dev.dma_mask)
+        pdev->dev.dma_mask = &pdev->dev.coherent_dma_mask;
+
+    pdev->dev.coherent_dma_mask = DMA_BIT_MASK(dma_mask_bit);
+    *pdev->dev.dma_mask         = DMA_BIT_MASK(dma_mask_bit);
 
     plat = kzalloc(sizeof(*plat), GFP_KERNEL);
     if (IS_ERR_OR_NULL(plat)) {
