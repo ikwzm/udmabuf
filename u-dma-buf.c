@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "3.2.1"
+#define DRIVER_VERSION     "3.2.2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -923,16 +923,18 @@ static struct udmabuf_device_data* udmabuf_device_create(const char* name, struc
             this->dma_dev->dma_mask = &this->dma_dev->coherent_dma_mask;
         }
         /*
-         * set this->dma_dev->dma_mask
+         * set *this->dma_dev->dma_mask and this->dma_dev->coherent_dma_mask
+         * Executing dma_set_mask_and_coherent() before of_dma_configure() may fail.
+         * Because dma_set_mask_and_coherent() will fail unless dev->dma_ops is set.
+         * When dma_set_mask_and_coherent() fails, it is forcefuly setting the dma-mask value.
          */
         if (*this->dma_dev->dma_mask == 0) {
-            if (dma_set_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit)) == 0) {
-                dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
-            } else {
-                printk(KERN_WARNING "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", dma_mask_bit);
-                dma_set_mask(this->dma_dev, DMA_BIT_MASK(32));
-                dma_set_coherent_mask(this->dma_dev, DMA_BIT_MASK(32));
-           }
+            int retval = dma_set_mask_and_coherent(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
+            if (retval != 0) {
+                printk(KERN_WARNING "dma_set_mask_and_coherent(DMA_BIT_MASK(%d)) failed. return=(%d)\n", dma_mask_bit, retval);
+                *this->dma_dev->dma_mask         = DMA_BIT_MASK(dma_mask_bit);
+                this->dma_dev->coherent_dma_mask = DMA_BIT_MASK(dma_mask_bit);
+            }
         }
         done |= DONE_SET_DMA_DEV;
     }
@@ -1532,7 +1534,7 @@ static int udmabuf_device_probe(struct device *dev)
     device_data = udmabuf_device_create(device_name, dev, minor_number);
     if (IS_ERR_OR_NULL(device_data)) {
         retval = PTR_ERR(device_data);
-        dev_err(dev, "driver create failed. return=%d.\n", retval);
+        dev_err(dev, "driver create failed. return=%d\n", retval);
         device_data = NULL;
         retval = (retval == 0) ? -EINVAL : retval;
         goto failed;
@@ -1544,17 +1546,23 @@ static int udmabuf_device_probe(struct device *dev)
     device_data->size = size;
     /*
      * dma-mask property
+     * If you want to set dma-mask, do it before of_dma_configure().
+     * Because of_dma_configure() needs the value of dev->coherent_dma_mask.
+     * However, executing dma_set_mask_and_coherent() before of_dma_configure() may fail.
+     * Because dma_set_mask_and_coherent() will fail unless dev->dma_ops is set.
+     * When dma_set_mask_and_coherent() fails, it is forcefuly setting the dma-mask value.
      */
     if (of_property_read_u32(dev->of_node, "dma-mask", &u32_value) == 0) {
-        if (u32_value > 64) {
+        if ((u32_value > 64) || (u32_value < 12)) {
             dev_err(dev, "invalid dma-mask property value=%d\n", u32_value);
             goto failed;
         }
-        if (dma_set_mask(device_data->dma_dev, DMA_BIT_MASK(u32_value)) == 0) {
-            dma_set_coherent_mask(device_data->dma_dev, DMA_BIT_MASK(u32_value));
-        } else {
-            dev_err(dev, "dma_set_mask(DMA_BIT_MASK(%d)) failed\n", u32_value);
-            goto failed;
+        retval = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(u32_value));
+        if (retval != 0) {
+            dev_info(dev, "dma_set_mask_and_coherent(DMA_BIT_MASK(%d)) failed. return=%d\n", u32_value, retval);
+            retval = 0;
+            *dev->dma_mask         = DMA_BIT_MASK(u32_value);
+            dev->coherent_dma_mask = DMA_BIT_MASK(u32_value);
         }
     }
     /*
