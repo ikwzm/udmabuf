@@ -10,7 +10,7 @@ kernel space as DMA buffers and makes them available from the user space.
 It is intended that these memory blocks are used as DMA buffers when a user 
 application implements device driver in user space using UIO (User space I/O).
 
-A DMA buffer allocated by u-dma-buf can be accessed from the user space by opneing
+A DMA buffer allocated by u-dma-buf can be accessed from the user space by opening
 the device file (e.g. /dev/udmabuf0) and mapping to the user memory space, or
 using the read()/write() functions.
 
