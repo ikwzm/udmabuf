@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "3.2.2"
+#define DRIVER_VERSION     "3.2.3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1090,15 +1090,17 @@ static struct mutex     udmabuf_platform_device_sem;
  * udmabuf_get_device_name_property()  - Get "device-name"  property from udmabuf device.
  * @dev:        handle to the device structure.
  * @name:       address of device name.
+ * @lock:       use mutex_lock()/mutex_unlock()
  * Return:      Success(=0) or error status(<0).
  */
-static int  udmabuf_get_device_name_property(struct device *dev, const char** name)
+static int  udmabuf_get_device_name_property(struct device *dev, const char** name, bool lock)
 {
 #if (USE_DEV_PROPERTY == 0)
     int                             status = -1;
     struct udmabuf_platform_device* plat;
 
-    mutex_lock(&udmabuf_platform_device_sem);
+    if (lock)
+        mutex_lock(&udmabuf_platform_device_sem);
     list_for_each_entry(plat, &udmabuf_platform_device_list, list) {
         if (plat->dev == dev) {
             if (plat->device_name == NULL) {
@@ -1110,7 +1112,8 @@ static int  udmabuf_get_device_name_property(struct device *dev, const char** na
             break;
         }
     }
-    mutex_unlock(&udmabuf_platform_device_sem);
+    if (lock)
+        mutex_unlock(&udmabuf_platform_device_sem);
     return status;
 #else
     return device_property_read_string(dev, "device-name", name);
@@ -1121,15 +1124,17 @@ static int  udmabuf_get_device_name_property(struct device *dev, const char** na
  * udmabuf_get_size_property()         - Get "buffer-size"  property from udmabuf device.
  * @dev:        handle to the device structure.
  * @value:      address of buffer size value.
+ * @lock:       use mutex_lock()/mutex_unlock()
  * Return:      Success(=0) or error status(<0).
  */
-static int  udmabuf_get_size_property(struct device *dev, u64* value)
+static int  udmabuf_get_size_property(struct device *dev, u64* value, bool lock)
 {
 #if (USE_DEV_PROPERTY == 0)
     int                             status = -1;
     struct udmabuf_platform_device* plat;
 
-    mutex_lock(&udmabuf_platform_device_sem);
+    if (lock)
+        mutex_lock(&udmabuf_platform_device_sem);
     list_for_each_entry(plat, &udmabuf_platform_device_list, list) {
         if (plat->dev == dev) {
             *value = plat->buffer_size;
@@ -1137,7 +1142,8 @@ static int  udmabuf_get_size_property(struct device *dev, u64* value)
             break;
         }
     }
-    mutex_unlock(&udmabuf_platform_device_sem);
+    if (lock)
+        mutex_unlock(&udmabuf_platform_device_sem);
     return status;
 #else
     return device_property_read_u64(dev, "size", value);
@@ -1148,16 +1154,18 @@ static int  udmabuf_get_size_property(struct device *dev, u64* value)
  * udmabuf_get_minor_number_property() - Get "minor-number" property from udmabuf device.
  * @dev:        handle to the device structure.
  * @value:      address of minor number value.
+ * @lock:       use mutex_lock()/mutex_unlock()
  * Return:      Success(=0) or error status(<0).
  */
 
-static int  udmabuf_get_minor_number_property(struct device *dev, u32* value)
+static int  udmabuf_get_minor_number_property(struct device *dev, u32* value, bool lock)
 {
 #if (USE_DEV_PROPERTY == 0)
     int                             status = -1;
     struct udmabuf_platform_device* plat;
 
-    mutex_lock(&udmabuf_platform_device_sem);
+    if (lock)
+        mutex_lock(&udmabuf_platform_device_sem);
     list_for_each_entry(plat, &udmabuf_platform_device_list, list) {
         if (plat->dev == dev) {
             *value = plat->minor_number;
@@ -1165,7 +1173,8 @@ static int  udmabuf_get_minor_number_property(struct device *dev, u32* value)
             break;
         }
     }
-    mutex_unlock(&udmabuf_platform_device_sem);
+    if (lock) 
+        mutex_unlock(&udmabuf_platform_device_sem);
     return status;
 #else
     return device_property_read_u32(dev, "minor-number", value);
@@ -1189,14 +1198,14 @@ static struct udmabuf_platform_device* udmabuf_platform_device_search(const char
         if (name != NULL) {
             const char* device_name;
             found_by_name = false;
-            if (udmabuf_get_device_name_property(plat->dev, &device_name) == 0) 
+            if (udmabuf_get_device_name_property(plat->dev, &device_name, false) == 0) 
                 if (strcmp(name, device_name) == 0)
                     found_by_name = true;
         }
         if (id >= 0) {
             u32 minor_number;
             found_by_id = false;
-            if (udmabuf_get_minor_number_property(plat->dev, &minor_number) == 0) 
+            if (udmabuf_get_minor_number_property(plat->dev, &minor_number, false) == 0) 
                 if (id == minor_number)
                     found_by_id = true;
         }
@@ -1493,7 +1502,7 @@ static int udmabuf_device_probe(struct device *dev)
     /*
      * size property
      */
-    if        ((prop_status = udmabuf_get_size_property(dev, &u64_value)) == 0) {
+    if        ((prop_status = udmabuf_get_size_property(dev, &u64_value, true)) == 0) {
         size = u64_value;
     } else if ((prop_status = of_property_read_ulong(dev->of_node, "size", &u64_value)) == 0) {
         size = u64_value;
@@ -1510,7 +1519,7 @@ static int udmabuf_device_probe(struct device *dev)
     /*
      * minor-number property
      */
-    if        (udmabuf_get_minor_number_property(dev, &u32_value) == 0) {
+    if        (udmabuf_get_minor_number_property(dev, &u32_value, true) == 0) {
         minor_number = u32_value;
     } else if (of_property_read_u32(dev->of_node, "minor-number", &u32_value) == 0) {
         minor_number = u32_value;
@@ -1520,7 +1529,7 @@ static int udmabuf_device_probe(struct device *dev)
     /*
      * device-name property
      */
-    if (udmabuf_get_device_name_property(dev, &device_name) != 0)
+    if (udmabuf_get_device_name_property(dev, &device_name, true) != 0)
         device_name = of_get_property(dev->of_node, "device-name", NULL);
     if (IS_ERR_OR_NULL(device_name)) {
         if (minor_number < 0)
