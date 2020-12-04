@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "3.2.3"
+#define DRIVER_VERSION     "3.2.4"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -77,7 +77,11 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 #if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0)) && (defined(CONFIG_ARM) || defined(CONFIG_ARM64)))
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+#include <linux/dma-map-ops.h>
+#else
 #include <linux/dma-noncoherent.h>
+#endif
 #define IS_DMA_COHERENT(dev) dev_is_dma_coherent(dev)
 #else
 #define IS_DMA_COHERENT(dev) is_device_dma_coherent(dev)
