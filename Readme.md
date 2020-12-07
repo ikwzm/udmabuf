@@ -715,7 +715,7 @@ For `<device-name>`, specify the device name of the u-dma-buf to be generated.
 For `<size>`, specify the size of the buffer to be allocated.
 
 ```console
-zynq$ sudo echo "create udmabuf8 0x10000" > /dev/u-dma-buf-mgr
+zynq$ sudo sh -c "echo 'create udmabuf8 0x10000' > /dev/u-dma-buf-mgr"
 [   58.790695] u-dma-buf-mgr : create udmabuf8 65536
 [   58.798637] u-dma-buf udmabuf8: driver version = 2.1.3
 [   58.804114] u-dma-buf udmabuf8: major number   = 245
@@ -733,7 +733,7 @@ u-dma-buf can be deleted by writing the string "delete <device-name>" to `/dev/u
 For `<device-name>`, specify `<device-name>` specified with the create command.
 
 ```console
-zynq$ sudo echo "delete udmabuf8" > /dev/u-dma-buf-mgr
+zynq$ sudo sh -c "echo 'delete udmabuf8' > /dev/u-dma-buf-mgr"
 [  179.089702] u-dma-buf-mgr : delete udmabuf8
 [  179.094212] u-dma-buf u-dma-buf.0.auto: driver removed.
 ```
