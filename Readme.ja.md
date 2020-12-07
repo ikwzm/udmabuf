@@ -37,8 +37,8 @@ u-dma-bufのDMAバッファの大きさやデバイスのマイナー番号は�
 ## 対応プラットフォーム
 
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.0 - 5.2
-(私が動作を確認したのは3.18, 4.4, 4.8, 4.12, 4.14, 4.19 です).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.0 - 5.4
+(私が動作を確認したのは3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.4 です).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: x86(64bit) ただし検証が不十分です。皆さんからの結果を期待しています。また、現時点では以下の機能に制限があります。
