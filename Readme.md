@@ -70,7 +70,12 @@ The following `Makefile` is included in the repository.
 ```Makefile:Makefile
 HOST_ARCH       ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
 ARCH            ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
-KERNEL_SRC_DIR  ?= /lib/modules/$(shell uname -r)/build
+
+ifdef KERNEL_SRC
+  KERNEL_SRC_DIR  := $(KERNEL_SRC)
+else
+  KERNEL_SRC_DIR  ?= /lib/modules/$(shell uname -r)/build
+endif
 
 ifeq ($(ARCH), arm)
  ifneq ($(HOST_ARCH), arm)
