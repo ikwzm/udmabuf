@@ -466,7 +466,7 @@ static void udmabuf_device_vma_close(struct vm_area_struct* vma)
 /**
  * VM_FAULT_RETURN_TYPE - Type of udmabuf_device_vma_fault() return value.
  */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0))
 typedef vm_fault_t VM_FAULT_RETURN_TYPE;
 #else
 typedef int        VM_FAULT_RETURN_TYPE;
