@@ -731,7 +731,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
     unsigned char  attr[1024];
     unsigned long  sync_offset     = 0;
     unsigned long  sync_size        = 0x10000;
-    unsigned int   sync_direction = 1;
+    unsigned int   sync_direction = 0;
     unsigned long  sync_for_cpu    = 1;
     if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_for_cpu", O_WRONLY)) != -1) {
         sprintf(attr, "0x%08X%08X", (sync_offset & 0xFFFFFFFF), (sync_size & 0xFFFFFFF0) | (sync_direction << 2) | sync_for_cpu);
@@ -776,7 +776,7 @@ O_SYNCおよびキャッシュの設定に関しては次の節で説明しま�
     unsigned char  attr[1024];
     unsigned long  sync_offset     = 0;
     unsigned long  sync_size        = 0x10000;
-    unsigned int   sync_direction  = 1;
+    unsigned int   sync_direction  = 0;
     unsigned long  sync_for_device = 1;
     if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_for_device", O_WRONLY)) != -1) {
         sprintf(attr, "0x%08X%08X", (sync_offset & 0xFFFFFFFF), (sync_size & 0xFFFFFFF0) | (sync_direction << 2) | sync_for_device);

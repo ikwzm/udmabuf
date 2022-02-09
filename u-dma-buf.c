@@ -1,6 +1,6 @@
 /*********************************************************************************
  *
- *       Copyright (C) 2015-2020 Ichiro Kawazome
+ *       Copyright (C) 2015-2021 Ichiro Kawazome
  *       All rights reserved.
  * 
  *       Redistribution and use in source and binary forms, with or without
@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "3.2.4"
+#define DRIVER_VERSION     "3.2.5"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -466,7 +466,7 @@ static void udmabuf_device_vma_close(struct vm_area_struct* vma)
 /**
  * VM_FAULT_RETURN_TYPE - Type of udmabuf_device_vma_fault() return value.
  */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0))
 typedef vm_fault_t VM_FAULT_RETURN_TYPE;
 #else
 typedef int        VM_FAULT_RETURN_TYPE;
