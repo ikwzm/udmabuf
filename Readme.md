@@ -35,7 +35,7 @@ Figure 1. Architecture
 
 ## Supported platforms
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.0 - 5.4 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.4).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.0 - 5.10 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.4, 5.10).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: x86(64bit) However, verification is not enough. I hope the results from everyone.
@@ -201,7 +201,7 @@ The following properties can be set in the device tree.
 
 The `compatible` property is used to set the corresponding device driver when loading
 u-dma-buf. The `compatible` property is mandatory. Be sure to specify `compatible`
-property as "ikwzm,u-dma-buf" or "ikwzm,udmabuf-0.10.a".
+property as "ikwzm,u-dma-buf" (for u-dma-buf.ko) or "ikwzm,udmabuf-0.10.a" (for udmabuf.ko).
 
 ### `size`
 
