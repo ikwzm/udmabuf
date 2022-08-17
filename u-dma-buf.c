@@ -1,6 +1,6 @@
 /*********************************************************************************
  *
- *       Copyright (C) 2015-2021 Ichiro Kawazome
+ *       Copyright (C) 2015-2022 Ichiro Kawazome
  *       All rights reserved.
  * 
  *       Redistribution and use in source and binary forms, with or without
@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "3.2.5"
+#define DRIVER_VERSION     "3.3.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1274,7 +1274,15 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
             {},
         };
         struct property_entry* props = (name != NULL) ? &props_list[0] : &props_list[1];
-#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0))
+#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0))
+        {
+            retval = device_create_managed_software_node(&pdev->dev, props, NULL);
+            if (retval != 0) {
+                dev_err(&pdev->dev, "device_create_managed_software_node failed. return=%d\n", retval);
+                goto failed;
+            }
+        }
+#elif   (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0))
         {
             retval = device_add_properties(&pdev->dev, props);
             if (retval != 0) {
