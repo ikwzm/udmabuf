@@ -402,7 +402,7 @@ Make sure you are familiar with the meaning of dma-mask before setting. **
 Linux can specify the reserved memory area in the device tree. The Linux kernel
 excludes normal memory allocation from the physical memory space specified by
 `reserved-memory` property.
-In order to access this reserved memory area, it is nessasary to use a
+In order to access this reserved memory area, it is necessary to use a
 general-purpose memory access driver such as `/dev/mem`, or associate it with
 the device driver in the device tree.
 
@@ -436,7 +436,7 @@ alignment.
 
 The above "image_buf0" is associated with "udmabuf@0" with `memory-region` property.
 With this association, "udmabuf@0" reserves physical memory from the CMA area
-specifed by "image_buf0".
+specified by "image_buf0".
 
 The `memory-region` property is optional.
 When the `memory-region` property is not specified, u-dma-buf allocates the DMA buffer
@@ -809,7 +809,7 @@ To disable CPU cache of allocated DMA buffer, specify the `O_SYNC` flag when ope
 As listed below, `sync_mode` can be used to configure the cache behavior when the
 `O_SYNC` flag is present in `open()`:
 
-  * sync_mode=0: CPU cache is enabled regardless of the `O_SYNC` flag presense.
+  * sync_mode=0: CPU cache is enabled regardless of the `O_SYNC` flag presence.
   * sync_mode=1: If `O_SYNC` is specified, CPU cache is disabled.
     If `O_SYNC` is not specified, CPU cache is enabled.
   * sync_mode=2: If `O_SYNC` is specified, CPU cache is disabled but CPU uses
@@ -817,8 +817,8 @@ As listed below, `sync_mode` can be used to configure the cache behavior when th
     multiple write accesses. If `O_SYNC` is not specified, CPU cache is enabled.
   * sync_mode=3: If `O_SYNC` is specified, DMA coherency mode is used.
     If `O_SYNC` is not specified, CPU cache is enabled.
-  * sync_mode=4: CPU cache is enabled regardless of the `O_SYNC` flag presense. 
-  * sync_mode=5: CPU cache is disabled regardless of the `O_SYNC` flag presense. 
+  * sync_mode=4: CPU cache is enabled regardless of the `O_SYNC` flag presence. 
+  * sync_mode=5: CPU cache is disabled regardless of the `O_SYNC` flag presence. 
   * sync_mode=6: CPU uses write-combine to write data to DMA buffer regardless of `O_SYNC` presence.
   * sync_mode=7: DMA coherency mode is used regardless of `O_SYNC` presence.
 
@@ -1108,7 +1108,7 @@ Therefore, since v2.1.2, when sync_mode = 1, it was changed to use ```pgprot_non
 
 This change requires alignment attention when using O_SYNC cache control on ARM64. You probably won't be able to use memset().
 
-If a problem occurs, either cache coherency is maintained by hardware, or use a method described bellow that manually cache management with CPU cache still being enabled.
+If a problem occurs, either cache coherency is maintained by hardware, or use a method described below that manually cache management with CPU cache still being enabled.
 
 ### 2. Manual cache management with the CPU cache still being enabled
 
@@ -1125,7 +1125,7 @@ As explained above, by opening u-dma-buf without specifying the `O_SYNC` flag, C
 
 ```
 
-To manualy manage cache coherency, users need to follow the 
+To manually manage cache coherency, users need to follow the 
 
   1. Specify a memory area shared between CPU and accelerator via `sync_offset`
      and `sync_size` device files. `sync_offset` accepts an offset from the start
@@ -1147,7 +1147,7 @@ CPU as the owner. Upon the write to `sync_for_cpu`, CPU cache is invalidated if
 Once CPU is becomes the owner of the buffer, the accelerator cannot access the buffer. 
 
 On the other hand, when the accelerator needs to access the buffer, '1' should be
-written to `sync_for_device` to change owership of the buffer to the accelerator.
+written to `sync_for_device` to change ownership of the buffer to the accelerator.
 Upon the write to `sync_for_device`, the CPU cache of the specified memory area is
 flushed using data on the main memory.
 
