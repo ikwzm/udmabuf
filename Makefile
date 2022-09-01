@@ -28,11 +28,24 @@ ifndef UDMABUF_MAKE_TARGET
   ifeq ($(KERNEL_VERSION_LT_5), 1)
     UDMABUF_MAKE_TARGET ?= modules
   else
-    UDMABUF_MAKE_TARGET ?= u-dma-buf.ko u-dma-buf-mgr.ko
+    UDMABUF_MAKE_TARGET ?= u-dma-buf.ko
+    ifdef CONFIG_U_DMA_BUF_MGR
+      UDMABUF_MAKE_TARGET += u-dma-buf-mgr.ko
+    endif
+    ifdef CONFIG_U_DMA_BUF_KMOD_TEST
+      UDMABUF_MAKE_TARGET += u-dma-buf-kmod-test.ko
+    endif
   endif
 endif
 
-OBJ-MODULES := obj-m+=$(u-dma-buf-obj) obj-m+=$(u-dma-buf-mgr-obj)
+OBJ-MODULES := obj-m=$(u-dma-buf-obj)
+
+ifdef CONFIG_U_DMA_BUF_MGR
+  OBJ-MODULES += obj-m+=$(u-dma-buf-mgr-obj)
+endif
+ifdef CONFIG_U_DMA_BUF_KMOD_TEST
+  OBJ-MODULES += obj-m+=u-dma-buf-kmod-test.o
+endif
 
 all:
 	$(MAKE) -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) $(OBJ-MODULES) $(UDMABUF_MAKE_TARGET)
