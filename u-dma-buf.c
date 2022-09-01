@@ -1568,6 +1568,10 @@ static int udmabuf_device_probe(struct device *dev)
         retval = (retval == 0) ? -EINVAL : retval;
         goto failed;
     }
+    /*
+     * mutex_lock() then dev_set_drvdata()
+     */
+    mutex_lock(&device_data->sem);
     dev_set_drvdata(dev, device_data);
     /*
      * set size
@@ -1584,7 +1588,7 @@ static int udmabuf_device_probe(struct device *dev)
     if (of_property_read_u32(dev->of_node, "dma-mask", &u32_value) == 0) {
         if ((u32_value > 64) || (u32_value < 12)) {
             dev_err(dev, "invalid dma-mask property value=%d\n", u32_value);
-            goto failed;
+            goto failed_with_unlock;
         }
         retval = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(u32_value));
         if (retval != 0) {
@@ -1604,7 +1608,7 @@ static int udmabuf_device_probe(struct device *dev)
             device_data->of_reserved_mem = 1;
         } else if (retval != -ENODEV) {
             dev_err(dev, "of_reserved_mem_device_init failed. return=%d\n", retval);
-            goto failed;
+            goto failed_with_unlock;
         }
     }
 #endif
@@ -1633,7 +1637,7 @@ static int udmabuf_device_probe(struct device *dev)
 #endif
         if (retval != 0) {
             dev_err(dev, "of_dma_configure failed. return=%d\n", retval);
-            goto failed;
+            goto failed_with_unlock;
         }
 #else
         of_dma_configure(dev, dev->of_node);
@@ -1646,7 +1650,7 @@ static int udmabuf_device_probe(struct device *dev)
     if (of_property_read_u32(dev->of_node, "sync-mode", &u32_value) == 0) {
         if ((u32_value < SYNC_MODE_MIN) || (u32_value > SYNC_MODE_MAX)) {
             dev_err(dev, "invalid sync-mode property value=%d\n", u32_value);
-            goto failed;
+            goto failed_with_unlock;
         }
         device_data->sync_mode &= ~SYNC_MODE_MASK;
         device_data->sync_mode |= (int)u32_value;
@@ -1663,7 +1667,7 @@ static int udmabuf_device_probe(struct device *dev)
     if (of_property_read_u32(dev->of_node, "sync-direction", &u32_value) == 0) {
         if (u32_value > 2) {
             dev_err(dev, "invalid sync-direction property value=%d\n", u32_value);
-            goto failed;
+            goto failed_with_unlock;
         }
         device_data->sync_direction = (int)u32_value;
     }
@@ -1673,7 +1677,7 @@ static int udmabuf_device_probe(struct device *dev)
     if (of_property_read_ulong(dev->of_node, "sync-offset", &u64_value) == 0) {
         if (u64_value >= device_data->size) {
             dev_err(dev, "invalid sync-offset property value=%llu\n", u64_value);
-            goto failed;
+            goto failed_with_unlock;
         }
         device_data->sync_offset = (int)u64_value;
     }
@@ -1683,7 +1687,7 @@ static int udmabuf_device_probe(struct device *dev)
     if (of_property_read_ulong(dev->of_node, "sync-size", &u64_value) == 0) {
         if (device_data->sync_offset + u64_value > device_data->size) {
             dev_err(dev, "invalid sync-size property value=%llu\n", u64_value);
-            goto failed;
+            goto failed_with_unlock;
         }
         device_data->sync_size = (size_t)u64_value;
     } else {
@@ -1695,8 +1699,10 @@ static int udmabuf_device_probe(struct device *dev)
     retval = udmabuf_device_setup(device_data);
     if (retval) {
         dev_err(dev, "driver setup failed. return=%d\n", retval);
-        goto failed;
+        goto failed_with_unlock;
     }
+
+    mutex_unlock(&device_data->sem);
 
     if (info_enable) {
         udmabuf_device_info(device_data);
@@ -1704,7 +1710,9 @@ static int udmabuf_device_probe(struct device *dev)
 
     return 0;
 
-failed:
+ failed_with_unlock:
+    mutex_unlock(&device_data->sem);
+ failed:
     udmabuf_device_remove(dev, device_data);
 
     return retval;
@@ -1872,9 +1880,14 @@ int u_dma_buf_device_getmap(struct device *dev, size_t* size, void** virt_addr, 
     if (this == NULL)
         return -ENODEV;
 
+    if (!mutex_trylock(&this->sem))
+        return -EBUSY;
+
     if (size      != NULL) {*size      = this->size     ;}
     if (virt_addr != NULL) {*virt_addr = this->virt_addr;}
     if (phys_addr != NULL) {*phys_addr = this->phys_addr;}
+
+    mutex_unlock(&this->sem);
     return 0;
 }
 EXPORT_SYMBOL(u_dma_buf_device_getmap);
@@ -1904,6 +1917,9 @@ int u_dma_buf_device_sync(struct device *dev, int command, int direction, u64 of
     if (this == NULL)
         return -ENODEV;
 
+    if (!mutex_trylock(&this->sem))
+        return -EBUSY;
+
     switch(direction) {
         case 0   : this->sync_direction = 0; break;
         case 1   : this->sync_direction = 1; break;
@@ -1929,6 +1945,8 @@ int u_dma_buf_device_sync(struct device *dev, int command, int direction, u64 of
             result = -EINVAL;
             break;
     }
+
+    mutex_unlock(&this->sem);
     return result;
 }
 EXPORT_SYMBOL(u_dma_buf_device_sync);
