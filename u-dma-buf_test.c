@@ -2,6 +2,9 @@
 #include        <fcntl.h>
 #include        <string.h>
 #include        <time.h>
+#include        <stdlib.h>
+#include        <unistd.h>
+#include        <sys/time.h>
 #include        <sys/types.h>
 #include        <sys/mman.h>
 #include        <sys/utsname.h>
@@ -117,7 +120,7 @@ void main()
 
     if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/phys_addr", O_RDONLY)) != -1) {
       read(fd, attr, 1024);
-      sscanf(attr, "%x", &phys_addr);
+      sscanf(attr, "%lx", &phys_addr);
       close(fd);
     }
 
@@ -128,18 +131,18 @@ void main()
     }
 
     if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/sync_mode", O_WRONLY)) != -1) {
-      sprintf(attr, "%d", sync_mode);
+      sprintf(attr, "%ld", sync_mode);
       write(fd, attr, strlen(attr));
       close(fd);
     }
 
     if ((fd  = open("/sys/class/u-dma-buf/udmabuf0/debug_vma", O_WRONLY)) != -1) {
-      sprintf(attr, "%d", debug_vma);
+      sprintf(attr, "%ld", debug_vma);
       write(fd, attr, strlen(attr));
       close(fd);
     }
 
-    printf("phys_addr=0x%x\n", phys_addr);
+    printf("phys_addr=0x%lx\n", phys_addr);
     printf("size=%d\n", buf_size);
 
     if ((fd  = open("/dev/udmabuf0", O_RDWR)) != -1) {
@@ -151,7 +154,7 @@ void main()
       close(fd);
     }
 
-    printf("check_buf()\n", buf_size);
+    printf("check_buf()\n");
     check_buf_test(buf_size, 0, 0);
     check_buf_test(buf_size, 0, O_SYNC);
     check_buf_test(buf_size, 1, 0);
@@ -169,7 +172,7 @@ void main()
     check_buf_test(buf_size, 7, 0);
     check_buf_test(buf_size, 7, O_SYNC);
 
-    printf("clear_buf()\n", buf_size);
+    printf("clear_buf()\n");
     clear_buf_test(buf_size, 0, 0);
     clear_buf_test(buf_size, 0, O_SYNC);
     clear_buf_test(buf_size, 1, 0);
