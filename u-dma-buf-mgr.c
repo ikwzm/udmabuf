@@ -41,6 +41,7 @@
 #include <linux/version.h>
 #include <linux/slab.h>
 #include <linux/miscdevice.h>
+#include <linux/uaccess.h>
 
 /**
  * DOC: U-dma-buf Manager Constants 
