@@ -73,6 +73,12 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define UDMABUF_DEBUG       1
 #define USE_VMA_FAULT       1
 
+#if defined(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS) || defined(U_DMA_BUF_IN_KERNEL_FUNCTIONS)
+#define IN_KERNEL_FUNCTIONS 1
+#else
+#define IN_KERNEL_FUNCTIONS 0
+#endif
+
 #if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0)) && (defined(CONFIG_ARM) || defined(CONFIG_ARM64)))
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
@@ -1190,7 +1196,7 @@ static int  udmabuf_get_minor_number_property(struct device *dev, u32* value, bo
  * @id:         device id or negative integer.
  * Return:      Pointer to the udmabuf_platform_device or NULL.
  */
-#if defined(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS)
+#if (IN_KERNEL_FUNCTIONS == 1)
 static struct udmabuf_platform_device* udmabuf_platform_device_search(struct device *dev, const char* name, int id)
 {
     struct udmabuf_platform_device* plat;
@@ -1807,7 +1813,7 @@ static struct platform_driver udmabuf_platform_driver = {
  * @id:         device id.
  * Return:      handle to u-dma-buf device structure(>=0) or error status(<0).
  */
-#if defined(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS)
+#if (IN_KERNEL_FUNCTIONS == 1)
 struct device* u_dma_buf_device_search(const char* name, int id)
 {
     struct udmabuf_platform_device* plat = udmabuf_platform_device_search(NULL, name, id);
@@ -1827,7 +1833,7 @@ EXPORT_SYMBOL(u_dma_buf_device_search);
  * @size:       buffer size.
  * Return:      handle to u-dma-buf device structure(>=0) or error status(<0).
  */
-#if defined(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS)
+#if (IN_KERNEL_FUNCTIONS == 1)
 struct device* u_dma_buf_device_create(const char* name, int id, unsigned int size)
 {
     int result = udmabuf_platform_device_create(name, id, size);
@@ -1844,7 +1850,7 @@ EXPORT_SYMBOL(u_dma_buf_device_create);
  * @dev:        handle to the u-dma-buf device structure.
  * Return:      Success(=0) or error status(<0).
  */
-#if defined(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS)
+#if (IN_KERNEL_FUNCTIONS == 1)
 int u_dma_buf_device_remove(struct device *dev)
 {
     struct udmabuf_platform_device* plat = udmabuf_platform_device_search(dev, NULL, -1);
@@ -1865,7 +1871,7 @@ EXPORT_SYMBOL(u_dma_buf_device_remove);
  * @phys_addr   Pointer to the physical address for output.
  * Return:      Success(=0) or error status(<0).
  */
-#if defined(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS)
+#if (IN_KERNEL_FUNCTIONS == 1)
 int u_dma_buf_device_getmap(struct device *dev, size_t* size, void** virt_addr, dma_addr_t* phys_addr)
 {
     struct udmabuf_platform_device* plat;
@@ -1901,7 +1907,7 @@ EXPORT_SYMBOL(u_dma_buf_device_getmap);
  * @size        sync size.
  * Return:      Success(=0) or error status(<0).
  */
-#if defined(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS)
+#if (IN_KERNEL_FUNCTIONS == 1)
 int u_dma_buf_device_sync(struct device *dev, int command, int direction, u64 offset, ssize_t size)
 {
     struct udmabuf_platform_device* plat;
