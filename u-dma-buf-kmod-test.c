@@ -50,7 +50,7 @@ MODULE_DESCRIPTION("U-dma-buf(User space mappable DMA buffer device driver) In K
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.0.0-DRAFT-5"
+#define DRIVER_VERSION     "4.0.0"
 #define DRIVER_NAME        "u-dma-buf-kmod-test"
 #define TEST_MODULE_NAME   "u-dma-buf-kmod-test"
 
