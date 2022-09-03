@@ -65,50 +65,91 @@ Linux Kernel 5.x.
 
 ## Compile
 
-The following `Makefile` is included in the repository.
+### Makefile
 
-```Makefile:Makefile
-HOST_ARCH       ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
-ARCH            ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
+This repository contains a [Makefie](./Makefile).
+Makefile has the following Parameters:
 
-ifdef KERNEL_SRC
-  KERNEL_SRC_DIR  := $(KERNEL_SRC)
-else
-  KERNEL_SRC_DIR  ?= /lib/modules/$(shell uname -r)/build
-endif
+| Parameter Name             | Description                    | Default Value                        |
+|----------------------------|--------------------------------|--------------------------------------|
+| ARCH                       | Architecture Name              | `$(shell uname -m \| sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)` |
+| KERNEL_SRC                 | Kernel Source Directory        | `/lib/modules/$(shell uname -r)/build` |
+| CONFIG_U_DMA_BUF_MGR       | Also build u-dma-buf-mgr       | None                                 |
+| CONFIG_U_DMA_BUF_KMOD_TEST | Also build u-dma-buf-kmod-test | None                                 |
 
-ifeq ($(ARCH), arm)
- ifneq ($(HOST_ARCH), arm)
-   CROSS_COMPILE  ?= arm-linux-gnueabihf-
- endif
-endif
-ifeq ($(ARCH), arm64)
- ifneq ($(HOST_ARCH), arm64)
-   CROSS_COMPILE  ?= aarch64-linux-gnu-
- endif
-endif
+### Cross Compile
 
-u-dma-buf-obj           := u-dma-buf.o
-obj-$(CONFIG_U_DMA_BUF) += $(u-dma-buf-obj)
+If you have a cross-compilation environment for target system, you can compile with:
 
-ifndef UDMABUF_MAKE_TARGET
-  KERNEL_VERSION_LT_5 ?= $(shell awk '/^VERSION/{print int($$3) < 5}' $(KERNEL_SRC_DIR)/Makefile)
-  ifeq ($(KERNEL_VERSION_LT_5), 1)
-    UDMABUF_MAKE_TARGET ?= modules
-  else
-    UDMABUF_MAKE_TARGET ?= u-dma-buf.ko
-  endif
-endif
+```console
+shell$ make ARCH=arm KERNEL_SRC=/home/fpga/src/linux-5.10.120-zynqmp-fpga-generic CONFIG_U_DMA_BUF_MGR=m CONFIG_U_DMA_BUF_KMOD_TEST=m all
+```
+The ARCH variable specifies the architecture name.    
+The KERNEL_SRC variable specifies the Linux Kernel source code path.    
+If you also want to build u-dma-buf-mgr, define the CONFIG_U_DMA_BUF_MGR variable.    
+If you also want to build u-dma-buf-kmod-test, define the CONFIG_U_DMA_BUF_KMOD_TEST variable.    
 
-all:
-	$(MAKE) -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) obj-m=$(u-dma-buf-obj) $(UDMABUF_MAKE_TARGET)
+### Self Compile
 
-modules_install:
-	$(MAKE) -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) obj-m=$(u-dma-buf-obj) modules_install
+If your target system is capable of self-compiling the Linux Kernel module, you can compile it with:
 
-clean:
-	$(MAKE) -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) clean
+```console
+shell$ make CONFIG_U_DMA_BUF_MGR=m CONFIG_U_DMA_BUF_KMOD_TEST=m all
+```
+You need the kernel source code in ```/lib/modules/$(shell uname -r)/build``` to compile.
 
+### Build in Linux Source Tree
+
+It can also be compiled into the Linux Kernel Source Tree.
+
+#### Make directory in Linux Kernel Source Tree.
+
+```console
+shell$ mkdir <linux-source-tree>/drivers/staging/u-dma-buf
+```
+
+#### Copy files to Linux Kernel Source Tree.
+
+```console
+shell$ cp Kconfit Makefile u-dma-buf.c u-dma-buf-mgr.c <linux-source-tree>/drivers/staging/u-dma-buf
+```
+
+#### Add u-dma-buf to Kconfig
+
+```console
+shell$ diff <linux-source-tree>/drivers/staging/Kconfig
+  :
++source "drivers/staging/u-dma-buf/Kconfig"
++
+```
+
+#### Add u-dma-buf to Makefile
+
+```Makefile
+shell$ diff <linux-source-tree>/drivers/staging/Makefile
+  :
++obj-$(CONFIG_U_DMA_BUF) += u-dma-buf/
+```
+
+#### Set CONFIG_U_DMA_BUF
+
+For make menuconfig, set the following:
+
+```console
+Device Drivers --->
+  Staging drivers --->
+    <M> u-dma-buf(User space mappable DMA Buffer) ---->
+      -*-  u-dma-buf enable in-kernel functions
+      <M>  u-dma-buf-mgr(User space mappable DMA Buffer Manager)
+```
+
+If you write it directly in defconfig:
+
+```console
+shell$ diff <linux-source-tree>/arch/arm64/configs/xilinx_zynqmp_defconfig
+   :
+CONFIG_U_DMA_BUF=m
+CONFIG_U_DMA_BUF_MGR=m
 ```
 
 ## Install
@@ -713,8 +754,9 @@ Details of manual cache management is described in the next section.
 
 ## Configuration via the `/dev/u-dma-buf-mgr`
 
-Since u-dma-buf v2.1, `/dev/u-dma-buf-mgr` device driver has been added. u-dma-buf can be
-created/deleted by writing the command to `/dev/u-dma-buf-mgr` as a string.
+Since u-dma-buf v4.0, `u-dma-buf-mgr.ko` has been added.
+Once this device driver is loaded into your system, you will be able to access `/dev/u-dma-buf-mgr`.
+u-dma-buf can be created/deleted by writing the command to `/dev/u-dma-buf-mgr` as a string.
 
 ### Create u-dma-buf
 
@@ -725,7 +767,7 @@ For `<size>`, specify the size of the buffer to be allocated.
 ```console
 zynq$ sudo sh -c "echo 'create udmabuf8 0x10000' > /dev/u-dma-buf-mgr"
 [   58.790695] u-dma-buf-mgr : create udmabuf8 65536
-[   58.798637] u-dma-buf udmabuf8: driver version = 2.1.3
+[   58.798637] u-dma-buf udmabuf8: driver version = 4.0.0
 [   58.804114] u-dma-buf udmabuf8: major number   = 245
 [   58.809000] u-dma-buf udmabuf8: minor number   = 0
 [   58.815628] u-dma-buf udmabuf8: phys address   = 0x1f050000
