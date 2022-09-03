@@ -2,18 +2,32 @@
 # udmabuf
 #
 
-menu "User space mappable DMA Buffer"
-
-config U_DMA_BUF
-	tristate "User space mappable DMA Buffer"
-	default m
+menuconfig U_DMA_BUF
+	tristate "u-dma-buf(User space mappable DMA Buffer)"
 	depends on OF
-	---help---
-	  Enable this to allow the udmabuf to be built.
-	  udmabuf is a Linux device driver that allocates contiguous
+	help
+	  Enable this to allow the u-dma-buf to be built.
+	  u-dma-buf is a linux device driver that allocates contiguous
 	  memory blocks in the kernel space as DMA buffers and
 	  makes them available from the user space.
 
 	  If you don't know what to do here, say N.
 
-endmenu
+config U_DMA_BUF_IN_KERNEL_FUNCTIONS
+	bool "u-dma-buf enable in-kernel functions"
+	depends on U_DMA_BUF
+	default y
+	help
+	  Enable u-dma-buf in-kernel functions.
+	  Setting this to y will EXPORT_SYMBOL the function to
+	  manage u-dma-buf from inside the kernel.
+
+config U_DMA_BUF_MGR
+	tristate "u-dma-buf-mgr(User space mappable DMA Buffer Manager)"
+	depends on U_DMA_BUF
+        select U_DMA_BUF_IN_KERNEL_FUNCTIONS
+	help
+	  u-dma-buf-mbr is device driver for createing and removing u-dma-buf
+	  from user space.
+	
+
