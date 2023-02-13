@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.0.1"
+#define DRIVER_VERSION     "4.1.0-rc1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -79,17 +79,15 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define IN_KERNEL_FUNCTIONS 0
 #endif
 
-#if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0)) && (defined(CONFIG_ARM) || defined(CONFIG_ARM64)))
-#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 #include <linux/dma-map-ops.h>
-#else
-#include <linux/dma-noncoherent.h>
-#endif
 #define IS_DMA_COHERENT(dev) dev_is_dma_coherent(dev)
-#else
+#elif   (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 20, 0))
+#include <linux/dma-noncoherent.h>
+#define IS_DMA_COHERENT(dev) dev_is_dma_coherent(dev)
+#elif   ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0)) && (defined(CONFIG_ARM) || defined(CONFIG_ARM64)))
+#include <linux/dma-noncoherent.h>
 #define IS_DMA_COHERENT(dev) is_device_dma_coherent(dev)
-#endif
 #endif
 
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0))
