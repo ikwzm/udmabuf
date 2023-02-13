@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.0.0"
+#define DRIVER_VERSION     "4.0.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -149,7 +149,8 @@ static struct class*  udmabuf_sys_class = NULL;
 static int        info_enable = 1;
 module_param(     info_enable , int, S_IRUGO);
 MODULE_PARM_DESC( info_enable , "udmabuf install/uninstall infomation enable");
-#define           DMA_INFO_ENABLE  (info_enable & 0x02)
+#define           DMA_INFO_ENABLE     (info_enable & 0x02)
+#define           CONFIG_INFO_ENABLE  (info_enable & 0x04)
 
 /**
  * dma_mask_bit module parameter
@@ -1985,6 +1986,23 @@ static void u_dma_buf_cleanup(void)
 static int __init u_dma_buf_init(void)
 {
     int retval = 0;
+
+    if (CONFIG_INFO_ENABLE) {
+        #define TO_STR(x) #x
+        #define NUM_TO_STR(x) TO_STR(x)
+        printk(KERN_INFO DRIVER_NAME ": "
+                     "DEVICE_MAX_NUM="      NUM_TO_STR(DEVICE_MAX_NUM)      ","
+                     "UDMABUF_DEBUG="       NUM_TO_STR(UDMABUF_DEBUG)       ","
+                     "USE_VMA_FAULT="       NUM_TO_STR(USE_VMA_FAULT)       ","
+        #if defined(IS_DMA_COHERENT)
+                     "IS_DMA_COHERENT=1, " 
+        #endif
+                     "USE_DEV_GROUPS="      NUM_TO_STR(USE_DEV_GROUPS)      ","
+                     "USE_OF_RESERVED_MEM=" NUM_TO_STR(USE_OF_RESERVED_MEM) ","
+                     "USE_OF_DMA_CONFIG="   NUM_TO_STR(USE_OF_DMA_CONFIG)   ","
+                     "USE_DEV_PROPERTY="    NUM_TO_STR(USE_DEV_PROPERTY)    ","
+                     "IN_KERNEL_FUNCTIONS=" NUM_TO_STR(IN_KERNEL_FUNCTIONS) );
+    }
 
     ida_init(&udmabuf_device_ida);
     INIT_LIST_HEAD(&udmabuf_platform_device_list);
