@@ -1,6 +1,6 @@
 /*********************************************************************************
  *
- *       Copyright (C) 2015-2022 Ichiro Kawazome
+ *       Copyright (C) 2015-2023 Ichiro Kawazome
  *       All rights reserved.
  * 
  *       Redistribution and use in source and binary forms, with or without
@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.1.0"
+#define DRIVER_VERSION     "4.2.0-rc1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -213,17 +213,17 @@ struct udmabuf_device_data {
  *
  * The device file created in system class is as follows.
  *
- * * /sys/class/udmabuf/<device-name>/driver_version
- * * /sys/class/udmabuf/<device-name>/phys_addr
- * * /sys/class/udmabuf/<device-name>/size
- * * /sys/class/udmabuf/<device-name>/sync_mode
- * * /sys/class/udmabuf/<device-name>/sync_offset
- * * /sys/class/udmabuf/<device-name>/sync_size
- * * /sys/class/udmabuf/<device-name>/sync_direction
- * * /sys/class/udmabuf/<device-name>/sync_owner
- * * /sys/class/udmabuf/<device-name>/sync_for_cpu
- * * /sys/class/udmabuf/<device-name>/sync_for_device
- * * /sys/class/udmabuf/<device-name>/dma_coherent
+ * * /sys/class/u-dma-buf/<device-name>/driver_version
+ * * /sys/class/u-dma-buf/<device-name>/phys_addr
+ * * /sys/class/u-dma-buf/<device-name>/size
+ * * /sys/class/u-dma-buf/<device-name>/sync_mode
+ * * /sys/class/u-dma-buf/<device-name>/sync_offset
+ * * /sys/class/u-dma-buf/<device-name>/sync_size
+ * * /sys/class/u-dma-buf/<device-name>/sync_direction
+ * * /sys/class/u-dma-buf/<device-name>/sync_owner
+ * * /sys/class/u-dma-buf/<device-name>/sync_for_cpu
+ * * /sys/class/u-dma-buf/<device-name>/sync_for_device
+ * * /sys/class/u-dma-buf/<device-name>/dma_coherent
  * * 
  */
 
@@ -878,7 +878,7 @@ static struct udmabuf_device_data* udmabuf_device_create(const char* name, struc
         this->device_number = MKDEV(MAJOR(udmabuf_device_number), minor);
     }
     /*
-     * register /sys/class/udmabuf/<name>
+     * register /sys/class/u-dma-buf/<name>
      */
     {
         if (name == NULL) {
