@@ -432,22 +432,22 @@ static inline void udmabuf_sys_class_set_attributes(void)
 
 #if (USE_VMA_FAULT == 1)
 /**
- * DOC: Udmabuf Device VM Area Operations
+ * DOC: Udmabuf Device File VM Area Operations
  *
  * This section defines the operation of vm when mmap-ed the udmabuf device file.
  *
- * * udmabuf_device_vma_open()  - udmabuf device vm area open operation.
- * * udmabuf_device_vma_close() - udmabuf device vm area close operation.
- * * udmabuf_device_vma_fault() - udmabuf device vm area fault operation.
- * * udmabuf_device_vm_ops      - udmabuf device vm operation table.
+ * * udmabuf_mmap_vma_open()  - udmabuf device file mmap vm area open operation.
+ * * udmabuf_mmap_vma_close() - udmabuf device file mmap vm area close operation.
+ * * udmabuf_mmap_vma_fault() - udmabuf device file mmap vm area fault operation.
+ * * udmabuf_mmap_vm_ops      - udmabuf device file mmap vm operation table.
  */
 
 /**
- * udmabuf_device_vma_open() - udmabuf device vm area open operation.
+ * udmabuf_mmap_vma_open() - udmabuf device file mmap vm area open operation.
  * @vma:        Pointer to the vm area structure.
  * Return:      None
  */
-static void udmabuf_device_vma_open(struct vm_area_struct* vma)
+static void udmabuf_mmap_vma_open(struct vm_area_struct* vma)
 {
     struct udmabuf_object* this = vma->vm_private_data;
     if (UDMABUF_DEBUG_CHECK(this, debug_vma))
@@ -455,11 +455,11 @@ static void udmabuf_device_vma_open(struct vm_area_struct* vma)
 }
 
 /**
- * udmabuf_device_vma_close() - udmabuf device vm area close operation.
+ * udmabuf_mmap_vma_close() - udmabuf device file mmap vm area close operation.
  * @vma:        Pointer to the vm area structure.
  * Return:      None
  */
-static void udmabuf_device_vma_close(struct vm_area_struct* vma)
+static void udmabuf_mmap_vma_close(struct vm_area_struct* vma)
 {
     struct udmabuf_object* this = vma->vm_private_data;
     if (UDMABUF_DEBUG_CHECK(this, debug_vma))
@@ -467,7 +467,7 @@ static void udmabuf_device_vma_close(struct vm_area_struct* vma)
 }
 
 /**
- * VM_FAULT_RETURN_TYPE - Type of udmabuf_device_vma_fault() return value.
+ * VM_FAULT_RETURN_TYPE - Type of udmabuf_mmap_vma_fault() return value.
  */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0))
 typedef vm_fault_t VM_FAULT_RETURN_TYPE;
@@ -476,19 +476,19 @@ typedef int        VM_FAULT_RETURN_TYPE;
 #endif
 
 /**
- * _udmabuf_device_vma_fault() - udmabuf device vm area fault operation.
+ * _udmabuf_mmap_vma_fault() - udmabuf device file mmap vm area fault operation.
  * @vma:        Pointer to the vm area structure.
  * @vfm:        Pointer to the vm fault structure.
  * Return:      VM_FAULT_RETURN_TYPE (Success(=0) or error status(!=0)).
  */
-static inline VM_FAULT_RETURN_TYPE _udmabuf_device_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
+static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
 {
-    struct udmabuf_object* this      = vma->vm_private_data;
-    unsigned long offset             = vmf->pgoff << PAGE_SHIFT;
-    unsigned long phys_addr          = this->phys_addr + offset;
-    unsigned long page_frame_num     = phys_addr  >> PAGE_SHIFT;
-    unsigned long request_size       = 1          << PAGE_SHIFT;
-    unsigned long available_size     = this->alloc_size -offset;
+    struct udmabuf_object* this  = vma->vm_private_data;
+    unsigned long offset         = vmf->pgoff << PAGE_SHIFT;
+    unsigned long phys_addr      = this->phys_addr + offset;
+    unsigned long page_frame_num = phys_addr  >> PAGE_SHIFT;
+    unsigned long request_size   = 1          << PAGE_SHIFT;
+    unsigned long available_size = this->alloc_size -offset;
     unsigned long virt_addr;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0))
@@ -525,34 +525,34 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_device_vma_fault(struct vm_area_stru
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
 /**
- * udmabuf_device_vma_fault() - udmabuf device vm area fault operation.
+ * udmabuf_mmap_vma_fault() - udmabuf device file mmap vm area fault operation.
  * @vfm:        Pointer to the vm fault structure.
  * Return:      VM_FAULT_RETURN_TYPE (Success(=0) or error status(!=0)).
  */
-static VM_FAULT_RETURN_TYPE udmabuf_device_vma_fault(struct vm_fault* vmf)
+static VM_FAULT_RETURN_TYPE udmabuf_mmap_vma_fault(struct vm_fault* vmf)
 {
-    return _udmabuf_device_vma_fault(vmf->vma, vmf);
+    return _udmabuf_mmap_vma_fault(vmf->vma, vmf);
 }
 #else
 /**
- * udmabuf_device_vma_fault() - udmabuf device vm area fault operation.
+ * udmabuf_mmap_vma_fault() - udmabuf device file mmap vm area fault operation.
  * @vma:        Pointer to the vm area structure.
  * @vfm:        Pointer to the vm fault structure.
  * Return:      VM_FAULT_RETURN_TYPE (Success(=0) or error status(!=0)).
  */
-static VM_FAULT_RETURN_TYPE udmabuf_device_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
+static VM_FAULT_RETURN_TYPE udmabuf_mmap_vma_fault(struct vm_area_struct* vma, struct vm_fault* vmf)
 {
-    return _udmabuf_device_vma_fault(vma, vmf);
+    return _udmabuf_mmap_vma_fault(vma, vmf);
 }
 #endif
 
 /**
- * udmabuf device vm operation table.
+ * udmabuf device file mmap vm operation table.
  */
-static const struct vm_operations_struct udmabuf_device_vm_ops = {
-    .open    = udmabuf_device_vma_open ,
-    .close   = udmabuf_device_vma_close,
-    .fault   = udmabuf_device_vma_fault,
+static const struct vm_operations_struct udmabuf_mmap_vm_ops = {
+    .open    = udmabuf_mmap_vma_open ,
+    .close   = udmabuf_mmap_vma_close,
+    .fault   = udmabuf_mmap_vma_fault,
 };
 
 #endif /* #if (USE_VMA_FAULT == 1) */
@@ -661,8 +661,8 @@ static int udmabuf_device_file_mmap(struct file *file, struct vm_area_struct* vm
         unsigned long page_frame_num = (this->phys_addr >> PAGE_SHIFT) + vma->vm_pgoff;
         if (pfn_valid(page_frame_num)) {
             vma->vm_flags |= VM_PFNMAP;
-            vma->vm_ops    = &udmabuf_device_vm_ops;
-            udmabuf_device_vma_open(vma);
+            vma->vm_ops    = &udmabuf_mmap_vm_ops;
+            udmabuf_mmap_vma_open(vma);
             return 0;
         }
     }
