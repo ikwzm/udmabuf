@@ -51,7 +51,7 @@ MODULE_DESCRIPTION("U-dma-buf(User space mappable DMA buffer device driver) Mana
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.0.0"
+#define DRIVER_VERSION     "4.2.0"
 #define DRIVER_NAME        "u-dma-buf-mgr"
 
 /**
@@ -271,35 +271,35 @@ static ssize_t udmabuf_manager_file_write(struct file* file, const char __user* 
         }
         switch (this->state) {
             case udmabuf_manager_create_command :
-                printk(KERN_INFO "%s : create %s %d\n"  , DRIVER_NAME, this->device_name, this->size);
+                pr_info(DRIVER_NAME ": create %s %d\n", this->device_name, this->size);
                 dev = u_dma_buf_device_create(this->device_name, this->minor_number, this->size);
                 if (IS_ERR_OR_NULL(dev)) {
                     result = (IS_ERR(dev)) ? PTR_ERR(dev) : -ENODEV;
-                    printk(KERN_ERR "%s : create error: %s result = %d\n", DRIVER_NAME, this->device_name, result);
+                    pr_err(DRIVER_NAME ": create error: %s result = %d\n", this->device_name, result);
                     udmabuf_manager_state_clear(this);
                     goto failed;
                 }
                 udmabuf_manager_state_clear(this);
                 break;
             case udmabuf_manager_delete_command :
-                printk(KERN_INFO "%s : delete %s\n"     , DRIVER_NAME, this->device_name);
+                pr_info(DRIVER_NAME ": delete %s\n"   , this->device_name);
                 dev = u_dma_buf_device_search(this->device_name, this->minor_number);
                 if (IS_ERR_OR_NULL(dev)) {
-                    printk(KERN_ERR "%s : delete error: %s not found\n", DRIVER_NAME, this->device_name);
+                    pr_err(DRIVER_NAME ": delete error: %s not found\n", this->device_name);
                     udmabuf_manager_state_clear(this);
                     result = -EINVAL;
                     goto failed;
                 }
                 result = u_dma_buf_device_remove(dev);
                 if (result) {
-                    printk(KERN_ERR "%s : delete error: %s result = %d\n", DRIVER_NAME, this->device_name, result);
+                    pr_err(DRIVER_NAME ": delete error: %s result = %d\n", this->device_name, result);
                     goto failed;
                     udmabuf_manager_state_clear(this);
                 }
                 udmabuf_manager_state_clear(this);
                 break;
             case udmabuf_manager_parse_error :
-                printk(KERN_ERR "%s : parse error: ""%s""\n", DRIVER_NAME, this->buffer);
+                pr_err(DRIVER_NAME ": parse error: ""%s""\n", this->buffer);
                 udmabuf_manager_state_clear(this);
                 result = -EINVAL;
                 goto failed;
@@ -344,7 +344,7 @@ static int __init u_dma_buf_mgr_init(void)
 
     retval = misc_register(&udmabuf_manager_device);
     if (retval) {
-        printk(KERN_ERR "%s: couldn't register. return=%d\n", DRIVER_NAME, retval);
+        pr_err(DRIVER_NAME ": couldn't register. return=%d\n", retval);
         udmabuf_manager_device_registerd = false;
     } else {
         udmabuf_manager_device_registerd = true;
