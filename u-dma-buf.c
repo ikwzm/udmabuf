@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.2.0-rc2"
+#define DRIVER_VERSION     "4.2.0-rc3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1097,6 +1097,143 @@ static struct list_head udmabuf_device_list;
 static struct mutex     udmabuf_device_list_sem;
 
 /**
+ * udmabuf_get_device_name_property()  - Get "device-name"  property from udmabuf device.
+ * @dev:        handle to the device structure.
+ * @name:       address of device name.
+ * @lock:       use mutex_lock()/mutex_unlock()
+ * Return:      Success(=0) or error status(<0).
+ */
+static int  udmabuf_get_device_name_property(struct device *dev, const char** name, bool lock)
+{
+#if (USE_DEV_PROPERTY == 0)
+    int                          status = -1;
+    struct udmabuf_device_entry* entry;
+
+    if (lock)
+        mutex_lock(&udmabuf_device_list_sem);
+    list_for_each_entry(entry, &udmabuf_device_list, list) {
+        if (entry->dev == dev) {
+            if (entry->device_name == NULL) {
+                status = -1;
+            } else {
+                *name  = entry->device_name;
+                status = 0;
+            }
+            break;
+        }
+    }
+    if (lock)
+        mutex_unlock(&udmabuf_device_list_sem);
+    return status;
+#else
+    return device_property_read_string(dev, "device-name", name);
+#endif
+}
+
+/**
+ * udmabuf_get_size_property()         - Get "buffer-size"  property from udmabuf device.
+ * @dev:        handle to the device structure.
+ * @value:      address of buffer size value.
+ * @lock:       use mutex_lock()/mutex_unlock()
+ * Return:      Success(=0) or error status(<0).
+ */
+static int  udmabuf_get_size_property(struct device *dev, u64* value, bool lock)
+{
+#if (USE_DEV_PROPERTY == 0)
+    int                          status = -1;
+    struct udmabuf_device_entry* entry;
+
+    if (lock)
+        mutex_lock(&udmabuf_device_list_sem);
+    list_for_each_entry(entry, &udmabuf_device_list, list) {
+        if (entry->dev == dev) {
+            *value = entry->buffer_size;
+            status = 0;
+            break;
+        }
+    }
+    if (lock)
+        mutex_unlock(&udmabuf_device_list_sem);
+    return status;
+#else
+    return device_property_read_u64(dev, "size", value);
+#endif
+}
+
+/**
+ * udmabuf_get_minor_number_property() - Get "minor-number" property from udmabuf device.
+ * @dev:        handle to the device structure.
+ * @value:      address of minor number value.
+ * @lock:       use mutex_lock()/mutex_unlock()
+ * Return:      Success(=0) or error status(<0).
+ */
+
+static int  udmabuf_get_minor_number_property(struct device *dev, u32* value, bool lock)
+{
+#if (USE_DEV_PROPERTY == 0)
+    int                          status = -1;
+    struct udmabuf_device_entry* entry;
+
+    if (lock)
+        mutex_lock(&udmabuf_device_list_sem);
+    list_for_each_entry(entry, &udmabuf_device_list, list) {
+        if (entry->dev == dev) {
+            *value = entry->minor_number;
+            status = 0;
+            break;
+        }
+    }
+    if (lock) 
+        mutex_unlock(&udmabuf_device_list_sem);
+    return status;
+#else
+    return device_property_read_u32(dev, "minor-number", value);
+#endif
+}
+
+/**
+ * udmabuf_device_list_search()    - Search udmabuf device entry from list by name or number.
+ * @dev:        handle to the device structure or NULL.
+ * @name:       device name or NULL.
+ * @id:         device id or negative integer.
+ * Return:      Pointer to the found udmabuf device entry or NULL.
+ */
+static struct udmabuf_device_entry* udmabuf_device_list_search(struct device *dev, const char* name, int id)
+{
+    struct udmabuf_device_entry* entry;
+    struct udmabuf_device_entry* found_entry = NULL;
+    mutex_lock(&udmabuf_device_list_sem);
+    list_for_each_entry(entry, &udmabuf_device_list, list) {
+        bool found_by_dev  = true;
+        bool found_by_name = true;
+        bool found_by_id   = true;
+        if (dev != NULL) {
+            found_by_dev = false;
+            if (dev == entry->dev)
+                found_by_dev = true;
+        }
+        if (name != NULL) {
+            const char* device_name;
+            found_by_name = false;
+            if (udmabuf_get_device_name_property(entry->dev, &device_name, false) == 0) 
+                if (strcmp(name, device_name) == 0)
+                    found_by_name = true;
+        }
+        if (id >= 0) {
+            u32 minor_number;
+            found_by_id = false;
+            if (udmabuf_get_minor_number_property(entry->dev, &minor_number, false) == 0) 
+                if (id == minor_number)
+                    found_by_id = true;
+        }
+        if ((found_by_dev == true) && (found_by_name == true) && (found_by_id == true))
+            found_entry = entry;
+    }
+    mutex_unlock(&udmabuf_device_list_sem);
+    return found_entry;
+}
+
+/**
  * udmabuf_device_list_create_entry() - Create udmabuf device entry and add to list.
  * @dev:        handle to the device structure.
  * @name:       device name or NULL.
@@ -1108,8 +1245,16 @@ static struct mutex     udmabuf_device_list_sem;
  */
 static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct device *dev, const char* name, int id, unsigned int size, void (*prep_remove)(struct device*), void (*post_remove)(struct device*))
 {                              
+    struct udmabuf_device_entry* exist_entry;
     struct udmabuf_device_entry* entry  = NULL;
     int                          retval = 0;
+
+    exist_entry = udmabuf_device_list_search(NULL, name, id);
+    if (!IS_ERR_OR_NULL(exist_entry)) {
+        dev_err(dev, "device name(%s) or id(%d) is already exists\n", (name)?name:"NULL", id);
+        retval = -EINVAL;
+        goto failed;
+    }
 
     entry = kzalloc(sizeof(*entry), GFP_KERNEL);
     if (IS_ERR_OR_NULL(entry)) {
@@ -1229,145 +1374,6 @@ static void udmabuf_device_list_cleanup(void)
         udmabuf_device_list_remove_entry(entry);
     }
 }
-
-/**
- * udmabuf_get_device_name_property()  - Get "device-name"  property from udmabuf device.
- * @dev:        handle to the device structure.
- * @name:       address of device name.
- * @lock:       use mutex_lock()/mutex_unlock()
- * Return:      Success(=0) or error status(<0).
- */
-static int  udmabuf_get_device_name_property(struct device *dev, const char** name, bool lock)
-{
-#if (USE_DEV_PROPERTY == 0)
-    int                          status = -1;
-    struct udmabuf_device_entry* entry;
-
-    if (lock)
-        mutex_lock(&udmabuf_device_list_sem);
-    list_for_each_entry(entry, &udmabuf_device_list, list) {
-        if (entry->dev == dev) {
-            if (entry->device_name == NULL) {
-                status = -1;
-            } else {
-                *name  = entry->device_name;
-                status = 0;
-            }
-            break;
-        }
-    }
-    if (lock)
-        mutex_unlock(&udmabuf_device_list_sem);
-    return status;
-#else
-    return device_property_read_string(dev, "device-name", name);
-#endif
-}
-
-/**
- * udmabuf_get_size_property()         - Get "buffer-size"  property from udmabuf device.
- * @dev:        handle to the device structure.
- * @value:      address of buffer size value.
- * @lock:       use mutex_lock()/mutex_unlock()
- * Return:      Success(=0) or error status(<0).
- */
-static int  udmabuf_get_size_property(struct device *dev, u64* value, bool lock)
-{
-#if (USE_DEV_PROPERTY == 0)
-    int                          status = -1;
-    struct udmabuf_device_entry* entry;
-
-    if (lock)
-        mutex_lock(&udmabuf_device_list_sem);
-    list_for_each_entry(entry, &udmabuf_device_list, list) {
-        if (entry->dev == dev) {
-            *value = entry->buffer_size;
-            status = 0;
-            break;
-        }
-    }
-    if (lock)
-        mutex_unlock(&udmabuf_device_list_sem);
-    return status;
-#else
-    return device_property_read_u64(dev, "size", value);
-#endif
-}
-
-/**
- * udmabuf_get_minor_number_property() - Get "minor-number" property from udmabuf device.
- * @dev:        handle to the device structure.
- * @value:      address of minor number value.
- * @lock:       use mutex_lock()/mutex_unlock()
- * Return:      Success(=0) or error status(<0).
- */
-
-static int  udmabuf_get_minor_number_property(struct device *dev, u32* value, bool lock)
-{
-#if (USE_DEV_PROPERTY == 0)
-    int                          status = -1;
-    struct udmabuf_device_entry* entry;
-
-    if (lock)
-        mutex_lock(&udmabuf_device_list_sem);
-    list_for_each_entry(entry, &udmabuf_device_list, list) {
-        if (entry->dev == dev) {
-            *value = entry->minor_number;
-            status = 0;
-            break;
-        }
-    }
-    if (lock) 
-        mutex_unlock(&udmabuf_device_list_sem);
-    return status;
-#else
-    return device_property_read_u32(dev, "minor-number", value);
-#endif
-}
-
-/**
- * udmabuf_device_list_search()    - Search udmabuf device entry from list by name or number.
- * @dev:        handle to the device structure or NULL.
- * @name:       device name or NULL.
- * @id:         device id or negative integer.
- * Return:      Pointer to the found udmabuf device entry or NULL.
- */
-#if (IN_KERNEL_FUNCTIONS == 1)
-static struct udmabuf_device_entry* udmabuf_device_list_search(struct device *dev, const char* name, int id)
-{
-    struct udmabuf_device_entry* entry;
-    struct udmabuf_device_entry* found_entry = NULL;
-    mutex_lock(&udmabuf_device_list_sem);
-    list_for_each_entry(entry, &udmabuf_device_list, list) {
-        bool found_by_dev  = true;
-        bool found_by_name = true;
-        bool found_by_id   = true;
-        if (dev != NULL) {
-            found_by_dev = false;
-            if (dev == entry->dev)
-                found_by_dev = true;
-        }
-        if (name != NULL) {
-            const char* device_name;
-            found_by_name = false;
-            if (udmabuf_get_device_name_property(entry->dev, &device_name, false) == 0) 
-                if (strcmp(name, device_name) == 0)
-                    found_by_name = true;
-        }
-        if (id >= 0) {
-            u32 minor_number;
-            found_by_id = false;
-            if (udmabuf_get_minor_number_property(entry->dev, &minor_number, false) == 0) 
-                if (id == minor_number)
-                    found_by_id = true;
-        }
-        if ((found_by_dev == true) && (found_by_name == true) && (found_by_id == true))
-            found_entry = entry;
-    }
-    mutex_unlock(&udmabuf_device_list_sem);
-    return found_entry;
-}
-#endif
 
 /**
  * DOC: Udmabuf Platform Device section.
