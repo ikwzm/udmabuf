@@ -845,16 +845,16 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
     {
         if ((0 <= minor) && (minor < DEVICE_MAX_NUM)) {
             if (ida_simple_get(&udmabuf_device_ida, minor, minor+1, GFP_KERNEL) < 0) {
-                printk(KERN_ERR "couldn't allocate minor number(=%d).\n", minor);
+                pr_err(DRIVER_NAME ": couldn't allocate minor number(=%d).\n", minor);
                 goto failed;
             }
         } else if(minor < 0) {
             if ((minor = ida_simple_get(&udmabuf_device_ida, 0, DEVICE_MAX_NUM, GFP_KERNEL)) < 0) {
-                printk(KERN_ERR "couldn't allocate new minor number. return=%d.\n", minor);
+                pr_err(DRIVER_NAME ": couldn't allocate new minor number. return=%d.\n", minor);
                 goto failed;
             }
         } else {
-                printk(KERN_ERR "invalid minor number(=%d), valid range is 0 to %d\n", minor, DEVICE_MAX_NUM-1);
+                pr_err(DRIVER_NAME ": invalid minor number(=%d), valid range is 0 to %d\n", minor, DEVICE_MAX_NUM-1);
                 goto failed;
         }
         done |= DONE_ALLOC_MINOR;
@@ -867,7 +867,7 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
         if (IS_ERR_OR_NULL(this)) {
             int retval = PTR_ERR(this);
             this = NULL;
-            printk(KERN_ERR "kzalloc() failed. return=%d\n", retval);
+            pr_err(DRIVER_NAME ": kzalloc() failed. return=%d\n", retval);
             goto failed;
         }
     }
@@ -897,7 +897,7 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
         if (IS_ERR_OR_NULL(this->sys_dev)) {
             int retval = PTR_ERR(this->sys_dev);
             this->sys_dev = NULL;
-            printk(KERN_ERR "device_create() failed. return=%d\n", retval);
+            pr_err(DRIVER_NAME ": device_create() failed. return=%d\n", retval);
             goto failed;
         }
         done |= DONE_DEVICE_CREATE;
@@ -910,7 +910,7 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
         cdev_init(&this->cdev, &udmabuf_device_file_ops);
         this->cdev.owner = THIS_MODULE;
         if ((retval = cdev_add(&this->cdev, this->device_number, 1)) != 0) {
-            printk(KERN_ERR "cdev_add() failed. return=%d\n", retval);
+            dev_err(this->sys_dev, "cdev_add() failed. return=%d\n", retval);
             goto failed;
         }
         done |= DONE_CHRDEV_ADD;
@@ -938,7 +938,7 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
         if (*this->dma_dev->dma_mask == 0) {
             int retval = dma_set_mask_and_coherent(this->dma_dev, DMA_BIT_MASK(dma_mask_bit));
             if (retval != 0) {
-                printk(KERN_WARNING "dma_set_mask_and_coherent(DMA_BIT_MASK(%d)) failed. return=(%d)\n", dma_mask_bit, retval);
+                dev_warn(this->sys_dev,"dma_set_mask_and_coherent(DMA_BIT_MASK(%d)) failed. return=(%d)\n", dma_mask_bit, retval);
                 *this->dma_dev->dma_mask         = DMA_BIT_MASK(dma_mask_bit);
                 this->dma_dev->coherent_dma_mask = DMA_BIT_MASK(dma_mask_bit);
             }
@@ -1001,7 +1001,7 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
     this->virt_addr  = dma_alloc_coherent(this->dma_dev, this->alloc_size, &this->phys_addr, GFP_KERNEL);
     if (IS_ERR_OR_NULL(this->virt_addr)) {
         int retval = PTR_ERR(this->virt_addr);
-        printk(KERN_ERR "dma_alloc_coherent(size=%zu) failed. return(%d)\n", this->alloc_size, retval);
+        dev_err(this->sys_dev, "dma_alloc_coherent(size=%zu) failed. return(%d)\n", this->alloc_size, retval);
         this->virt_addr = NULL;
         return (retval == 0) ? -ENOMEM : retval;
     }
@@ -1251,7 +1251,7 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
 
     exist_entry = udmabuf_device_list_search(NULL, name, id);
     if (!IS_ERR_OR_NULL(exist_entry)) {
-        dev_err(dev, "device name(%s) or id(%d) is already exists\n", (name)?name:"NULL", id);
+        pr_err(DRIVER_NAME ": device name(%s) or id(%d) is already exists\n", (name)?name:"NULL", id);
         retval = -EINVAL;
         goto failed;
     }
@@ -1260,7 +1260,7 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
     if (IS_ERR_OR_NULL(entry)) {
         retval = PTR_ERR(entry);
         entry  = NULL;
-        dev_err(dev, "kzalloc() failed. return=%d\n", retval);
+        pr_err(DRIVER_NAME ": kzalloc() failed. return=%d\n", retval);
         goto failed;
     }
 
@@ -1283,7 +1283,7 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
         {
             retval = device_create_managed_software_node(dev, props, NULL);
             if (retval != 0) {
-                dev_err(dev, "device_create_managed_software_node failed. return=%d\n", retval);
+                pr_err(DRIVER_NAME ": device_create_managed_software_node failed. return=%d\n", retval);
                 goto failed;
             }
         }
@@ -1291,7 +1291,7 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
         {
             retval = device_add_properties(dev, props);
             if (retval != 0) {
-                dev_err(dev, "device_add_properties failed. return=%d\n", retval);
+                pr_err(DRIVER_NAME ": device_add_properties failed. return=%d\n", retval);
                 goto failed;
             }
         }
@@ -1302,7 +1302,7 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
             };
             retval = device_add_property_set(dev, &pset);
             if (retval != 0) {
-                dev_err(dev, "device_add_propertiy_set failed. return=%d\n", retval);
+                pr_err(DRIVER_NAME ": device_add_propertiy_set failed. return=%d\n", retval);
                 goto failed;
             }
         }
@@ -1428,7 +1428,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
     if (IS_ERR_OR_NULL(pdev)) {
         retval = PTR_ERR(pdev);
         pdev   = NULL;
-        printk(KERN_ERR "platform_device_alloc(%s,%d) failed. return=%d\n", DRIVER_NAME, id, retval);
+        pr_err(DRIVER_NAME ": platform_device_alloc(%s,%d) failed. return=%d\n", DRIVER_NAME, id, retval);
         goto failed;
     }
 
@@ -1447,7 +1447,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
     if (IS_ERR_OR_NULL(entry)) {
         retval = PTR_ERR(entry);
         entry  = NULL;
-        dev_err(&pdev->dev, "platform device create entry failed. return=%d\n", retval);
+        pr_err(DRIVER_NAME ": platform device create entry failed. return=%d\n", retval);
         goto failed;
     }
 
@@ -1456,7 +1456,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
      */
     retval = platform_device_add(pdev);
     if (retval != 0) {
-        dev_err(&pdev->dev, "platform_device_add failed. return=%d\n", retval);
+        pr_err(DRIVER_NAME ": platform_device_add failed. return=%d\n", retval);
         goto failed;
     }
 
@@ -2070,18 +2070,18 @@ static int __init u_dma_buf_init(void)
     if (CONFIG_INFO_ENABLE) {
         #define TO_STR(x) #x
         #define NUM_TO_STR(x) TO_STR(x)
-        printk(KERN_INFO DRIVER_NAME ": "
-                     "DEVICE_MAX_NUM="      NUM_TO_STR(DEVICE_MAX_NUM)      ","
-                     "UDMABUF_DEBUG="       NUM_TO_STR(UDMABUF_DEBUG)       ","
-                     "USE_VMA_FAULT="       NUM_TO_STR(USE_VMA_FAULT)       ","
+        pr_info(DRIVER_NAME ": "
+                "DEVICE_MAX_NUM="      NUM_TO_STR(DEVICE_MAX_NUM)      ","
+                "UDMABUF_DEBUG="       NUM_TO_STR(UDMABUF_DEBUG)       ","
+                "USE_VMA_FAULT="       NUM_TO_STR(USE_VMA_FAULT)       ","
         #if defined(IS_DMA_COHERENT)
-                     "IS_DMA_COHERENT=1, " 
+                "IS_DMA_COHERENT=1," 
         #endif
-                     "USE_DEV_GROUPS="      NUM_TO_STR(USE_DEV_GROUPS)      ","
-                     "USE_OF_RESERVED_MEM=" NUM_TO_STR(USE_OF_RESERVED_MEM) ","
-                     "USE_OF_DMA_CONFIG="   NUM_TO_STR(USE_OF_DMA_CONFIG)   ","
-                     "USE_DEV_PROPERTY="    NUM_TO_STR(USE_DEV_PROPERTY)    ","
-                     "IN_KERNEL_FUNCTIONS=" NUM_TO_STR(IN_KERNEL_FUNCTIONS) );
+                "USE_DEV_GROUPS="      NUM_TO_STR(USE_DEV_GROUPS)      ","
+                "USE_OF_RESERVED_MEM=" NUM_TO_STR(USE_OF_RESERVED_MEM) ","
+                "USE_OF_DMA_CONFIG="   NUM_TO_STR(USE_OF_DMA_CONFIG)   ","
+                "USE_DEV_PROPERTY="    NUM_TO_STR(USE_DEV_PROPERTY)    ","
+                "IN_KERNEL_FUNCTIONS=" NUM_TO_STR(IN_KERNEL_FUNCTIONS) );
     }
 
     ida_init(&udmabuf_device_ida);
@@ -2090,7 +2090,7 @@ static int __init u_dma_buf_init(void)
 
     retval = alloc_chrdev_region(&udmabuf_device_number, 0, 0, DRIVER_NAME);
     if (retval != 0) {
-        printk(KERN_ERR "%s: couldn't allocate device major number. return=%d\n", DRIVER_NAME, retval);
+        pr_err(DRIVER_NAME ": couldn't allocate device major number. return=%d\n", retval);
         udmabuf_device_number = 0;
         goto failed;
     }
@@ -2099,7 +2099,7 @@ static int __init u_dma_buf_init(void)
     if (IS_ERR_OR_NULL(udmabuf_sys_class)) {
         retval = PTR_ERR(udmabuf_sys_class);
         udmabuf_sys_class = NULL;
-        printk(KERN_ERR "%s: couldn't create sys class. return=%d\n", DRIVER_NAME, retval);
+        pr_err(DRIVER_NAME ": couldn't create sys class. return=%d\n", retval);
         retval = (retval == 0) ? -ENOMEM : retval;
         goto failed;
     }
@@ -2110,7 +2110,7 @@ static int __init u_dma_buf_init(void)
 
     retval = platform_driver_register(&udmabuf_platform_driver);
     if (retval) {
-        printk(KERN_ERR "%s: couldn't register platform driver. return=%d\n", DRIVER_NAME, retval);
+        pr_err(DRIVER_NAME ": couldn't register platform driver. return=%d\n", retval);
         udmabuf_platform_driver_registerd = false;
         goto failed;
     } else {
