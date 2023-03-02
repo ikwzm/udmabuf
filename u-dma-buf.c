@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.2.0"
+#define DRIVER_VERSION     "4.3.0-rc1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1008,6 +1008,20 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
     return 0;
 }
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 11))
+/**
+ * dev_bus_name() - Return a device's bus/class name, if at all possible.
+ * @dev: struct device to get the bus/class name of
+ *
+ * Will return the name of the bus/class the device is attached to.  
+ * If it is not attached to a bus/class, an empty string will be returned.
+ */
+static inline const char* dev_bus_name(const struct device* dev)
+{
+    return dev->bus ? dev->bus->name : (dev->class ? dev->class->name : "");
+}
+#endif
+
 /**
  * udmabuf_object_info() - Print infomation the udmabuf object.
  * @this:       Pointer to the udmabuf object.
@@ -1021,6 +1035,7 @@ static void udmabuf_object_info(struct udmabuf_object* this)
     dev_info(this->sys_dev, "buffer size    = %zu\n" , this->alloc_size);
     if (DMA_INFO_ENABLE) {
         dev_info(this->sys_dev, "dma device     = %s\n"       , dev_name(this->dma_dev));
+        dev_info(this->sys_dev, "dma bus        = %s\n"       , dev_bus_name(this->dma_dev));
 #if defined(IS_DMA_COHERENT)
         dev_info(this->sys_dev, "dma coherent   = %d\n"       , IS_DMA_COHERENT(this->dma_dev));
 #endif
