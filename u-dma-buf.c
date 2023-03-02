@@ -1758,6 +1758,122 @@ static int udmabuf_platform_device_probe(struct device *dev)
 }
 
 /**
+ * DOC: Udmabuf Child Device section.
+ *
+ * This section defines the udmabuf sub device.
+ *
+ * * udmabuf_child_device_create() - Create udmabuf child device and add to device list.
+ * * udmabuf_child_device_delete() - Delete udmabuf child device after remove from device list.
+ */
+
+/**
+ * udmabuf_child_device_delete()   - Delete udmabuf child device after remove from device list.
+ * @dev:        handle to the device structure.
+ */
+static void udmabuf_child_device_delete(struct device* dev)
+{
+    udmabuf_object_destroy(dev_get_drvdata(dev));
+    if (info_enable) {
+        pr_info(DRIVER_NAME ": driver removed.\n");
+    }
+}
+
+/**
+ * udmabuf_child_device_create() - Create udmabuf child device and add to list.
+ * @name:       device name or NULL.
+ * @id:         device id.
+ * @size:       buffer size.
+ * @parent:     parent device.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int udmabuf_child_device_create(const char* name, int id, unsigned int size, struct device* parent)
+{
+    const char*                  device_name = NULL;
+    struct udmabuf_object*       obj         = NULL;
+    struct udmabuf_device_entry* entry       = NULL;
+    int                          retval      = 0;
+
+    pr_debug(DRIVER_NAME ": child device create start.\n");
+
+    if (size == 0)
+        return -EINVAL;
+
+    /*
+     * device-name property
+     */
+    if (name == NULL) {
+        if (id < 0)
+            device_name = DRIVER_NAME;
+        else
+            device_name = NULL;
+    }
+    /*
+     * udmabuf_object_create()
+     */
+    obj = udmabuf_object_create(device_name, parent, id);
+    if (IS_ERR_OR_NULL(obj)) {
+        retval = PTR_ERR(obj);
+        pr_err(DRIVER_NAME ": object create failed. return=%d\n", retval);
+        obj = NULL;
+        retval = (retval == 0) ? -EINVAL : retval;
+        goto failed;
+    }
+    /*
+     * mutex_lock()
+     */
+    mutex_lock(&obj->sem);
+    /*
+     * set size
+     */
+    obj->size = size;
+    /*
+     * entry
+     */
+    entry = udmabuf_device_list_create_entry(obj->sys_dev,
+                                             name,
+                                             id,
+                                             size,
+                                             NULL,
+                                             udmabuf_child_device_delete);
+    if (IS_ERR_OR_NULL(entry)) {
+        retval = PTR_ERR(entry);
+        entry  = NULL;
+        dev_err(obj->sys_dev, ": device create entry failed. return=%d\n", retval);
+        goto failed_with_unlock;
+    }
+    /*
+     * udmabuf_object_setup()
+     */
+    retval = udmabuf_object_setup(obj);
+    if (retval) {
+        dev_err(obj->sys_dev, "object setup failed. return=%d\n", retval);
+        goto failed_with_unlock;
+    }
+
+    mutex_unlock(&obj->sem);
+
+    if (info_enable) {
+        udmabuf_object_info(obj);
+    }
+
+    if (info_enable) {
+        pr_info(DRIVER_NAME ": driver installed.\n");
+    }
+    return 0;
+
+ failed_with_unlock:
+    mutex_unlock(&obj->sem);
+ failed:
+    if (entry != NULL) {
+        udmabuf_device_list_delete_entry(entry);
+    }
+    if (obj   != NULL) {
+        udmabuf_object_destroy(obj);
+    }
+    return retval;
+}
+
+/**
  * DOC: Udmabuf Static Devices.
  *
  * This section defines the udmabuf device to be created with arguments when loaded
@@ -1927,12 +2043,20 @@ EXPORT_SYMBOL(u_dma_buf_device_search);
  * @name:       device name or NULL.
  * @id:         device id or negative integer.
  * @size:       buffer size.
+ * @option:     option.
+ * @parent:     parent device or NULL.
  * Return:      handle to u-dma-buf device structure(>=0) or error status(<0).
  */
 #if (IN_KERNEL_FUNCTIONS == 1)
-struct device* u_dma_buf_device_create(const char* name, int id, unsigned int size)
+struct device* u_dma_buf_device_create(const char* name, int id, size_t size, u64 option, struct device* parent)
 {
-    int result = udmabuf_platform_device_create(name, id, size);
+    int result = 0;
+
+    if (parent)
+        result = udmabuf_child_device_create(name, id, size, parent);
+    else
+        result = udmabuf_platform_device_create(name, id, size);
+
     if (result)
         return ERR_PTR(result);
     else
