@@ -1,6 +1,6 @@
 /*********************************************************************************
  *
- *       Copyright (C) 2015-2022 Ichiro Kawazome
+ *       Copyright (C) 2015-2023 Ichiro Kawazome
  *       All rights reserved.
  * 
  *       Redistribution and use in source and binary forms, with or without
@@ -51,7 +51,7 @@ MODULE_DESCRIPTION("U-dma-buf(User space mappable DMA buffer device driver) Mana
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.2.0"
+#define DRIVER_VERSION     "4.3.0-rc1"
 #define DRIVER_NAME        "u-dma-buf-mgr"
 
 /**
@@ -62,7 +62,7 @@ MODULE_LICENSE("Dual BSD/GPL");
  * * u_dma_buf_device_remove() - Remove u-dma-buf device for in-kernel.
  */
 struct device* u_dma_buf_device_search(const char* name, int id);
-struct device* u_dma_buf_device_create(const char* name, int id, unsigned int size);
+struct device* u_dma_buf_device_create(const char* name, int id, size_t size, u64 option, struct device* parent);
 int            u_dma_buf_device_remove(struct device *dev);
 
 /**
@@ -82,7 +82,7 @@ int            u_dma_buf_device_remove(struct device *dev);
  * * 
  */
 
-#define UDMABUF_MGR_BUFFER_SIZE 256
+#define UDMABUF_MGR_BUFFER_SIZE 1024
 
 /**
  * enum   udmabuf_manager_state - udmabuf manager state enumeration.
@@ -92,6 +92,8 @@ enum   udmabuf_manager_state {
     udmabuf_manager_create_command,
     udmabuf_manager_delete_command,
     udmabuf_manager_parse_error   ,
+    udmabuf_manager_size_error    ,
+    udmabuf_manager_bind_error    ,
 };
 
 /**
@@ -100,10 +102,13 @@ enum   udmabuf_manager_state {
 struct udmabuf_manager_data {
     const char*                  device_name;
     int                          minor_number;
-    unsigned int                 size;
+    size_t                       size;
+    u64                          option;
+    struct device*               parent;
     enum udmabuf_manager_state   state;
     unsigned int                 buffer_offset;
     char                         buffer[UDMABUF_MGR_BUFFER_SIZE];
+    char*                        parse;
 };
 
 /**
@@ -127,8 +132,56 @@ static void udmabuf_manager_state_clear(struct udmabuf_manager_data *this)
     this->device_name   = NULL;
     this->minor_number  = PLATFORM_DEVID_AUTO;
     this->size          = 0;
+    this->parent        = NULL;
     this->state         = udmabuf_manager_init_state;
     this->buffer_offset = 0;
+    this->parse         = this->buffer;
+}
+
+/**
+ * udmabuf_manager_supported_bus_type_list - udmabuf manager supported bus type list.
+ */
+#ifdef CONFIG_ARM_AMBA
+extern struct bus_type amba_bustype;
+#endif
+#ifdef CONFIG_PCI
+extern struct bus_type pci_bus_type;
+#endif
+#ifdef CONFIG_PCIEPORTBUS
+extern struct bus_type pcie_port_bus_type;
+#endif
+
+static struct bus_type* udmabuf_manager_supported_bus_type_list[] = {
+#ifdef CONFIG_ARM_AMBA
+    &amba_bustype,
+#endif
+#ifdef CONFIG_PCI
+    &pci_bus_type,
+#endif
+#ifdef CONFIG_PCIEPORTBUS
+    &pcie_port_bus_type,
+#endif
+    NULL
+};
+
+/**
+ * udmabuf_manager_parse_bus_type() - udmabuf manager parse bus type
+ * @ptr:        Pointer to the parse string.
+ * Return:      Pointer to found bus type or NULL.
+ */
+static struct bus_type* udmabuf_manager_parse_bus_type(char* ptr)
+{
+    int i;
+    for (i = 0; udmabuf_manager_supported_bus_type_list[i] != NULL; i++) {
+        const char* bus_name     = udmabuf_manager_supported_bus_type_list[i]->name;
+        int         bus_name_len = strlen(bus_name);
+        if (strncmp(ptr, bus_name, bus_name_len) == 0)
+            break;
+    }
+    if (udmabuf_manager_supported_bus_type_list[i] != NULL)
+        return udmabuf_manager_supported_bus_type_list[i];
+    else
+        return NULL;
 }
 
 /**
@@ -167,9 +220,13 @@ static int udmabuf_manager_parse(struct udmabuf_manager_data *this, const char _
 
     if (copy_done == true) {
         char* parse_buffer = this->buffer;
-        char* ptr = strsep(&parse_buffer, " ");
+        char* ptr;
+        while((ptr = strsep(&parse_buffer, " \t")) != 0) {
+            if (*ptr) break;
+        }
         if (ptr == NULL) {
             this->state = udmabuf_manager_parse_error;
+            this->parse = this->buffer;
             goto failed;
         } else if (strncmp(ptr, "create", strlen("create")) == 0) {
             this->state = udmabuf_manager_create_command;
@@ -177,33 +234,77 @@ static int udmabuf_manager_parse(struct udmabuf_manager_data *this, const char _
             this->state = udmabuf_manager_delete_command;
         } else {
             this->state = udmabuf_manager_parse_error;
+            this->parse = ptr;
             goto failed;
         }
-        ptr = strsep(&parse_buffer, " ");
+        while((ptr = strsep(&parse_buffer, " \t")) != 0) {
+            if (*ptr) break;
+        }
         if (ptr == NULL) {
             this->state = udmabuf_manager_parse_error;
+            this->parse = this->buffer;
             goto failed;
         } else {
             this->device_name = ptr;
         }
         if (this->state == udmabuf_manager_create_command) {
-            ptr = strsep(&parse_buffer, " ");
-            if (ptr == NULL) {
+            struct bus_type* bus_type    = NULL;
+            struct device*   parent      = NULL;
+            char*            parent_name = NULL;
+            u64              value;
+            while((ptr = strsep(&parse_buffer, " \t")) != 0) {
+                if (!*ptr) continue;
+                this->parse = ptr;
+                if (strncmp(ptr, "size=", 5) == 0) {
+                    if (kstrtoull(ptr+5, 0, &value) != 0) {
+                        this->state = udmabuf_manager_parse_error;
+                        goto failed;
+                    }
+                    this->size = value;
+                    continue;
+                }
+                if (strncmp(ptr, "bus=", 4) == 0) {
+                    bus_type = udmabuf_manager_parse_bus_type(ptr+4);
+                    if (IS_ERR_OR_NULL(bus_type)) {
+                        this->state = udmabuf_manager_parse_error;
+                        goto failed;
+                    }
+                    continue;
+                }
+                if (strncmp(ptr, "device=", 7) == 0) {
+                    parent_name = ptr+7;
+                    if (!*parent_name) {
+                        this->state = udmabuf_manager_parse_error;
+                        goto failed;
+                    }
+                    continue;
+                }
+                if (kstrtoull(ptr, 0, &value) == 0) {
+                    this->size = value;
+                    continue;
+                }
                 this->state = udmabuf_manager_parse_error;
                 goto failed;
-            } else {
-                u64 value;
-                if (kstrtoull(ptr, 0, &value) != 0) {
-                    this->state = udmabuf_manager_parse_error;
+            }
+            if (this->size == 0) {
+                this->state = udmabuf_manager_size_error;
+                goto failed;
+            }
+            if (parent_name) {
+                if (bus_type == NULL)
+                    bus_type = &platform_bus_type;
+                parent = bus_find_device_by_name(bus_type, NULL, parent_name);
+                if (IS_ERR_OR_NULL(parent)) {
+                    pr_err(DRIVER_NAME ": parent device(%s) not found in bus(%s)\n", parent_name, bus_type->name);
+                    this->state = udmabuf_manager_bind_error;
                     goto failed;
-                } else {
-                    this->size = value;
                 }
+                this->parent = parent;
             }
         }
     }
 failed:
-    return parse_count;    
+    return parse_count;
 }
 
 /**
@@ -271,8 +372,8 @@ static ssize_t udmabuf_manager_file_write(struct file* file, const char __user* 
         }
         switch (this->state) {
             case udmabuf_manager_create_command :
-                pr_info(DRIVER_NAME ": create %s %d\n", this->device_name, this->size);
-                dev = u_dma_buf_device_create(this->device_name, this->minor_number, this->size);
+                pr_info(DRIVER_NAME ": create %s size=%zu\n", this->device_name, this->size);
+                dev = u_dma_buf_device_create(this->device_name, this->minor_number, this->size, this->option, this->parent);
                 if (IS_ERR_OR_NULL(dev)) {
                     result = (IS_ERR(dev)) ? PTR_ERR(dev) : -ENODEV;
                     pr_err(DRIVER_NAME ": create error: %s result = %d\n", this->device_name, result);
@@ -282,7 +383,7 @@ static ssize_t udmabuf_manager_file_write(struct file* file, const char __user* 
                 udmabuf_manager_state_clear(this);
                 break;
             case udmabuf_manager_delete_command :
-                pr_info(DRIVER_NAME ": delete %s\n"   , this->device_name);
+                pr_info(DRIVER_NAME ": delete %s\n", this->device_name);
                 dev = u_dma_buf_device_search(this->device_name, this->minor_number);
                 if (IS_ERR_OR_NULL(dev)) {
                     pr_err(DRIVER_NAME ": delete error: %s not found\n", this->device_name);
@@ -299,7 +400,16 @@ static ssize_t udmabuf_manager_file_write(struct file* file, const char __user* 
                 udmabuf_manager_state_clear(this);
                 break;
             case udmabuf_manager_parse_error :
-                pr_err(DRIVER_NAME ": parse error: ""%s""\n", this->buffer);
+                pr_err(DRIVER_NAME ": parse error: ""%s""\n", this->parse);
+                udmabuf_manager_state_clear(this);
+                result = -EINVAL;
+                goto failed;
+            case udmabuf_manager_size_error :
+                pr_err(DRIVER_NAME ": size error: %zu\n", this->size);
+                udmabuf_manager_state_clear(this);
+                result = -EINVAL;
+                goto failed;
+            case udmabuf_manager_bind_error :
                 udmabuf_manager_state_clear(this);
                 result = -EINVAL;
                 goto failed;
