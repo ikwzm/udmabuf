@@ -46,9 +46,6 @@ ifndef BUILD_TARGET
     ifdef CONFIG_U_DMA_BUF_MGR
       BUILD_TARGET += u-dma-buf-mgr.ko
     endif
-    ifdef CONFIG_U_DMA_BUF_KMOD_TEST
-      BUILD_TARGET += u-dma-buf-kmod-test.ko
-    endif
   endif
 endif
 
@@ -56,9 +53,6 @@ ifndef OBJ_MODULES
   OBJ_MODULES := obj-m=u-dma-buf.o
   ifdef CONFIG_U_DMA_BUF_MGR
     OBJ_MODULES += obj-m+=u-dma-buf-mgr.o
-  endif
-  ifdef CONFIG_U_DMA_BUF_KMOD_TEST
-    OBJ_MODULES += obj-m+=u-dma-buf-kmod-test.o
   endif
 endif
 
