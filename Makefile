@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0 OR MIT
-# Copyright (C) 2015-2022 Ichiro Kawazome
+# Copyright (C) 2015-2023 Ichiro Kawazome
 
 #
 # For built-in kernel
 # 
-obj-$(CONFIG_U_DMA_BUF)     += u-dma-buf.o
-obj-$(CONFIG_U_DMA_BUF_MGR) += u-dma-buf-mgr.o
+obj-$(CONFIG_U_DMA_BUF) += u-dma-buf.o
 
 #
 # Refer KERNEL_SRC variable to work with PetaLinux
@@ -43,17 +42,11 @@ ifndef BUILD_TARGET
     BUILD_TARGET ?= modules
   else
     BUILD_TARGET ?= u-dma-buf.ko
-    ifdef CONFIG_U_DMA_BUF_MGR
-      BUILD_TARGET += u-dma-buf-mgr.ko
-    endif
   endif
 endif
 
 ifndef OBJ_MODULES
   OBJ_MODULES := obj-m=u-dma-buf.o
-  ifdef CONFIG_U_DMA_BUF_MGR
-    OBJ_MODULES += obj-m+=u-dma-buf-mgr.o
-  endif
 endif
 
 KBUILD_CFLAGS += -DU_DMA_BUF_IN_KERNEL_FUNCTIONS=y
