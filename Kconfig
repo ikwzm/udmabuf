@@ -13,11 +13,3 @@ menuconfig U_DMA_BUF
 
 	  If you don't know what to do here, say N.
 
-config U_DMA_BUF_IN_KERNEL_FUNCTIONS
-	bool "u-dma-buf enable in-kernel functions"
-	depends on U_DMA_BUF
-	default y
-	help
-	  Enable u-dma-buf in-kernel functions.
-	  Setting this to y will EXPORT_SYMBOL the function to
-	  manage u-dma-buf from inside the kernel.
