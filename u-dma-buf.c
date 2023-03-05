@@ -81,7 +81,6 @@ MODULE_LICENSE("Dual BSD/GPL");
 #include <linux/dma-noncoherent.h>
 #define IS_DMA_COHERENT(dev) dev_is_dma_coherent(dev)
 #elif   ((LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0)) && (defined(CONFIG_ARM) || defined(CONFIG_ARM64)))
-#include <linux/dma-noncoherent.h>
 #define IS_DMA_COHERENT(dev) is_device_dma_coherent(dev)
 #endif
 
