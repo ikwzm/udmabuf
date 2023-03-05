@@ -70,31 +70,27 @@ Linux Kernel 5.x.
 This repository contains a [Makefie](./Makefile).
 Makefile has the following Parameters:
 
-| Parameter Name             | Description                    | Default Value                        |
-|----------------------------|--------------------------------|--------------------------------------|
-| ARCH                       | Architecture Name              | `$(shell uname -m \| sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)` |
-| KERNEL_SRC                 | Kernel Source Directory        | `/lib/modules/$(shell uname -r)/build` |
-| CONFIG_U_DMA_BUF_MGR       | Also build u-dma-buf-mgr       | None                                 |
-| CONFIG_U_DMA_BUF_KMOD_TEST | Also build u-dma-buf-kmod-test | None                                 |
+| Parameter Name      | Description              | Default Value                        |
+|---------------------|--------------------------|--------------------------------------|
+| ARCH                | Architecture Name        | `$(shell uname -m \| sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)` |
+| KERNEL_SRC          | Kernel Source Directory  | `/lib/modules/$(shell uname -r)/build` |
 
 ### Cross Compile
 
 If you have a cross-compilation environment for target system, you can compile with:
 
 ```console
-shell$ make ARCH=arm KERNEL_SRC=/home/fpga/src/linux-5.10.120-zynqmp-fpga-generic CONFIG_U_DMA_BUF_MGR=m CONFIG_U_DMA_BUF_KMOD_TEST=m all
+shell$ make ARCH=arm KERNEL_SRC=/home/fpga/src/linux-5.10.120-zynqmp-fpga-generic all
 ```
 The ARCH variable specifies the architecture name.    
 The KERNEL_SRC variable specifies the Linux Kernel source code path.    
-If you also want to build u-dma-buf-mgr, define the CONFIG_U_DMA_BUF_MGR variable.    
-If you also want to build u-dma-buf-kmod-test, define the CONFIG_U_DMA_BUF_KMOD_TEST variable.    
 
 ### Self Compile
 
 If your target system is capable of self-compiling the Linux Kernel module, you can compile it with:
 
 ```console
-shell$ make CONFIG_U_DMA_BUF_MGR=m CONFIG_U_DMA_BUF_KMOD_TEST=m all
+shell$ make all
 ```
 You need the kernel source code in ```/lib/modules/$(shell uname -r)/build``` to compile.
 
@@ -111,7 +107,7 @@ shell$ mkdir <linux-source-tree>/drivers/staging/u-dma-buf
 #### Copy files to Linux Kernel Source Tree.
 
 ```console
-shell$ cp Kconfit Makefile u-dma-buf.c u-dma-buf-mgr.c <linux-source-tree>/drivers/staging/u-dma-buf
+shell$ cp Kconfit Makefile u-dma-buf.c <linux-source-tree>/drivers/staging/u-dma-buf
 ```
 
 #### Add u-dma-buf to Kconfig
@@ -138,9 +134,7 @@ For make menuconfig, set the following:
 ```console
 Device Drivers --->
   Staging drivers --->
-    <M> u-dma-buf(User space mappable DMA Buffer) ---->
-      -*-  u-dma-buf enable in-kernel functions
-      <M>  u-dma-buf-mgr(User space mappable DMA Buffer Manager)
+    <M> u-dma-buf(User space mappable DMA Buffer)
 ```
 
 If you write it directly in defconfig:
@@ -149,7 +143,6 @@ If you write it directly in defconfig:
 shell$ diff <linux-source-tree>/arch/arm64/configs/xilinx_zynqmp_defconfig
    :
 CONFIG_U_DMA_BUF=m
-CONFIG_U_DMA_BUF_MGR=m
 ```
 
 ## Install
@@ -754,39 +747,8 @@ Details of manual cache management is described in the next section.
 
 ## Configuration via the `/dev/u-dma-buf-mgr`
 
-Since u-dma-buf v4.0, `u-dma-buf-mgr.ko` has been added.
-Once this device driver is loaded into your system, you will be able to access `/dev/u-dma-buf-mgr`.
-u-dma-buf can be created/deleted by writing the command to `/dev/u-dma-buf-mgr` as a string.
-
-### Create u-dma-buf
-
-u-dma-buf can be created by writing the string "create <device-name> <size>" to `/dev/u-dma-buf-mgr` as follows:
-For `<device-name>`, specify the device name of the u-dma-buf to be generated.
-For `<size>`, specify the size of the buffer to be allocated.
-
-```console
-zynq$ sudo sh -c "echo 'create udmabuf8 0x10000' > /dev/u-dma-buf-mgr"
-[   58.790695] u-dma-buf-mgr : create udmabuf8 65536
-[   58.798637] u-dma-buf udmabuf8: driver version = 4.0.0
-[   58.804114] u-dma-buf udmabuf8: major number   = 245
-[   58.809000] u-dma-buf udmabuf8: minor number   = 0
-[   58.815628] u-dma-buf udmabuf8: phys address   = 0x1f050000
-[   58.822041] u-dma-buf udmabuf8: buffer size    = 65536
-[   58.827098] u-dma-buf udmabuf8: dma device     = u-dma-buf.0.auto
-[   58.834918] u-dma-buf udmabuf8: dma coherent   = 0
-[   58.839632] u-dma-buf u-dma-buf.0.auto: driver installed.
-```
-
-### Delete u-dma-buf
-
-u-dma-buf can be deleted by writing the string "delete <device-name>" to `/dev/u-dma-buf-mgr` as follows:
-For `<device-name>`, specify `<device-name>` specified with the create command.
-
-```console
-zynq$ sudo sh -c "echo 'delete udmabuf8' > /dev/u-dma-buf-mgr"
-[  179.089702] u-dma-buf-mgr : delete udmabuf8
-[  179.094212] u-dma-buf u-dma-buf.0.auto: driver removed.
-```
+Since u-dma-buf v4.0, u-dma-buf devices can be create or delete using u-dma-buf-mgr.
+See https://github.com/ikwzm/u-dma-buf-mgr for more information.
 
 # Coherency of data on DMA buffer and CPU cache
 
