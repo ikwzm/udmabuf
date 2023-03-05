@@ -72,12 +72,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define DEVICE_MAX_NUM      256
 #define UDMABUF_DEBUG       1
 #define USE_VMA_FAULT       1
-
-#if defined(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS) || defined(U_DMA_BUF_IN_KERNEL_FUNCTIONS)
 #define IN_KERNEL_FUNCTIONS 1
-#else
-#define IN_KERNEL_FUNCTIONS 0
-#endif
 
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 #include <linux/dma-map-ops.h>
