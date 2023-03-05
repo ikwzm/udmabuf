@@ -107,7 +107,7 @@ shell$ mkdir <linux-source-tree>/drivers/staging/u-dma-buf
 #### Copy files to Linux Kernel Source Tree.
 
 ```console
-shell$ cp Kconfit Makefile u-dma-buf.c <linux-source-tree>/drivers/staging/u-dma-buf
+shell$ cp Kconfig Makefile u-dma-buf.c <linux-source-tree>/drivers/staging/u-dma-buf
 ```
 
 #### Add u-dma-buf to Kconfig
@@ -134,7 +134,7 @@ For make menuconfig, set the following:
 ```console
 Device Drivers --->
   Staging drivers --->
-    <M> u-dma-buf(User space mappable DMA Buffer)
+    <M> u-dma-buf(User space mappable DMA Buffer) --->
 ```
 
 If you write it directly in defconfig:
@@ -142,7 +142,7 @@ If you write it directly in defconfig:
 ```console
 shell$ diff <linux-source-tree>/arch/arm64/configs/xilinx_zynqmp_defconfig
    :
-CONFIG_U_DMA_BUF=m
++CONFIG_U_DMA_BUF=m
 ```
 
 ## Install

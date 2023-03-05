@@ -49,8 +49,6 @@ ifndef OBJ_MODULES
   OBJ_MODULES := obj-m=u-dma-buf.o
 endif
 
-KBUILD_CFLAGS += -DU_DMA_BUF_IN_KERNEL_FUNCTIONS=y
-
 #
 # For out of kernel tree rules
 #
