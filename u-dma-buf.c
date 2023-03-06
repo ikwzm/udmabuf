@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.3.0-rc2"
+#define DRIVER_VERSION     "4.3.0-rc3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1246,7 +1246,7 @@ static struct udmabuf_device_entry* udmabuf_device_list_search(struct device *de
  * udmabuf_device_list_create_entry() - Create udmabuf device entry and add to list.
  * @dev:        handle to the device structure.
  * @name:       device name or NULL.
- * @id:         device id.
+ * @id:         device id or negative integer.
  * @size:       buffer size.
  * @prep_remove prepare function when remove entry from udmabuf device list or NULL.
  * @post_remove post function when remove entry from udmabuf device list or NULL.
@@ -1420,11 +1420,12 @@ static void udmabuf_platform_device_put(struct device* dev)
 /**
  * udmabuf_platform_device_create() - Create udmabuf platform device and add to list.
  * @name:       device name or NULL.
- * @id:         device id.
+ * @id:         device id or negative integer.
  * @size:       buffer size.
+ * @dma_mask:   dma mask or 0.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_platform_device_create(const char* name, int id, unsigned int size)
+static int udmabuf_platform_device_create(const char* name, int id, unsigned int size, u64 dma_mask)
 {
     struct platform_device*      pdev   = NULL;
     struct udmabuf_device_entry* entry  = NULL;
@@ -1444,8 +1445,13 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
     if (!pdev->dev.dma_mask)
         pdev->dev.dma_mask = &pdev->dev.coherent_dma_mask;
 
-    pdev->dev.coherent_dma_mask = DMA_BIT_MASK(dma_mask_bit);
-    *pdev->dev.dma_mask         = DMA_BIT_MASK(dma_mask_bit);
+    if (dma_mask != 0) {
+        pdev->dev.coherent_dma_mask = dma_mask;
+        *pdev->dev.dma_mask         = dma_mask;
+    } else {
+        pdev->dev.coherent_dma_mask = DMA_BIT_MASK(dma_mask_bit);
+        *pdev->dev.dma_mask         = DMA_BIT_MASK(dma_mask_bit);
+    }
 
     entry = udmabuf_device_list_create_entry(&pdev->dev,
                                              name,
@@ -1775,7 +1781,7 @@ static void udmabuf_child_device_delete(struct device* dev)
 /**
  * udmabuf_child_device_create() - Create udmabuf child device and add to list.
  * @name:       device name or NULL.
- * @id:         device id.
+ * @id:         device id or negative integer.
  * @size:       buffer size.
  * @parent:     parent device.
  * Return:      Success(=0) or error status(<0).
@@ -1821,7 +1827,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
      */
     obj->size = size;
     /*
-     * entry
+     * create entry
      */
     entry = udmabuf_device_list_create_entry(obj->sys_dev,
                                              name,
@@ -1882,7 +1888,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
 #define CALL_UDMABUF_STATIC_DEVICE_CREATE(__num)                         \
     if (udmabuf ## __num != 0) {                                         \
         ida_simple_remove(&udmabuf_device_ida, __num);                   \
-        udmabuf_platform_device_create(NULL, __num, udmabuf ## __num);   \
+        udmabuf_platform_device_create(NULL, __num, udmabuf ## __num, 0);\
     }
 
 #define CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(__num)           \
@@ -2016,7 +2022,7 @@ static struct platform_driver udmabuf_platform_driver = {
 /**
  * u_dma_buf_device_search() - Search u-dma-buf device by name or id.
  * @name:       device name or NULL.
- * @id:         device id.
+ * @id:         device id or negative integer.
  * Return:      handle to u-dma-buf device structure(>=0) or error status(<0).
  */
 #if (IN_KERNEL_FUNCTIONS == 1)
@@ -2033,11 +2039,26 @@ EXPORT_SYMBOL(u_dma_buf_device_search);
 #endif
 
 /**
+ * u_dma_buf_device_option_dma_mask_size() - Get dma mask size from create device option.
+ *
+ * @option:     option. dma_mask=option[7:0]
+ */
+#if (IN_KERNEL_FUNCTIONS == 1)
+#define DEFINE_U_DMA_BUF_OPTION(name,type,lo,hi)                \
+static inline type u_dma_buf_device_option_ ## name(u64 option) \
+{                                                               \
+    const u64 mask = ((1 << ((hi)-(lo)+1))-1);                  \
+    return (type)((option >> (lo)) & mask);                     \
+}
+DEFINE_U_DMA_BUF_OPTION(dma_mask_size,u64,0,7)
+#endif
+
+/**
  * u_dma_buf_device_create() - Create u-dma-buf device for in-kernel.
  * @name:       device name or NULL.
  * @id:         device id or negative integer.
  * @size:       buffer size.
- * @option:     option.
+ * @option:     option. dma_mask=option[7:0]
  * @parent:     parent device or NULL.
  * Return:      handle to u-dma-buf device structure(>=0) or error status(<0).
  */
@@ -2046,10 +2067,12 @@ struct device* u_dma_buf_device_create(const char* name, int id, size_t size, u6
 {
     int result = 0;
 
-    if (parent)
+    if (parent) {
         result = udmabuf_child_device_create(name, id, size, parent);
-    else
-        result = udmabuf_platform_device_create(name, id, size);
+    } else {
+        u64 dma_mask = DMA_BIT_MASK(u_dma_buf_device_option_dma_mask_size(option));
+        result = udmabuf_platform_device_create(name, id, size, dma_mask);
+    }
 
     if (result)
         return ERR_PTR(result);
