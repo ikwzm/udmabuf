@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.3.0-rc4"
+#define DRIVER_VERSION     "4.3.0-rc5"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1016,6 +1016,27 @@ static inline const char* dev_bus_name(const struct device* dev)
 }
 #endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0))
+#include <linux/iommu.h>
+static  char* get_iommu_domain_type(struct device* dev)
+{
+    struct iommu_domain* domain = iommu_get_domain_for_dev(dev);
+    if (!domain)
+        return "NONE";
+    else if (domain->type == IOMMU_DOMAIN_BLOCKED)
+        return "BLOCKED";
+    else if (domain->type == IOMMU_DOMAIN_IDENTITY)
+        return "IDENTITY";
+    else if (domain->type == IOMMU_DOMAIN_UNMANAGED)
+        return "UNMANAGED";
+    else if (domain->type == IOMMU_DOMAIN_DMA)
+        return "DMA";
+    else 
+        return "UNKNOWN";
+}
+#define GET_IOMMU_DOMAIN_TYPE(dev) get_iommu_domain_type(dev)
+#endif
+
 /**
  * udmabuf_object_info() - Print infomation the udmabuf object.
  * @this:       Pointer to the udmabuf object.
@@ -1034,6 +1055,9 @@ static void udmabuf_object_info(struct udmabuf_object* this)
         dev_info(this->sys_dev, "dma coherent   = %d\n"       , IS_DMA_COHERENT(this->dma_dev));
 #endif
         dev_info(this->sys_dev, "dma mask       = 0x%016llx\n", dma_get_mask(this->dma_dev));
+#if defined(GET_IOMMU_DOMAIN_TYPE)
+        dev_info(this->sys_dev, "iommu domain   = %s\n"       , GET_IOMMU_DOMAIN_TYPE(this->dma_dev));
+#endif
     }
 }
 
