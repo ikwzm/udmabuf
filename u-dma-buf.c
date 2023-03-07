@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.3.0-rc3"
+#define DRIVER_VERSION     "4.3.0-rc4"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1772,10 +1772,15 @@ static int udmabuf_platform_device_probe(struct device *dev)
  */
 static void udmabuf_child_device_delete(struct device* dev)
 {
+    char* device_name = kstrdup(dev_name(dev), GFP_KERNEL);
+
     udmabuf_object_destroy(dev_get_drvdata(dev));
+
     if (info_enable) {
-        pr_info(DRIVER_NAME ": driver removed.\n");
+        pr_info(DRIVER_NAME ": %s removed.\n", ((device_name) ? device_name: ""));
     }
+    if (device_name)
+        kfree(device_name);
 }
 
 /**
@@ -1801,12 +1806,10 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
     /*
      * device-name property
      */
-    if (name == NULL) {
-        if (id < 0)
-            device_name = DRIVER_NAME;
-        else
-            device_name = NULL;
-    }
+    if ((name == NULL) && (id < 0))
+        device_name = DRIVER_NAME;
+    else
+        device_name = name;
     /*
      * udmabuf_object_create()
      */
@@ -1857,7 +1860,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
     }
 
     if (info_enable) {
-        pr_info(DRIVER_NAME ": driver installed.\n");
+        pr_info(DRIVER_NAME ": %s installed.\n", dev_name(obj->sys_dev));
     }
     return 0;
 
