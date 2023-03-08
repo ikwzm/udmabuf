@@ -147,6 +147,8 @@ shell$ diff <linux-source-tree>/arch/arm64/configs/xilinx_zynqmp_defconfig
 
 ## Install
 
+### Installation with the insmod
+
 Load the u-dma-buf kernel driver using `insmod`. The size of a DMA buffer should be
 provided as an argument as follows.
 The device driver is created, and allocates a DMA buffer with the specified size.
@@ -476,6 +478,11 @@ The `memory-region` property is optional.
 When the `memory-region` property is not specified, u-dma-buf allocates the DMA buffer
 from the CMA area allocated to the Linux kernel.
 
+## Configuration via the `/dev/u-dma-buf-mgr`
+
+Since u-dma-buf v4.0, u-dma-buf devices can be create or delete using u-dma-buf-mgr.
+See https://github.com/ikwzm/u-dma-buf-mgr for more information.
+
 ## Device file
 
 When u-dma-buf is loaded into the kernel, the following device files are created.
@@ -744,11 +751,6 @@ The value written to this device file can include sync_offset, sync_size, and sy
 The sync_offset/sync_size/sync_direction specified by ```sync_for_device``` is temporary and does not affect the ```sync_offset``` or ```sync_size``` or ```sync_direction``` device files.
 
 Details of manual cache management is described in the next section.
-
-## Configuration via the `/dev/u-dma-buf-mgr`
-
-Since u-dma-buf v4.0, u-dma-buf devices can be create or delete using u-dma-buf-mgr.
-See https://github.com/ikwzm/u-dma-buf-mgr for more information.
 
 # Coherency of data on DMA buffer and CPU cache
 
