@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.3.0-rc5"
+#define DRIVER_VERSION     "4.3.0-rc6"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -128,6 +128,7 @@ MODULE_LICENSE("Dual BSD/GPL");
  * * udmabuf_sys_class - udmabuf system class
  * * init_enable       - udmabuf install/uninstall infomation enable
  * * dma_mask_bit      - udmabuf dma mask bit
+ * * bind              - udmabuf bind device name
  */
 
 /**
@@ -150,6 +151,13 @@ MODULE_PARM_DESC( info_enable , "udmabuf install/uninstall infomation enable");
 static int        dma_mask_bit = 32;
 module_param(     dma_mask_bit, int, S_IRUGO);
 MODULE_PARM_DESC( dma_mask_bit, "udmabuf dma mask bit(default=32)");
+
+/**
+ * bind module parameter
+ */
+static char*      bind = NULL;
+module_param(     bind, charp, S_IRUGO);
+MODULE_PARM_DESC( bind, "bind device name. exp pci/0000:00:20:0");
 
 /**
  * DOC: Udmabuf Device Data Structure
@@ -1906,7 +1914,139 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
  * This section defines the udmabuf device to be created with arguments when loaded
  * into ther kernel with insmod.
  *
+ * * udmabuf_available_bus_type_list[] - List of bus_type available for udmabuf static device.
+ * * udmabuf_find_available_bus_type() - Find available bus_type by name.
+ * * udmabuf_static_parent_device      - Parent device of udmabuf static device or NULL or ERR_PTR.
+ * * udmabuf_static_device_create()    - Create udmabuf static device and add to list.
  */
+/**
+ * * udmabuf_available_bus_type_list[] - List of bus_type available for udmabuf static device.
+ */
+#if defined(CONFIG_ARM_AMBA) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))
+extern struct bus_type      amba_bustype;
+#define AMBA_BUS_TYPE      &amba_bustype,
+#else
+#define AMBA_BUS_TYPE
+#endif
+#if defined(CONFIG_PCI)
+extern struct bus_type      pci_bus_type;
+#define PCI_BUS_TYPE       &pci_bus_type,
+#else
+#define PCI_BUS_TYPE
+#endif
+#if defined(CONFIG_PCIEPORTBUS)
+extern struct bus_type      pcie_port_bus_type;
+#define PCIE_PORT_BUS_TYPE &pcie_port_bus_type,
+#else
+#define PCIE_PORT_BUS_TYPE 
+#endif
+
+static struct bus_type* udmabuf_available_bus_type_list[] = {
+    AMBA_BUS_TYPE
+    PCI_BUS_TYPE
+    PCIE_PORT_BUS_TYPE
+    NULL
+};
+
+/**
+ * udmabuf_find_available_bus_type() - Find available bus_type by name.
+ * @name:       bus name string.
+ * @name_len:   length of @name.
+ * Return:      pointer to the bus_type or NULL.
+ */
+static struct bus_type* udmabuf_find_available_bus_type(char* name, int name_len)
+{
+    int i;
+    if ((name == NULL) || (name_len == 0))
+        return NULL;
+    for (i = 0; udmabuf_available_bus_type_list[i] != NULL; i++) {
+        const char* bus_name;
+        if (udmabuf_available_bus_type_list[i] == NULL)
+            break;
+        bus_name = udmabuf_available_bus_type_list[i]->name;
+        if (name_len != strlen(bus_name))
+            continue;
+        if (strncmp(name, bus_name, name_len) == 0)
+            break;
+    }
+    return udmabuf_available_bus_type_list[i];
+}
+
+/**
+ * udmabuf_static_bind_parse() - Parse bind string to get bus_type and device_name.
+ * @bind:        string to parse.
+ * @bus_type:    pointer to store bus_type found.
+ * @device_name: pointer to store device_name found.
+ * Return:       Success(=0) or error status(<0).
+ */
+static int udmabuf_static_parse_bind(char* bind, struct bus_type** bus_type, char** device_name)
+{
+    int   retval   = 0;
+    char* next_ptr = strchr(bind, '/');
+
+    if (!next_ptr) {
+        *bus_type    = &platform_bus_type;
+        *device_name = bind;
+        retval       = 0;
+    } else {
+        char*            name           = bind;
+        int              name_len       = next_ptr - bind;
+        struct bus_type* found_bus_type = udmabuf_find_available_bus_type(name, name_len);
+        if (found_bus_type == NULL) {
+            retval       = -EINVAL;
+        } else {
+            *bus_type    = found_bus_type;
+            *device_name = next_ptr+1;
+            retval       = 0;
+        }
+    }
+    return retval;
+}
+
+/**
+ * udmabuf_static_parent_device - Parent device of udmabuf static device or NULL or ERR_PTR.
+ */
+static struct device* udmabuf_static_parent_device = NULL;
+
+/**
+ * udmabuf_static_device_create() - Create udmabuf static device and add to list.
+ * @name:       device name or NULL.
+ * @id:         device id or negative integer.
+ * @size:       buffer size.
+ * Return:      Success(=0) or error status(<0).
+ */
+static void udmabuf_static_device_create(const char* name, int id, unsigned int size)
+{
+    if ((bind != NULL) && (udmabuf_static_parent_device == NULL)) {
+        struct device*   parent      = NULL;
+        struct bus_type* bus_type    = NULL;
+        char*            device_name = NULL;
+        int              retval;
+        retval = udmabuf_static_parse_bind(bind, &bus_type, &device_name);
+        if (retval) {
+            udmabuf_static_parent_device = ERR_PTR(-EINVAL);
+            pr_err(DRIVER_NAME ": bind error: %s is not support bus\n", bind);
+            return;
+        }
+        parent = bus_find_device_by_name(bus_type, NULL, device_name);
+        if (IS_ERR_OR_NULL(parent)) {
+            udmabuf_static_parent_device = (parent == NULL)? ERR_PTR(-EINVAL) : parent;
+            pr_err(DRIVER_NAME ": bind error: device(%s) not found in bus(%s)\n", device_name, bus_type->name);
+            return;
+        } else {
+            udmabuf_static_parent_device = parent;
+        }
+    }
+
+    if (IS_ERR(udmabuf_static_parent_device))
+        return;
+
+    if (udmabuf_static_parent_device)
+        udmabuf_child_device_create(name, id, size, udmabuf_static_parent_device);
+    else
+        udmabuf_platform_device_create(name, id, size, 0);
+}
+
 #define DEFINE_UDMABUF_STATIC_DEVICE_PARAM(__num)                        \
     static int       udmabuf ## __num = 0;                               \
     module_param(    udmabuf ## __num, int, S_IRUGO);                    \
@@ -1915,7 +2055,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
 #define CALL_UDMABUF_STATIC_DEVICE_CREATE(__num)                         \
     if (udmabuf ## __num != 0) {                                         \
         ida_simple_remove(&udmabuf_device_ida, __num);                   \
-        udmabuf_platform_device_create(NULL, __num, udmabuf ## __num, 0);\
+        udmabuf_static_device_create(NULL, __num, udmabuf ## __num);     \
     }
 
 #define CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(__num)           \
@@ -1950,7 +2090,7 @@ static void udmabuf_static_device_reserve_minor_number_all(void)
 /**
  * udmabuf_static_device_create_all() - Create udmabuf static devices.
  */
-static void udmabuf_static_device_create_all(void)
+static int udmabuf_static_device_create_all(void)
 {
     CALL_UDMABUF_STATIC_DEVICE_CREATE(0);
     CALL_UDMABUF_STATIC_DEVICE_CREATE(1);
@@ -1960,6 +2100,7 @@ static void udmabuf_static_device_create_all(void)
     CALL_UDMABUF_STATIC_DEVICE_CREATE(5);
     CALL_UDMABUF_STATIC_DEVICE_CREATE(6);
     CALL_UDMABUF_STATIC_DEVICE_CREATE(7);
+    return (IS_ERR(udmabuf_static_parent_device))? PTR_ERR(udmabuf_static_parent_device) : 0;
 }
 
 /**
@@ -2040,11 +2181,13 @@ static struct platform_driver udmabuf_platform_driver = {
 /**
  * DOC: u-dma-buf Device In-Kernel Interface
  *
- * * u_dma_buf_device_search() - Search u-dma-buf device by name or id.
- * * u_dma_buf_device_create() - Create u-dma-buf device for in-kernel.
- * * u_dma_buf_device_remove() - Remove u-dma-buf device for in-kernel.
- * * u_dma_buf_device_getmap() - Get mapping information from u-dma-buf device for in-kernel.
- * * u_dma_buf_device_sync()   - Sync for CPU/Device u-dma-buf device for in-kernel.
+ * * u_dma_buf_device_search()           - Search u-dma-buf device by name or id.
+ * * u_dma_buf_device_create()           - Create u-dma-buf device for in-kernel.
+ * * u_dma_buf_device_remove()           - Remove u-dma-buf device for in-kernel.
+ * * u_dma_buf_device_getmap()           - Get mapping information from u-dma-buf device for in-kernel.
+ * * u_dma_buf_device_sync()             - Sync for CPU/Device u-dma-buf device for in-kernel.
+ * * u_dma_buf_find_available_bus_type() - Find available bus_type by name.
+ * * u_dma_buf_available_bus_type_list[] - List of bus_type available by u-dma-buf.
  */
 /**
  * u_dma_buf_device_search() - Search u-dma-buf device by name or id.
@@ -2222,6 +2365,28 @@ EXPORT_SYMBOL(u_dma_buf_device_sync);
 #endif
 
 /**
+ * u_dma_buf_find_available_bus_type() - Find available bus_type by name.
+ * @name:       bus name string.
+ * @name_len:   length of @name.
+ * Return:      pointer to the bus_type or NULL.
+ */
+#if (IN_KERNEL_FUNCTIONS == 1)
+struct bus_type* u_dma_buf_find_available_bus_type(char* name, int name_len)
+{
+    return udmabuf_find_available_bus_type(name, name_len);
+}
+EXPORT_SYMBOL(u_dma_buf_find_available_bus_type);
+#endif
+
+/**
+ * u_dma_buf_available_bus_type_list[] - List of bus_type available by u-dma-buf.
+ */
+#if (IN_KERNEL_FUNCTIONS == 1)
+struct bus_type** u_dma_buf_available_bus_type_list = &udmabuf_available_bus_type_list[0];
+EXPORT_SYMBOL(u_dma_buf_available_bus_type_list);
+#endif
+
+/**
  * DOC: u-dma-buf Kernel Module Operations
  *
  * * u_dma_buf_cleanup()
@@ -2300,7 +2465,11 @@ static int __init u_dma_buf_init(void)
         udmabuf_platform_driver_registerd = true;
     }
 
-    udmabuf_static_device_create_all();
+    retval = udmabuf_static_device_create_all();
+    if (retval) {
+        pr_err(DRIVER_NAME ": couldn't create static devices. return=%d\n", retval);
+        goto failed;
+    } 
 
     return 0;
 
