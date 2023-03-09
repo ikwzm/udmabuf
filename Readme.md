@@ -70,31 +70,27 @@ Linux Kernel 5.x.
 This repository contains a [Makefie](./Makefile).
 Makefile has the following Parameters:
 
-| Parameter Name             | Description                    | Default Value                        |
-|----------------------------|--------------------------------|--------------------------------------|
-| ARCH                       | Architecture Name              | `$(shell uname -m \| sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)` |
-| KERNEL_SRC                 | Kernel Source Directory        | `/lib/modules/$(shell uname -r)/build` |
-| CONFIG_U_DMA_BUF_MGR       | Also build u-dma-buf-mgr       | None                                 |
-| CONFIG_U_DMA_BUF_KMOD_TEST | Also build u-dma-buf-kmod-test | None                                 |
+| Parameter Name      | Description              | Default Value                        |
+|---------------------|--------------------------|--------------------------------------|
+| ARCH                | Architecture Name        | `$(shell uname -m \| sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)` |
+| KERNEL_SRC          | Kernel Source Directory  | `/lib/modules/$(shell uname -r)/build` |
 
 ### Cross Compile
 
 If you have a cross-compilation environment for target system, you can compile with:
 
 ```console
-shell$ make ARCH=arm KERNEL_SRC=/home/fpga/src/linux-5.10.120-zynqmp-fpga-generic CONFIG_U_DMA_BUF_MGR=m CONFIG_U_DMA_BUF_KMOD_TEST=m all
+shell$ make ARCH=arm KERNEL_SRC=/home/fpga/src/linux-5.10.120-zynqmp-fpga-generic all
 ```
 The ARCH variable specifies the architecture name.    
 The KERNEL_SRC variable specifies the Linux Kernel source code path.    
-If you also want to build u-dma-buf-mgr, define the CONFIG_U_DMA_BUF_MGR variable.    
-If you also want to build u-dma-buf-kmod-test, define the CONFIG_U_DMA_BUF_KMOD_TEST variable.    
 
 ### Self Compile
 
 If your target system is capable of self-compiling the Linux Kernel module, you can compile it with:
 
 ```console
-shell$ make CONFIG_U_DMA_BUF_MGR=m CONFIG_U_DMA_BUF_KMOD_TEST=m all
+shell$ make all
 ```
 You need the kernel source code in ```/lib/modules/$(shell uname -r)/build``` to compile.
 
@@ -111,7 +107,7 @@ shell$ mkdir <linux-source-tree>/drivers/staging/u-dma-buf
 #### Copy files to Linux Kernel Source Tree.
 
 ```console
-shell$ cp Kconfit Makefile u-dma-buf.c u-dma-buf-mgr.c <linux-source-tree>/drivers/staging/u-dma-buf
+shell$ cp Kconfig Makefile u-dma-buf.c <linux-source-tree>/drivers/staging/u-dma-buf
 ```
 
 #### Add u-dma-buf to Kconfig
@@ -138,9 +134,7 @@ For make menuconfig, set the following:
 ```console
 Device Drivers --->
   Staging drivers --->
-    <M> u-dma-buf(User space mappable DMA Buffer) ---->
-      -*-  u-dma-buf enable in-kernel functions
-      <M>  u-dma-buf-mgr(User space mappable DMA Buffer Manager)
+    <M> u-dma-buf(User space mappable DMA Buffer) --->
 ```
 
 If you write it directly in defconfig:
@@ -148,11 +142,12 @@ If you write it directly in defconfig:
 ```console
 shell$ diff <linux-source-tree>/arch/arm64/configs/xilinx_zynqmp_defconfig
    :
-CONFIG_U_DMA_BUF=m
-CONFIG_U_DMA_BUF_MGR=m
++CONFIG_U_DMA_BUF=m
 ```
 
 ## Install
+
+### Installation with the insmod
 
 Load the u-dma-buf kernel driver using `insmod`. The size of a DMA buffer should be
 provided as an argument as follows.
@@ -161,12 +156,12 @@ The maximum number of DMA buffers that can be allocated using `insmod` is 8 (udm
 
 ```console
 zynq$ insmod u-dma-buf.ko udmabuf0=1048576
-u-dma-buf udmabuf0: driver installed
+u-dma-buf udmabuf0: driver version = 4.3.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
 u-dma-buf udmabuf0: buffer size    = 1048576
-u-dma-buf udmabuf0: dma coherent   = 0
+u-dma-buf u-dma-buf.0: driver installed.
 zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
@@ -183,7 +178,7 @@ The module can be uninstalled by the `rmmod` command.
 
 ```console
 zynq$ rmmod u-dma-buf
-u-dma-buf udmabuf0: driver uninstalled
+u-dma-buf u-dma-buf.0: driver removed.
 ```
 
 ### Installation with the Debian package
@@ -192,6 +187,71 @@ For details, refer to the following URL.
 
 *  https://github.com/ikwzm/u-dma-buf-kmod-dpkg
 
+
+## Configuration via the module parameters
+
+The u-dma-buf kernel module has the following module parameters:
+
+| Parameter Name | Type  | Default | Description                         |
+|:---------------|:------|---------|:------------------------------------|
+| udmabuf0       | int   |    0    | u-dma-buf0 buffer size              |
+| udmabuf1       | int   |    0    | u-dma-buf1 buffer size              |
+| udmabuf2       | int   |    0    | u-dma-buf2 buffer size              |
+| udmabuf3       | int   |    0    | u-dma-buf3 buffer size              |
+| udmabuf4       | int   |    0    | u-dma-buf4 buffer size              |
+| udmabuf5       | int   |    0    | u-dma-buf5 buffer size              |
+| udmabuf6       | int   |    0    | u-dma-buf6 buffer size              |
+| udmabuf7       | int   |    0    | u-dma-buf7 buffer size              |
+| info_enable    | int   |    1    | install/uninstall infomation enable |
+| dma_mask_bit   | int   |   32    | dma mask bit size                   |
+| bind           | charp |   ""    | bind device name                    |
+
+### `udmabuf[0-7]`
+
+This parameter specifies the capacity of the u-dma-buf to be created in bytes.
+The number of u-dma-buf that can be created with this parameter is 8.
+The device name will be udmabuf[0-7].
+If this parameter is 0, the u-dma-buf is not created.
+
+### `info_enable`
+
+This parameter specifies whether or not detailed information about when the u-dma-buf was created should be displayed.
+
+### `dma_mask_bit`
+
+** Note: The value of dma-mask is system dependent.
+Make sure you are familiar with the meaning of dma-mask before setting. **
+
+### `bind`
+
+This parameter specifies the parent device of the u-dma-buf.
+If this parameter is an empty string (default value), u-dma-buf is created as a new platform device.
+If a parent device name is specified for this parameter, u-dma-buf is created as its child device.
+
+The format of the string specified in this parameter is `"<bus>/<device-name>"`.
+
+The `<bus>` is the bus name, currently pci is supported.
+The bus name can be omitted.
+If omitted, it will be the platform bus.
+
+The `<device-name>` specifies the name of the device under bus management.
+
+For example, to designate "0000:00:15.0" under the pci bus as the parent device, do the following
+
+```console
+shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 bind="pci/0000:00:15.0" 
+[13422.022482] u-dma-buf udmabuf0: driver version = 4.3.0
+[13422.022483] u-dma-buf udmabuf0: major number   = 238
+[13422.022483] u-dma-buf udmabuf0: minor number   = 0
+[13422.022484] u-dma-buf udmabuf0: phys address   = 0x0000000070950000
+[13422.022485] u-dma-buf udmabuf0: buffer size    = 65536
+[13422.022485] u-dma-buf udmabuf0: dma device     = 0000:00:15.0
+[13422.022486] u-dma-buf udmabuf0: dma bus        = pci
+[13422.022486] u-dma-buf udmabuf0: dma coherent   = 1
+[13422.022487] u-dma-buf udmabuf0: dma mask       = 0x00000000ffffffff
+[13422.022487] u-dma-buf udmabuf0: iommu domain   = NONE
+[13422.022488] u-dma-buf: udmabuf0 installed.
+```
 
 ## Configuration via the device tree file
 
@@ -212,12 +272,12 @@ allocate buffers and create device drivers when loaded by `insmod`.
 
 ```console
 zynq$ insmod u-dma-buf.ko
-u-dma-buf udmabuf0: driver installed
+u-dma-buf udmabuf0: driver version = 4.3.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
 u-dma-buf udmabuf0: buffer size    = 1048576
-u-dma-buf udmabuf0: dma coherent  = 0
+u-dma-buf amba:udmabuf@0x00: driver installed.
 zynq$ ls -la /dev/udmabuf0
 crw------- 1 root root 248, 0 Dec  1 09:34 /dev/udmabuf0
 ```
@@ -482,6 +542,11 @@ specified by "image_buf0".
 The `memory-region` property is optional.
 When the `memory-region` property is not specified, u-dma-buf allocates the DMA buffer
 from the CMA area allocated to the Linux kernel.
+
+## Configuration via the `/dev/u-dma-buf-mgr`
+
+Since u-dma-buf v4.0, u-dma-buf devices can be create or delete using u-dma-buf-mgr.
+See https://github.com/ikwzm/u-dma-buf-mgr for more information.
 
 ## Device file
 
@@ -751,42 +816,6 @@ The value written to this device file can include sync_offset, sync_size, and sy
 The sync_offset/sync_size/sync_direction specified by ```sync_for_device``` is temporary and does not affect the ```sync_offset``` or ```sync_size``` or ```sync_direction``` device files.
 
 Details of manual cache management is described in the next section.
-
-## Configuration via the `/dev/u-dma-buf-mgr`
-
-Since u-dma-buf v4.0, `u-dma-buf-mgr.ko` has been added.
-Once this device driver is loaded into your system, you will be able to access `/dev/u-dma-buf-mgr`.
-u-dma-buf can be created/deleted by writing the command to `/dev/u-dma-buf-mgr` as a string.
-
-### Create u-dma-buf
-
-u-dma-buf can be created by writing the string "create <device-name> <size>" to `/dev/u-dma-buf-mgr` as follows:
-For `<device-name>`, specify the device name of the u-dma-buf to be generated.
-For `<size>`, specify the size of the buffer to be allocated.
-
-```console
-zynq$ sudo sh -c "echo 'create udmabuf8 0x10000' > /dev/u-dma-buf-mgr"
-[   58.790695] u-dma-buf-mgr : create udmabuf8 65536
-[   58.798637] u-dma-buf udmabuf8: driver version = 4.0.0
-[   58.804114] u-dma-buf udmabuf8: major number   = 245
-[   58.809000] u-dma-buf udmabuf8: minor number   = 0
-[   58.815628] u-dma-buf udmabuf8: phys address   = 0x1f050000
-[   58.822041] u-dma-buf udmabuf8: buffer size    = 65536
-[   58.827098] u-dma-buf udmabuf8: dma device     = u-dma-buf.0.auto
-[   58.834918] u-dma-buf udmabuf8: dma coherent   = 0
-[   58.839632] u-dma-buf u-dma-buf.0.auto: driver installed.
-```
-
-### Delete u-dma-buf
-
-u-dma-buf can be deleted by writing the string "delete <device-name>" to `/dev/u-dma-buf-mgr` as follows:
-For `<device-name>`, specify `<device-name>` specified with the create command.
-
-```console
-zynq$ sudo sh -c "echo 'delete udmabuf8' > /dev/u-dma-buf-mgr"
-[  179.089702] u-dma-buf-mgr : delete udmabuf8
-[  179.094212] u-dma-buf u-dma-buf.0.auto: driver removed.
-```
 
 # Coherency of data on DMA buffer and CPU cache
 
@@ -1312,13 +1341,12 @@ Install u-dma-buf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
 
 ```console
 zynq# insmod u-dma-buf.ko udmabuf0=8388608
-[34654.622746] u-dma-buf udmabuf0: driver installed
+[34654.627150] u-dma-buf udmabuf0: driver version = 4.3.0
 [34654.627153] u-dma-buf udmabuf0: major number   = 237
 [34654.631889] u-dma-buf udmabuf0: minor number   = 0
 [34654.636685] u-dma-buf udmabuf0: phys address   = 0x1f300000
 [34654.642002] u-dma-buf udmabuf0: buffer size    = 8388608
-[34654.642002] u-dma-buf udmabuf0: dma-coherent   = 0
-
+[34654.642020] u-dma-buf u-dma-buf.0: driver installed.
 ```
 
 Executing the script in the previous section gives the following results.

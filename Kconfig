@@ -1,5 +1,5 @@
 #
-# udmabuf
+# u-dma-buf
 #
 
 menuconfig U_DMA_BUF
@@ -12,22 +12,4 @@ menuconfig U_DMA_BUF
 	  makes them available from the user space.
 
 	  If you don't know what to do here, say N.
-
-config U_DMA_BUF_IN_KERNEL_FUNCTIONS
-	bool "u-dma-buf enable in-kernel functions"
-	depends on U_DMA_BUF
-	default y
-	help
-	  Enable u-dma-buf in-kernel functions.
-	  Setting this to y will EXPORT_SYMBOL the function to
-	  manage u-dma-buf from inside the kernel.
-
-config U_DMA_BUF_MGR
-	tristate "u-dma-buf-mgr(User space mappable DMA Buffer Manager)"
-	depends on U_DMA_BUF
-        select U_DMA_BUF_IN_KERNEL_FUNCTIONS
-	help
-	  u-dma-buf-mbr is device driver for createing and removing u-dma-buf
-	  from user space.
-	
 
