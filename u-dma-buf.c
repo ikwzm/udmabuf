@@ -66,12 +66,12 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.3.0"
+#define DRIVER_VERSION     "4.4.0-rc1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
 #define UDMABUF_DEBUG       1
-#define USE_VMA_FAULT       1
+#define USE_QUIRK_MMAP      1
 #define IN_KERNEL_FUNCTIONS 1
 
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
@@ -129,6 +129,7 @@ MODULE_LICENSE("Dual BSD/GPL");
  * * init_enable       - udmabuf install/uninstall infomation enable
  * * dma_mask_bit      - udmabuf dma mask bit
  * * bind              - udmabuf bind device name
+ * * quirk_mmap_mode   - udmabuf default quirk mmap mode 
  */
 
 /**
@@ -159,6 +160,20 @@ static char*      bind = NULL;
 module_param(     bind, charp, S_IRUGO);
 MODULE_PARM_DESC( bind, "bind device name. exp pci/0000:00:20:0");
 
+#if (USE_QUIRK_MMAP == 1)
+/**
+ * quirk_mmap_mode       - udmabuf default quirk mmap mode 
+ */
+#define  QUIRK_MMAP_MODE_UNDEFINED   0
+#define  QUIRK_MMAP_MODE_ALWAYS_OFF  1
+#define  QUIRK_MMAP_MODE_ALWAYS_ON   2
+#define  QUIRK_MMAP_MODE_AUTO        3
+
+static int        quirk_mmap_mode = QUIRK_MMAP_MODE_AUTO;
+module_param(     quirk_mmap_mode, int, S_IRUGO);
+MODULE_PARM_DESC( quirk_mmap_mode, "udmabuf default quirk mmap mode(1:off,2:on,3:auto)(default=3)");
+#endif /* #if (USE_QUIRK_MMAP == 1) */
+
 /**
  * DOC: Udmabuf Device Data Structure
  *
@@ -187,10 +202,13 @@ struct udmabuf_object {
     bool                 sync_owner;
     u64                  sync_for_cpu;
     u64                  sync_for_device;
+#if (USE_QUIRK_MMAP == 1)
+    int                  quirk_mmap_mode;
+#endif
 #if (USE_OF_RESERVED_MEM == 1)
     bool                 of_reserved_mem;
 #endif
-#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
+#if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
     bool                 debug_vma;
 #endif
 };
@@ -226,6 +244,7 @@ struct udmabuf_object {
  * * /sys/class/u-dma-buf/<device-name>/sync_for_cpu
  * * /sys/class/u-dma-buf/<device-name>/sync_for_device
  * * /sys/class/u-dma-buf/<device-name>/dma_coherent
+ * * /sys/class/u-dma-buf/<device-name>/quirk_mmap_mode
  * * 
  */
 
@@ -371,10 +390,13 @@ DEF_ATTR_SHOW(sync_for_cpu   , "%llu\n"  , this->sync_for_cpu                   
 DEF_ATTR_SET( sync_for_cpu               , 0, U64_MAX,  NO_ACTION, udmabuf_sync_for_cpu   );
 DEF_ATTR_SHOW(sync_for_device, "%llu\n"  , this->sync_for_device                          );
 DEF_ATTR_SET( sync_for_device            , 0, U64_MAX,  NO_ACTION, udmabuf_sync_for_device);
+#if (USE_QUIRK_MMAP == 1)
+DEF_ATTR_SHOW(quirk_mmap_mode, "%d\n"    , this->quirk_mmap_mode                          );
+#endif
 #if defined(IS_DMA_COHERENT)
 DEF_ATTR_SHOW(dma_coherent   , "%d\n"    , IS_DMA_COHERENT(this->dma_dev)                 );
 #endif
-#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
+#if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
 DEF_ATTR_SHOW(debug_vma      , "%d\n"    , this->debug_vma                                );
 DEF_ATTR_SET( debug_vma                  , 0, 1,        NO_ACTION, NO_ACTION              );
 #endif
@@ -390,10 +412,13 @@ static struct device_attribute udmabuf_device_attrs[] = {
   __ATTR(sync_owner     , 0444, udmabuf_show_sync_owner      , NULL                       ),
   __ATTR(sync_for_cpu   , 0664, udmabuf_show_sync_for_cpu    , udmabuf_set_sync_for_cpu   ),
   __ATTR(sync_for_device, 0664, udmabuf_show_sync_for_device , udmabuf_set_sync_for_device),
+#if (USE_QUIRK_MMAP == 1)
+  __ATTR(quirk_mmap_mode, 0444, udmabuf_show_quirk_mmap_mode , NULL                       ),
+#endif
 #if defined(IS_DMA_COHERENT)
   __ATTR(dma_coherent   , 0444, udmabuf_show_dma_coherent    , NULL                       ),
 #endif
-#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
+#if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
   __ATTR(debug_vma      , 0664, udmabuf_show_debug_vma       , udmabuf_set_debug_vma      ),
 #endif
   __ATTR_NULL,
@@ -432,7 +457,7 @@ static inline void udmabuf_sys_class_set_attributes(void)
 
 #endif
 
-#if (USE_VMA_FAULT == 1)
+#if (USE_QUIRK_MMAP == 1)
 /**
  * DOC: Udmabuf Device File VM Area Operations
  *
@@ -443,7 +468,6 @@ static inline void udmabuf_sys_class_set_attributes(void)
  * * udmabuf_mmap_vma_fault() - udmabuf device file mmap vm area fault operation.
  * * udmabuf_mmap_vm_ops      - udmabuf device file mmap vm operation table.
  */
-
 /**
  * udmabuf_mmap_vma_open() - udmabuf device file mmap vm area open operation.
  * @vma:        Pointer to the vm area structure.
@@ -556,8 +580,51 @@ static const struct vm_operations_struct udmabuf_mmap_vm_ops = {
     .close   = udmabuf_mmap_vma_close,
     .fault   = udmabuf_mmap_vma_fault,
 };
+#endif /* #if (USE_QUIRK_MMAP == 1) */
 
-#endif /* #if (USE_VMA_FAULT == 1) */
+#if (USE_QUIRK_MMAP == 1)
+/**
+ * udmabuf_set_quirk_mmap_mode() - set udmabuf quirk mmap 
+ * @this:       Pointer to the udmabuf object.
+ * @value:      quirk mmap mode.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int  udmabuf_set_quirk_mmap_mode(struct udmabuf_object* this, int value)
+{
+    if (!this)
+        return -ENODEV;
+        
+    if ((value == QUIRK_MMAP_MODE_ALWAYS_OFF) ||
+        (value == QUIRK_MMAP_MODE_ALWAYS_ON ) ||
+        (value == QUIRK_MMAP_MODE_AUTO      )) {
+        this->quirk_mmap_mode = value;
+        return 0;
+    } else {
+        return -EINVAL;
+    }
+}
+
+/**
+ * udmabuf_quirk_mmap_enable() - check if udmabuf can use quirk mmap 
+ * @this:       Pointer to the udmabuf object.
+ * Return:      Enable(=True) or Disable(=False).
+ */
+static bool udmabuf_quirk_mmap_enable(struct udmabuf_object* this)
+{
+    if (!this)
+        return true;
+
+    if (this->quirk_mmap_mode == QUIRK_MMAP_MODE_ALWAYS_OFF)
+        return false;
+    if (this->quirk_mmap_mode == QUIRK_MMAP_MODE_ALWAYS_ON )
+        return true;
+#if defined(IS_DMA_COHERENT)
+    if (this->quirk_mmap_mode == QUIRK_MMAP_MODE_AUTO      )
+        return !IS_DMA_COHERENT(this->dma_dev);
+#endif
+    return true;
+}
+#endif /* #if (USE_QUIRK_MMAP == 1) */
 
 /**
  * DOC: Udmabuf Device File Operations
@@ -658,7 +725,8 @@ static int udmabuf_device_file_mmap(struct file *file, struct vm_area_struct* vm
     }
     vma->vm_private_data = this;
 
-#if (USE_VMA_FAULT == 1)
+#if (USE_QUIRK_MMAP == 1)
+    if (udmabuf_quirk_mmap_enable(this))
     {
         unsigned long page_frame_num = (this->phys_addr >> PAGE_SHIFT) + vma->vm_pgoff;
         if (pfn_valid(page_frame_num)) {
@@ -966,7 +1034,12 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
         this->of_reserved_mem = 0;
     }
 #endif
-#if ((UDMABUF_DEBUG == 1) && (USE_VMA_FAULT == 1))
+#if (USE_QUIRK_MMAP == 1)
+    {
+        this->quirk_mmap_mode   = quirk_mmap_mode;
+    }
+#endif
+#if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
     {
         this->debug_vma       = 0;
     }
@@ -1065,6 +1138,9 @@ static void udmabuf_object_info(struct udmabuf_object* this)
         dev_info(this->sys_dev, "dma mask       = 0x%016llx\n", dma_get_mask(this->dma_dev));
 #if defined(GET_IOMMU_DOMAIN_TYPE)
         dev_info(this->sys_dev, "iommu domain   = %s\n"       , GET_IOMMU_DOMAIN_TYPE(this->dma_dev));
+#endif
+#if (USE_QUIRK_MMAP == 1)
+        dev_info(this->sys_dev, "quirk mmap     = %d\n"       , udmabuf_quirk_mmap_enable(this));
 #endif
     }
 }
@@ -1715,6 +1791,18 @@ static int udmabuf_platform_device_probe(struct device *dev)
 #endif
     }
 #endif
+#if (USE_QUIRK_MMAP == 1)
+    /*
+     * quirk-mmap-mode property
+     */
+    if (of_property_read_u32(dev->of_node, "quirk-mmap-mode", &u32_value) == 0) {
+        retval = udmabuf_set_quirk_mmap_mode(obj, (int)u32_value);
+        if (retval != 0) {
+            dev_err(dev, "invalid quirk-mmap-mode property value=%d\n", u32_value);
+            goto failed_with_unlock;
+        }
+    }
+#endif
     /*
      * sync-mode property
      */
@@ -2220,7 +2308,8 @@ static inline type u_dma_buf_device_option_ ## name(u64 option) \
     const u64 mask = ((1 << ((hi)-(lo)+1))-1);                  \
     return (type)((option >> (lo)) & mask);                     \
 }
-DEFINE_U_DMA_BUF_OPTION(dma_mask_size,u64,0,7)
+DEFINE_U_DMA_BUF_OPTION(dma_mask_size  ,u64, 0, 7)
+DEFINE_U_DMA_BUF_OPTION(quirk_mmap_mode,int,10,11)
 #endif
 
 /**
@@ -2235,7 +2324,8 @@ DEFINE_U_DMA_BUF_OPTION(dma_mask_size,u64,0,7)
 #if (IN_KERNEL_FUNCTIONS == 1)
 struct device* u_dma_buf_device_create(const char* name, int id, size_t size, u64 option, struct device* parent)
 {
-    int result = 0;
+    int            result = 0;
+    struct device* dev;
 
     if (parent) {
         result = udmabuf_child_device_create(name, id, size, parent);
@@ -2246,8 +2336,16 @@ struct device* u_dma_buf_device_create(const char* name, int id, size_t size, u6
 
     if (result)
         return ERR_PTR(result);
-    else
-        return u_dma_buf_device_search(name, id);
+
+    dev = u_dma_buf_device_search(name, id);
+#if (USE_QUIRK_MMAP == 1)
+    if (!IS_ERR_OR_NULL(dev)) {
+        struct udmabuf_object* this = dev_get_drvdata(dev);
+        int quirk_mmap_mode         = u_dma_buf_device_option_quirk_mmap_mode(option);
+        udmabuf_set_quirk_mmap_mode(this, quirk_mmap_mode);
+    }
+#endif
+    return dev;
 }
 EXPORT_SYMBOL(u_dma_buf_device_create);
 #endif
@@ -2421,7 +2519,7 @@ static int __init u_dma_buf_init(void)
         pr_info(DRIVER_NAME ": "
                 "DEVICE_MAX_NUM="      NUM_TO_STR(DEVICE_MAX_NUM)      ","
                 "UDMABUF_DEBUG="       NUM_TO_STR(UDMABUF_DEBUG)       ","
-                "USE_VMA_FAULT="       NUM_TO_STR(USE_VMA_FAULT)       ","
+                "USE_QUIRK_MMAP="      NUM_TO_STR(USE_QUIRK_MMAP)      ","
         #if defined(IS_DMA_COHERENT)
                 "IS_DMA_COHERENT=1," 
         #endif
