@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.4.0-rc1"
+#define DRIVER_VERSION     "4.4.0-rc2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -589,7 +589,7 @@ static const struct vm_operations_struct udmabuf_mmap_vm_ops = {
  * @value:      quirk mmap mode.
  * Return:      Success(=0) or error status(<0).
  */
-static int  udmabuf_set_quirk_mmap_mode(struct udmabuf_object* this, int value)
+static inline int udmabuf_set_quirk_mmap_mode(struct udmabuf_object* this, int value)
 {
     if (!this)
         return -ENODEV;
@@ -1036,7 +1036,7 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
 #endif
 #if (USE_QUIRK_MMAP == 1)
     {
-        this->quirk_mmap_mode   = quirk_mmap_mode;
+        this->quirk_mmap_mode = quirk_mmap_mode;
     }
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
@@ -1793,14 +1793,22 @@ static int udmabuf_platform_device_probe(struct device *dev)
 #endif
 #if (USE_QUIRK_MMAP == 1)
     /*
-     * quirk-mmap-mode property
+     * quirk-mmap-on  property
      */
-    if (of_property_read_u32(dev->of_node, "quirk-mmap-mode", &u32_value) == 0) {
-        retval = udmabuf_set_quirk_mmap_mode(obj, (int)u32_value);
-        if (retval != 0) {
-            dev_err(dev, "invalid quirk-mmap-mode property value=%d\n", u32_value);
-            goto failed_with_unlock;
-        }
+    if (of_property_read_bool(dev->of_node, "quirk-mmap-on")) {
+        udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_ALWAYS_ON);
+    }
+    /*
+     * quirk-mmap-off property
+     */
+    if (of_property_read_bool(dev->of_node, "quirk-mmap-off")) {
+        udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_ALWAYS_OFF);
+    }
+    /*
+     * quirk-mmap-auto property
+     */
+    if (of_property_read_bool(dev->of_node, "quirk-mmap-auto")) {
+        udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_AUTO);
     }
 #endif
     /*
