@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.4.0-rc2"
+#define DRIVER_VERSION     "4.4.0-rc3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -723,15 +723,15 @@ static int udmabuf_device_file_mmap(struct file *file, struct vm_area_struct* vm
                 break;
         }
     }
-    vma->vm_private_data = this;
 
 #if (USE_QUIRK_MMAP == 1)
     if (udmabuf_quirk_mmap_enable(this))
     {
         unsigned long page_frame_num = (this->phys_addr >> PAGE_SHIFT) + vma->vm_pgoff;
         if (pfn_valid(page_frame_num)) {
-            vma->vm_flags |= VM_PFNMAP;
-            vma->vm_ops    = &udmabuf_mmap_vm_ops;
+            vma->vm_flags       |= VM_PFNMAP;
+            vma->vm_ops          = &udmabuf_mmap_vm_ops;
+            vma->vm_private_data = this;
             udmabuf_mmap_vma_open(vma);
             return 0;
         }
@@ -2325,7 +2325,7 @@ DEFINE_U_DMA_BUF_OPTION(quirk_mmap_mode,int,10,11)
  * @name:       device name or NULL.
  * @id:         device id or negative integer.
  * @size:       buffer size.
- * @option:     option. dma_mask=option[7:0]
+ * @option:     option. dma_mask=option[7:0], quirk_mmap_mode=option[11:10]
  * @parent:     parent device or NULL.
  * Return:      handle to u-dma-buf device structure(>=0) or error status(<0).
  */
@@ -2348,9 +2348,8 @@ struct device* u_dma_buf_device_create(const char* name, int id, size_t size, u6
     dev = u_dma_buf_device_search(name, id);
 #if (USE_QUIRK_MMAP == 1)
     if (!IS_ERR_OR_NULL(dev)) {
-        struct udmabuf_object* this = dev_get_drvdata(dev);
-        int quirk_mmap_mode         = u_dma_buf_device_option_quirk_mmap_mode(option);
-        udmabuf_set_quirk_mmap_mode(this, quirk_mmap_mode);
+        int quirk_mmap_mode = u_dma_buf_device_option_quirk_mmap_mode(option);
+        udmabuf_set_quirk_mmap_mode(dev_get_drvdata(dev), quirk_mmap_mode);
     }
 #endif
     return dev;
