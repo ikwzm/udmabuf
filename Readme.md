@@ -156,7 +156,7 @@ The maximum number of DMA buffers that can be allocated using `insmod` is 8 (udm
 
 ```console
 zynq$ insmod u-dma-buf.ko udmabuf0=1048576
-u-dma-buf udmabuf0: driver version = 4.3.0
+u-dma-buf udmabuf0: driver version = 4.4.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -192,19 +192,20 @@ For details, refer to the following URL.
 
 The u-dma-buf kernel module has the following module parameters:
 
-| Parameter Name | Type  | Default | Description                         |
-|:---------------|:------|---------|:------------------------------------|
-| udmabuf0       | int   |    0    | u-dma-buf0 buffer size              |
-| udmabuf1       | int   |    0    | u-dma-buf1 buffer size              |
-| udmabuf2       | int   |    0    | u-dma-buf2 buffer size              |
-| udmabuf3       | int   |    0    | u-dma-buf3 buffer size              |
-| udmabuf4       | int   |    0    | u-dma-buf4 buffer size              |
-| udmabuf5       | int   |    0    | u-dma-buf5 buffer size              |
-| udmabuf6       | int   |    0    | u-dma-buf6 buffer size              |
-| udmabuf7       | int   |    0    | u-dma-buf7 buffer size              |
-| info_enable    | int   |    1    | install/uninstall infomation enable |
-| dma_mask_bit   | int   |   32    | dma mask bit size                   |
-| bind           | charp |   ""    | bind device name                    |
+| Parameter Name  | Type  | Default | Description                         |
+|:----------------|:------|---------|:------------------------------------|
+| udmabuf0        | int   |    0    | u-dma-buf0 buffer size              |
+| udmabuf1        | int   |    0    | u-dma-buf1 buffer size              |
+| udmabuf2        | int   |    0    | u-dma-buf2 buffer size              |
+| udmabuf3        | int   |    0    | u-dma-buf3 buffer size              |
+| udmabuf4        | int   |    0    | u-dma-buf4 buffer size              |
+| udmabuf5        | int   |    0    | u-dma-buf5 buffer size              |
+| udmabuf6        | int   |    0    | u-dma-buf6 buffer size              |
+| udmabuf7        | int   |    0    | u-dma-buf7 buffer size              |
+| info_enable     | int   |    1    | install/uninstall infomation enable |
+| dma_mask_bit    | int   |   32    | dma mask bit size                   |
+| bind            | charp |   ""    | bind device name                    |
+| quirk_mmap_mode | int   |    3    | quirk mmap mode(1:off,2:on,3:auto)  |
 
 ### `udmabuf[0-7]`
 
@@ -240,7 +241,7 @@ For example, to designate "0000:00:15.0" under the pci bus as the parent device,
 
 ```console
 shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 bind="pci/0000:00:15.0" 
-[13422.022482] u-dma-buf udmabuf0: driver version = 4.3.0
+[13422.022482] u-dma-buf udmabuf0: driver version = 4.4.0
 [13422.022483] u-dma-buf udmabuf0: major number   = 238
 [13422.022483] u-dma-buf udmabuf0: minor number   = 0
 [13422.022484] u-dma-buf udmabuf0: phys address   = 0x0000000070950000
@@ -250,8 +251,17 @@ shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 bind="pci/0000:00
 [13422.022486] u-dma-buf udmabuf0: dma coherent   = 1
 [13422.022487] u-dma-buf udmabuf0: dma mask       = 0x00000000ffffffff
 [13422.022487] u-dma-buf udmabuf0: iommu domain   = NONE
+[13422.022487] u-dma-buf udmabuf0: quirk mmap     = 0
 [13422.022488] u-dma-buf: udmabuf0 installed.
 ```
+
+### `quirk_mmap_mode`
+
+This parameter specifies the default value of quirk-mmap-mode.
+quirk-mmap is described in detail below.
+If this parameter is 1, quirk-mmap is prohibited.
+If this parameter is 2, quirk-mmap is used.
+If This parameter is 3, quirk-mmap is not used if the device has a dma-cohrent of true, and quirk-mmap is used only if dma-coherent is false.
 
 ## Configuration via the device tree file
 
@@ -272,7 +282,7 @@ allocate buffers and create device drivers when loaded by `insmod`.
 
 ```console
 zynq$ insmod u-dma-buf.ko
-u-dma-buf udmabuf0: driver version = 4.3.0
+u-dma-buf udmabuf0: driver version = 4.4.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -295,8 +305,10 @@ The following properties can be set in the device tree.
   *  `sync-direction`
   *  `dma-coherent`
   *  `dma-mask`
+  *  `quirk-mmap-off`
+  *  `quirk-mmap-on`
+  *  `quirk-mmap-auto`
   *  `memory-region`
-
 
 ### `compatible`
 
@@ -497,6 +509,18 @@ Make sure you are familiar with the meaning of dma-mask before setting. **
 			dma-mask = <64>;
 		};
 ```
+
+### `quirk-mmap-off`
+
+If the `quirk-mmap-off` property is specified, quirk-mmap. is not used.
+
+### `quirk-mmap-on`
+
+If the `quirk-mmap-on` property is specified, quirk-mmap. is used.
+
+### `quirk-mmap-auto`
+
+If the `quirk-mmap-auto` property is specified, quirk-mmap is not used if the device has a dma-cohrent of true, and quirk-mmap is used only if dma-coherent is false.
 
 ### `memory-region`
 
@@ -1184,6 +1208,8 @@ If a problem occurs, either cache coherency is maintained by hardware, or use a 
 ### 2. Manual cache management with the CPU cache still being enabled
 
 As explained above, by opening u-dma-buf without specifying the `O_SYNC` flag, CPU cache can be left turned on.
+However, for ARM or ARM64, this is only possible if quirk-mmap is enabled.
+quirk-mmap will be discussed in detail later.
 
 ```C:u-dma-buf_test.c
     /* To enable CPU cache on the DMA buffer, */
@@ -1225,6 +1251,16 @@ flushed using data on the main memory.
 However, if the `dma-coherent` property is specified in the device tree, CPU cache
 is not invalidated and flushed.
 
+**Note: What is quirk-mmap?**
+
+The Linux Kernel mainline turns off caching when doing mmap() for architectures
+such as ARM and ARM64 where cache aliasing problems can occur.
+
+However, u-dma-buf provides quirk-mmap to enable caching in cases where the above
+architecture does not cause cache alias problems.
+The quirk-mmap is u-dma-buf's own mmap mechanism and does not utilize the dma_mmap_coherent()
+provided by the dma-mapping API in the linux kernel.
+This may cause problems in some cases, so please be careful when using it.
 
 # Example using u-dma-buf with Python
 
@@ -1341,7 +1377,7 @@ Install u-dma-buf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
 
 ```console
 zynq# insmod u-dma-buf.ko udmabuf0=8388608
-[34654.627150] u-dma-buf udmabuf0: driver version = 4.3.0
+[34654.627150] u-dma-buf udmabuf0: driver version = 4.4.0
 [34654.627153] u-dma-buf udmabuf0: major number   = 237
 [34654.631889] u-dma-buf udmabuf0: minor number   = 0
 [34654.636685] u-dma-buf udmabuf0: phys address   = 0x1f300000
