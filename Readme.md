@@ -156,7 +156,7 @@ The maximum number of DMA buffers that can be allocated using `insmod` is 8 (udm
 
 ```console
 zynq$ insmod u-dma-buf.ko udmabuf0=1048576
-u-dma-buf udmabuf0: driver version = 4.4.0
+u-dma-buf udmabuf0: driver version = 4.4.1
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -205,7 +205,7 @@ The u-dma-buf kernel module has the following module parameters:
 | info_enable     | int   |    1    | install/uninstall infomation enable |
 | dma_mask_bit    | int   |   32    | dma mask bit size                   |
 | bind            | charp |   ""    | bind device name                    |
-| quirk_mmap_mode | int   |    3    | quirk mmap mode(1:off,2:on,3:auto)  |
+| quirk_mmap_mode | int   | 2 or 3  | quirk mmap mode(1:off,2:on,3:auto)  |
 
 ### `udmabuf[0-7]`
 
@@ -241,7 +241,7 @@ For example, to designate "0000:00:15.0" under the pci bus as the parent device,
 
 ```console
 shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 bind="pci/0000:00:15.0" 
-[13422.022482] u-dma-buf udmabuf0: driver version = 4.4.0
+[13422.022482] u-dma-buf udmabuf0: driver version = 4.4.1
 [13422.022483] u-dma-buf udmabuf0: major number   = 238
 [13422.022483] u-dma-buf udmabuf0: minor number   = 0
 [13422.022484] u-dma-buf udmabuf0: phys address   = 0x0000000070950000
@@ -257,11 +257,14 @@ shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 bind="pci/0000:00
 
 ### `quirk_mmap_mode`
 
-This parameter specifies the default value of quirk-mmap-mode.
-quirk-mmap is described in detail below.
-If this parameter is 1, quirk-mmap is prohibited.
-If this parameter is 2, quirk-mmap is used.
-If This parameter is 3, quirk-mmap is not used if the device has a dma-cohrent of true, and quirk-mmap is used only if dma-coherent is false.
+This parameter specifies the default value of quirk-mmap-mode. 
+quirk-mmap is described in detail below.   
+If this parameter is 1, quirk-mmap is prohibited.  
+If this parameter is 2, quirk-mmap is used.   
+If this parameter is 3, quirk-mmap is not used if the device has a dma-cohrent of true, and quirk-mmap is used only if dma-coherent is false.  
+
+If the architecture is ARM or ARM64, this parameter defaults to 2.   
+If the architecture is other than the above, this parameter defaults to 3.   
 
 ## Configuration via the device tree file
 
@@ -282,7 +285,7 @@ allocate buffers and create device drivers when loaded by `insmod`.
 
 ```console
 zynq$ insmod u-dma-buf.ko
-u-dma-buf udmabuf0: driver version = 4.4.0
+u-dma-buf udmabuf0: driver version = 4.4.1
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -1377,7 +1380,7 @@ Install u-dma-buf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
 
 ```console
 zynq# insmod u-dma-buf.ko udmabuf0=8388608
-[34654.627150] u-dma-buf udmabuf0: driver version = 4.4.0
+[34654.627150] u-dma-buf udmabuf0: driver version = 4.4.1
 [34654.627153] u-dma-buf udmabuf0: major number   = 237
 [34654.631889] u-dma-buf udmabuf0: minor number   = 0
 [34654.636685] u-dma-buf udmabuf0: phys address   = 0x1f300000

@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.4.0"
+#define DRIVER_VERSION     "4.4.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -168,8 +168,11 @@ MODULE_PARM_DESC( bind, "bind device name. exp pci/0000:00:20:0");
 #define  QUIRK_MMAP_MODE_ALWAYS_OFF  1
 #define  QUIRK_MMAP_MODE_ALWAYS_ON   2
 #define  QUIRK_MMAP_MODE_AUTO        3
-
+#if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+static int        quirk_mmap_mode = QUIRK_MMAP_MODE_ALWAYS_ON;
+#else
 static int        quirk_mmap_mode = QUIRK_MMAP_MODE_AUTO;
+#endif
 module_param(     quirk_mmap_mode, int, S_IRUGO);
 MODULE_PARM_DESC( quirk_mmap_mode, "udmabuf default quirk mmap mode(1:off,2:on,3:auto)(default=3)");
 #endif /* #if (USE_QUIRK_MMAP == 1) */
