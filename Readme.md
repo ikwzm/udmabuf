@@ -1355,23 +1355,22 @@ def test_1(a):
 if __name__ == '__main__':
     udmabuf      = Udmabuf('udmabuf0')
     test_dtype   = np.uint8
-    test_size    = udmabuf.buf_size/(np.dtype(test_dtype).itemsize)
+    test_size    = udmabuf.buf_size//(np.dtype(test_dtype).itemsize)
     udmabuf.memmap(dtype=test_dtype, shape=(test_size))
     comparison   = np.zeros(test_size, dtype=test_dtype)
     print ("test_size  : %d" % test_size)
     start        = time.time()
-    test_1(udmabuf.mem_map)
+    test_1(udmabuf.array)
     elapsed_time = time.time() - start
-    print ("udmabuf-0   : elapsed_time:{0}".format(elapsed_time)) + "[sec]"
+    print ("udmabuf0   : elapsed_time:{0}".format(elapsed_time) + "[sec]")
     start        = time.time()
     test_1(comparison)
     elapsed_time = time.time() - start
-    print ("comparison : elapsed_time:{0}".format(elapsed_time)) + "[sec]"
-    if np.array_equal(udmabuf.mem_map, comparison):
-        print ("udmabuf-0 == comparison : OK")
+    print ("comparison : elapsed_time:{0}".format(elapsed_time) + "[sec]")
+    if np.array_equal(udmabuf.array, comparison):
+        print ("udmabuf0 == comparison : OK")
     else:
-        print ("udmabuf-0 != comparison : NG")
-
+        print ("udmabuf0 != comparison : NG")
 ```
 
 ## Execution result
@@ -1380,21 +1379,21 @@ Install u-dma-buf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
 
 ```console
 zynq# insmod u-dma-buf.ko udmabuf0=8388608
-[34654.627150] u-dma-buf udmabuf0: driver version = 4.4.1
-[34654.627153] u-dma-buf udmabuf0: major number   = 237
-[34654.631889] u-dma-buf udmabuf0: minor number   = 0
-[34654.636685] u-dma-buf udmabuf0: phys address   = 0x1f300000
-[34654.642002] u-dma-buf udmabuf0: buffer size    = 8388608
-[34654.642020] u-dma-buf u-dma-buf.0: driver installed.
+[ 1183.911189] u-dma-buf udmabuf0: driver version = 4.4.1
+[ 1183.921238] u-dma-buf udmabuf0: major number   = 240
+[ 1183.931275] u-dma-buf udmabuf0: minor number   = 0
+[ 1183.936063] u-dma-buf udmabuf0: phys address   = 0x0000000041600000
+[ 1183.942328] u-dma-buf udmabuf0: buffer size    = 8388608
+[ 1183.947641] u-dma-buf u-dma-buf.0: driver installed.
 ```
 
 Executing the script in the previous section gives the following results.
 
 ```console
-zynq# python udmabuf_test.py
+zynq# python3 udmabuf_test.py
 test_size  : 8388608
-udmabuf0   : elapsed_time:1.53304982185[sec]
-comparison : elapsed_time:1.536673069[sec]
+udmabuf0   : elapsed_time:0.11204075813293457[sec]
+comparison : elapsed_time:0.11488151550292969[sec]
 udmabuf0 == comparison : OK
 ```
 
