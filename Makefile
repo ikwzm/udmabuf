@@ -31,22 +31,11 @@ else
   KERNEL_SRC_DIR ?= /lib/modules/$(shell uname -r)/build
 endif
 
-ifndef BUILD_TARGET
-  ifdef KERNELVERSION
-    KERNEL_VERSION_LT_5 ?= $(shell echo $(KERNELVERSION) | awk -F. '{print $$1 < 5}')
-  else
-    KERNEL_VERSION_LT_5 ?= $(shell awk '/^VERSION/{print int($$3) < 5}' $(KERNEL_SRC_DIR)/Makefile)
-  endif
-  ifeq ($(KERNEL_VERSION_LT_5), 1)
-    BUILD_TARGET ?= modules
-  endif
-endif
-
 #
 # For out of kernel tree rules
 #
 all:
-	$(MAKE) -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) $(CONFIG_MODULES) $(BUILD_TARGET)
+	$(MAKE) -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) $(CONFIG_MODULES) modules
 
 modules_install:
 	$(MAKE) -C $(KERNEL_SRC_DIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) $(CONFIG_MODULES) modules_install
