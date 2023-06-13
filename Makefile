@@ -9,6 +9,8 @@ obj-$(CONFIG_U_DMA_BUF) += u-dma-buf.o
 #
 # For out of kernel tree variables
 #
+CONFIG_MODULES ?= CONFIG_U_DMA_BUF=m
+
 HOST_ARCH ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
 ARCH      ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
 
@@ -38,10 +40,6 @@ ifndef BUILD_TARGET
   ifeq ($(KERNEL_VERSION_LT_5), 1)
     BUILD_TARGET ?= modules
   endif
-endif
-
-ifndef CONFIG_MODULES
-  CONFIG_MODULES := CONFIG_U_DMA_BUF=m
 endif
 
 #
