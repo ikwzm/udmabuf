@@ -2262,7 +2262,9 @@ static int udmabuf_platform_driver_remove(struct platform_device *pdev)
 
     retval = udmabuf_platform_device_remove(&pdev->dev, this);
 
-    if (info_enable) {
+    if (retval != 0) {
+        dev_err(&pdev->dev, "driver remove failed. return=%d\n", retval);
+    } else if (info_enable) {
         dev_info(&pdev->dev, "driver removed.\n");
     }
     return retval;
