@@ -1580,7 +1580,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
     if (IS_ERR_OR_NULL(entry)) {
         retval = PTR_ERR(entry);
         entry  = NULL;
-        pr_err(DRIVER_NAME ": platform device create entry failed. return=%d\n", retval);
+        pr_err(DRIVER_NAME ": device create entry failed. return=%d\n", retval);
         goto failed;
     }
 
@@ -1720,7 +1720,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
     obj = udmabuf_object_create(device_name, dev, minor_number);
     if (IS_ERR_OR_NULL(obj)) {
         retval = PTR_ERR(obj);
-        dev_err(dev, "driver create failed. return=%d\n", retval);
+        dev_err(dev, "object create failed. return=%d\n", retval);
         obj = NULL;
         retval = (retval == 0) ? -EINVAL : retval;
         goto failed;
@@ -1875,7 +1875,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
      */
     retval = udmabuf_object_setup(obj);
     if (retval) {
-        dev_err(dev, "driver setup failed. return=%d\n", retval);
+        dev_err(dev, "object setup failed. return=%d\n", retval);
         goto failed_with_unlock;
     }
 
@@ -1983,7 +1983,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
     if (IS_ERR_OR_NULL(entry)) {
         retval = PTR_ERR(entry);
         entry  = NULL;
-        dev_err(obj->sys_dev, ": device create entry failed. return=%d\n", retval);
+        dev_err(obj->sys_dev, "device create entry failed. return=%d\n", retval);
         goto failed_with_unlock;
     }
     /*
