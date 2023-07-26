@@ -2238,8 +2238,10 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     dev_dbg(&pdev->dev, "driver probe start.\n");
 
     retval = udmabuf_platform_device_probe(&pdev->dev);
-    
-    if (info_enable) {
+
+    if (retval != 0) {
+        dev_err(&pdev->dev, "driver probe failed. return=%d\n", retval);
+    } else if (info_enable) {
         dev_info(&pdev->dev, "driver installed.\n");
     }
     return retval;
