@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.4.4"
+#define DRIVER_VERSION     "4.5.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1580,7 +1580,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
     if (IS_ERR_OR_NULL(entry)) {
         retval = PTR_ERR(entry);
         entry  = NULL;
-        pr_err(DRIVER_NAME ": platform device create entry failed. return=%d\n", retval);
+        pr_err(DRIVER_NAME ": device create entry failed. return=%d\n", retval);
         goto failed;
     }
 
@@ -1593,6 +1593,13 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
         goto failed;
     }
 
+    if (dev_get_drvdata(&pdev->dev) == NULL) {
+        pr_err(DRIVER_NAME ": object of %s is none.", dev_name(&pdev->dev));
+        platform_device_del(pdev);
+        retval = -ENODEV;
+        goto failed;
+    }
+    
     return 0;
 
  failed:
@@ -1720,7 +1727,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
     obj = udmabuf_object_create(device_name, dev, minor_number);
     if (IS_ERR_OR_NULL(obj)) {
         retval = PTR_ERR(obj);
-        dev_err(dev, "driver create failed. return=%d\n", retval);
+        dev_err(dev, "object create failed. return=%d\n", retval);
         obj = NULL;
         retval = (retval == 0) ? -EINVAL : retval;
         goto failed;
@@ -1875,7 +1882,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
      */
     retval = udmabuf_object_setup(obj);
     if (retval) {
-        dev_err(dev, "driver setup failed. return=%d\n", retval);
+        dev_err(dev, "object setup failed. return=%d\n", retval);
         goto failed_with_unlock;
     }
 
@@ -1890,7 +1897,11 @@ static int udmabuf_platform_device_probe(struct device *dev)
  failed_with_unlock:
     mutex_unlock(&obj->sem);
  failed:
-    udmabuf_platform_device_remove(dev, obj);
+    if (obj != NULL) {
+        udmabuf_platform_device_remove(dev, obj);
+    } else {
+        dev_set_drvdata(dev, NULL);
+    }
 
     return retval;
 }
@@ -1979,7 +1990,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
     if (IS_ERR_OR_NULL(entry)) {
         retval = PTR_ERR(entry);
         entry  = NULL;
-        dev_err(obj->sys_dev, ": device create entry failed. return=%d\n", retval);
+        dev_err(obj->sys_dev, "device create entry failed. return=%d\n", retval);
         goto failed_with_unlock;
     }
     /*
@@ -2234,8 +2245,10 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     dev_dbg(&pdev->dev, "driver probe start.\n");
 
     retval = udmabuf_platform_device_probe(&pdev->dev);
-    
-    if (info_enable) {
+
+    if (retval != 0) {
+        dev_err(&pdev->dev, "driver probe failed. return=%d\n", retval);
+    } else if (info_enable) {
         dev_info(&pdev->dev, "driver installed.\n");
     }
     return retval;
@@ -2256,7 +2269,9 @@ static int udmabuf_platform_driver_remove(struct platform_device *pdev)
 
     retval = udmabuf_platform_device_remove(&pdev->dev, this);
 
-    if (info_enable) {
+    if (retval != 0) {
+        dev_err(&pdev->dev, "driver remove failed. return=%d\n", retval);
+    } else if (info_enable) {
         dev_info(&pdev->dev, "driver removed.\n");
     }
     return retval;
