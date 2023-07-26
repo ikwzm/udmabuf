@@ -1593,6 +1593,13 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
         goto failed;
     }
 
+    if (dev_get_drvdata(&pdev->dev) == NULL) {
+        pr_err(DRIVER_NAME ": object of %s is none.", dev_name(&pdev->dev));
+        platform_device_del(pdev);
+        retval = -ENODEV;
+        goto failed;
+    }
+    
     return 0;
 
  failed:
