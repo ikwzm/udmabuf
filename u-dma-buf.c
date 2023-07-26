@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.4.3"
+#define DRIVER_VERSION     "4.5.0-RC1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1890,7 +1890,11 @@ static int udmabuf_platform_device_probe(struct device *dev)
  failed_with_unlock:
     mutex_unlock(&obj->sem);
  failed:
-    udmabuf_platform_device_remove(dev, obj);
+    if (obj != NULL) {
+        udmabuf_platform_device_remove(dev, obj);
+    } else {
+        dev_set_drvdata(dev, NULL);
+    }
 
     return retval;
 }
