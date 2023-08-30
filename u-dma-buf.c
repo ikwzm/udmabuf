@@ -59,14 +59,14 @@
 #include <asm/byteorder.h>
 
 /**
- * DOC: Udmabuf Constants 
+ * DOC: Udmabuf Constants.
  */
 
 MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.6.0-RC1"
+#define DRIVER_VERSION     "4.5.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -117,7 +117,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 #endif
 
 /**
- * DOC: Udmabuf Static Variables
+ * DOC: Udmabuf Static Variables.
  *
  * * udmabuf_sys_class - udmabuf system class
  * * init_enable       - udmabuf install/uninstall infomation enable
@@ -172,7 +172,7 @@ MODULE_PARM_DESC( quirk_mmap_mode, "udmabuf default quirk mmap mode(1:off,2:on,3
 #endif /* #if (USE_QUIRK_MMAP == 1) */
 
 /**
- * DOC: Udmabuf Device Data Structure
+ * DOC: Udmabuf Object Data Structure.
  *
  * This section defines the structure of udmabuf device.
  *
@@ -229,7 +229,7 @@ struct udmabuf_object {
 #define SYNC_ALWAYS             (0x04)
 
 /**
- * DOC: Udmabuf System Class Device File Description
+ * DOC: Udmabuf System Class Device File Description.
  *
  * This section define the device file created in system class when udmabuf is 
  * loaded into the kernel.
@@ -462,14 +462,16 @@ static inline void udmabuf_sys_class_set_attributes(void)
 
 #if (USE_QUIRK_MMAP == 1)
 /**
- * DOC: Udmabuf Device File VM Area Operations
+ * DOC: Udmabuf Object VM Area Operations for quirk-mmap.
  *
- * This section defines the operation of vm when mmap-ed the udmabuf device file.
+ * This section defines the operation of vm when mmap-ed the udmabuf object.
  *
- * * udmabuf_mmap_vma_open()  - udmabuf device file mmap vm area open operation.
- * * udmabuf_mmap_vma_close() - udmabuf device file mmap vm area close operation.
- * * udmabuf_mmap_vma_fault() - udmabuf device file mmap vm area fault operation.
- * * udmabuf_mmap_vm_ops      - udmabuf device file mmap vm operation table.
+ * * udmabuf_mmap_vma_open()       - udmabuf object quirk-mmap vm area open operation.
+ * * udmabuf_mmap_vma_close()      - udmabuf object quirk-mmap vm area close operation.
+ * * udmabuf_mmap_vma_fault()      - udmabuf object quirk-mmap vm area fault operation.
+ * * udmabuf_mmap_vm_ops           - udmabuf object quirk-mmap vm operation table.
+ * * udmabuf_set_quirk_mmap_mode() - set quirk-mmap in udmabuf object.
+ * * udmabuf_quirk_mmap_enable()   - check if udmabuf object can use quirk-mmap.
  */
 /**
  * udmabuf_mmap_vma_open() - udmabuf device file mmap vm area open operation.
@@ -583,13 +585,11 @@ static const struct vm_operations_struct udmabuf_mmap_vm_ops = {
     .close   = udmabuf_mmap_vma_close,
     .fault   = udmabuf_mmap_vma_fault,
 };
-#endif /* #if (USE_QUIRK_MMAP == 1) */
 
-#if (USE_QUIRK_MMAP == 1)
 /**
- * udmabuf_set_quirk_mmap_mode() - set udmabuf quirk mmap 
+ * udmabuf_set_quirk_mmap_mode() - set quirk-mmap in udmabuf object.
  * @this:       Pointer to the udmabuf object.
- * @value:      quirk mmap mode.
+ * @value:      quirk-mmap mode.
  * Return:      Success(=0) or error status(<0).
  */
 static inline int udmabuf_set_quirk_mmap_mode(struct udmabuf_object* this, int value)
@@ -608,7 +608,7 @@ static inline int udmabuf_set_quirk_mmap_mode(struct udmabuf_object* this, int v
 }
 
 /**
- * udmabuf_quirk_mmap_enable() - check if udmabuf can use quirk mmap 
+ * udmabuf_quirk_mmap_enable() - check if udmabuf object can use quirk-mmap.
  * @this:       Pointer to the udmabuf object.
  * Return:      Enable(=True) or Disable(=False).
  */
@@ -630,7 +630,84 @@ static bool udmabuf_quirk_mmap_enable(struct udmabuf_object* this)
 #endif /* #if (USE_QUIRK_MMAP == 1) */
 
 /**
- * DOC: Udmabuf Device File Operations
+ * DOC: Udmabuf Object Memory Map Operation.
+ */
+/**
+ * _PGPROT_NONCACHED     - vm_page_prot value when sync_mode is SYNC_MODE_NONCACHED
+ * _PGPROT_WRITECOMBINE  - vm_page_prot value when sync_mode is SYNC_MODE_WRITECOMBINE
+ * _PGPROT_DMACOHERENT   - vm_page_prot value when sync_mode is SYNC_MODE_DMACOHERENT
+ */
+#if     defined(CONFIG_ARM)
+#define _PGPROT_NONCACHED(vm_page_prot)    pgprot_noncached(vm_page_prot)
+#define _PGPROT_WRITECOMBINE(vm_page_prot) pgprot_writecombine(vm_page_prot)
+#define _PGPROT_DMACOHERENT(vm_page_prot)  pgprot_dmacoherent(vm_page_prot)
+#elif   defined(CONFIG_ARM64)
+#define _PGPROT_NONCACHED(vm_page_prot)    pgprot_noncached(vm_page_prot)
+#define _PGPROT_WRITECOMBINE(vm_page_prot) pgprot_writecombine(vm_page_prot)
+#define _PGPROT_DMACOHERENT(vm_page_prot)  pgprot_writecombine(vm_page_prot)
+#else
+#define _PGPROT_NONCACHED(vm_page_prot)    pgprot_noncached(vm_page_prot)
+#define _PGPROT_WRITECOMBINE(vm_page_prot) pgprot_writecombine(vm_page_prot)
+#define _PGPROT_DMACOHERENT(vm_page_prot)  pgprot_writecombine(vm_page_prot)
+#endif
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0))
+static inline void vm_flags_set(struct vm_area_struct* vma, vm_flags_t flags)
+{
+    vma->vm_flags |= flags;
+}
+#endif
+
+/**
+ * udmabuf_object_mmap() - udmabuf object memory map operation.
+ * @this:       Pointer to the udmabuf object.
+ * @vma:        Pointer to the vm area structure.
+ * @force_sync  Force sync flag.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int udmabuf_object_mmap(struct udmabuf_object* this, struct vm_area_struct* vma, bool force_sync)
+{
+    if (vma->vm_pgoff + vma_pages(vma) > (this->alloc_size >> PAGE_SHIFT))
+        return -EINVAL;
+
+    if ((force_sync == true) | (this->sync_mode & SYNC_ALWAYS)) {
+        switch (this->sync_mode & SYNC_MODE_MASK) {
+            case SYNC_MODE_NONCACHED :
+                vm_flags_set(vma, VM_IO);
+                vma->vm_page_prot = _PGPROT_NONCACHED(vma->vm_page_prot);
+                break;
+            case SYNC_MODE_WRITECOMBINE :
+                vm_flags_set(vma, VM_IO);
+                vma->vm_page_prot = _PGPROT_WRITECOMBINE(vma->vm_page_prot);
+                break;
+            case SYNC_MODE_DMACOHERENT :
+                vm_flags_set(vma, VM_IO);
+                vma->vm_page_prot = _PGPROT_DMACOHERENT(vma->vm_page_prot);
+                break;
+            default :
+                break;
+        }
+    }
+
+#if (USE_QUIRK_MMAP == 1)
+    if (udmabuf_quirk_mmap_enable(this))
+    {
+        unsigned long page_frame_num = (this->phys_addr >> PAGE_SHIFT) + vma->vm_pgoff;
+        if (pfn_valid(page_frame_num)) {
+            vm_flags_set(vma, VM_PFNMAP);
+            vma->vm_ops          = &udmabuf_mmap_vm_ops;
+            vma->vm_private_data = this;
+            udmabuf_mmap_vma_open(vma);
+            return 0;
+        }
+    }
+#endif
+
+    return dma_mmap_coherent(this->dma_dev, vma, this->virt_addr, this->phys_addr, this->alloc_size);
+}
+
+/**
+ * DOC: Udmabuf Device File Operations.
  *
  * This section defines the operation of the udmabuf device file.
  *
@@ -677,32 +754,6 @@ static int udmabuf_device_file_release(struct inode *inode, struct file *file)
 }
 
 /**
- * _PGPROT_NONCACHED    : vm_page_prot value when ((sync_mode & SYNC_MODE_MASK) == SYNC_MODE_NONCACHED   )
- * _PGPROT_WRITECOMBINE : vm_page_prot value when ((sync_mode & SYNC_MODE_MASK) == SYNC_MODE_WRITECOMBINE)
- * _PGPROT_DMACOHERENT  : vm_page_prot value when ((sync_mode & SYNC_MODE_MASK) == SYNC_MODE_DMACOHERENT )
- */
-#if     defined(CONFIG_ARM)
-#define _PGPROT_NONCACHED(vm_page_prot)    pgprot_noncached(vm_page_prot)
-#define _PGPROT_WRITECOMBINE(vm_page_prot) pgprot_writecombine(vm_page_prot)
-#define _PGPROT_DMACOHERENT(vm_page_prot)  pgprot_dmacoherent(vm_page_prot)
-#elif   defined(CONFIG_ARM64)
-#define _PGPROT_NONCACHED(vm_page_prot)    pgprot_noncached(vm_page_prot)
-#define _PGPROT_WRITECOMBINE(vm_page_prot) pgprot_writecombine(vm_page_prot)
-#define _PGPROT_DMACOHERENT(vm_page_prot)  pgprot_writecombine(vm_page_prot)
-#else
-#define _PGPROT_NONCACHED(vm_page_prot)    pgprot_noncached(vm_page_prot)
-#define _PGPROT_WRITECOMBINE(vm_page_prot) pgprot_writecombine(vm_page_prot)
-#define _PGPROT_DMACOHERENT(vm_page_prot)  pgprot_writecombine(vm_page_prot)
-#endif
-
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0))
-static inline void vm_flags_set(struct vm_area_struct* vma, vm_flags_t flags)
-{
-    vma->vm_flags |= flags;
-}
-#endif
-
-/**
  * udmabuf_device_file_mmap() - udmabuf device file memory map operation.
  * @file:       Pointer to the file structure.
  * @vma:        Pointer to the vm area structure.
@@ -711,44 +762,9 @@ static inline void vm_flags_set(struct vm_area_struct* vma, vm_flags_t flags)
 static int udmabuf_device_file_mmap(struct file *file, struct vm_area_struct* vma)
 {
     struct udmabuf_object* this = file->private_data;
+    bool force_sync = ((file->f_flags & O_SYNC) != 0);
 
-    if (vma->vm_pgoff + vma_pages(vma) > (this->alloc_size >> PAGE_SHIFT))
-        return -EINVAL;
-
-    if ((file->f_flags & O_SYNC) | (this->sync_mode & SYNC_ALWAYS)) {
-        switch (this->sync_mode & SYNC_MODE_MASK) {
-            case SYNC_MODE_NONCACHED :
-                vm_flags_set(vma, VM_IO);
-                vma->vm_page_prot = _PGPROT_NONCACHED(vma->vm_page_prot);
-                break;
-            case SYNC_MODE_WRITECOMBINE :
-                vm_flags_set(vma, VM_IO);
-                vma->vm_page_prot = _PGPROT_WRITECOMBINE(vma->vm_page_prot);
-                break;
-            case SYNC_MODE_DMACOHERENT :
-                vm_flags_set(vma, VM_IO);
-                vma->vm_page_prot = _PGPROT_DMACOHERENT(vma->vm_page_prot);
-                break;
-            default :
-                break;
-        }
-    }
-
-#if (USE_QUIRK_MMAP == 1)
-    if (udmabuf_quirk_mmap_enable(this))
-    {
-        unsigned long page_frame_num = (this->phys_addr >> PAGE_SHIFT) + vma->vm_pgoff;
-        if (pfn_valid(page_frame_num)) {
-            vm_flags_set(vma, VM_PFNMAP);
-            vma->vm_ops          = &udmabuf_mmap_vm_ops;
-            vma->vm_private_data = this;
-            udmabuf_mmap_vma_open(vma);
-            return 0;
-        }
-    }
-#endif
-
-    return dma_mmap_coherent(this->dma_dev, vma, this->virt_addr, this->phys_addr, this->alloc_size);
+    return udmabuf_object_mmap(this, vma, force_sync);
 }
 
 /**
@@ -890,7 +906,7 @@ static const struct file_operations udmabuf_device_file_ops = {
 };
 
 /**
- * DOC: Udmabuf Object Operations
+ * DOC: Udmabuf Object Operations.
  *
  * This section defines the operation of udmabuf object.
  *
@@ -1180,7 +1196,7 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
 }
 
 /**
- * DOC: Udmabuf Device List.
+ * DOC: Udmabuf Device List section.
  *
  * This section defines the udmabuf device list.
  *
@@ -2026,7 +2042,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
 }
 
 /**
- * DOC: Udmabuf Static Devices.
+ * DOC: Udmabuf Static Devices section.
  *
  * This section defines the udmabuf device to be created with arguments when loaded
  * into ther kernel with insmod.
@@ -2221,7 +2237,7 @@ static int udmabuf_static_device_create_all(void)
 }
 
 /**
- * DOC: Udmabuf Platform Driver
+ * DOC: Udmabuf Platform Driver section.
  *
  * This section defines the udmabuf platform driver.
  *
@@ -2300,7 +2316,7 @@ static struct platform_driver udmabuf_platform_driver = {
 };
 
 /**
- * DOC: u-dma-buf Device In-Kernel Interface
+ * DOC: u-dma-buf Device In-Kernel Interface.
  *
  * * u_dma_buf_device_search()           - Search u-dma-buf device by name or id.
  * * u_dma_buf_device_create()           - Create u-dma-buf device for in-kernel.
@@ -2517,7 +2533,7 @@ EXPORT_SYMBOL(u_dma_buf_available_bus_type_list);
 #endif
 
 /**
- * DOC: u-dma-buf Kernel Module Operations
+ * DOC: u-dma-buf Kernel Module Operations.
  *
  * * u_dma_buf_cleanup()
  * * u_dma_buf_init()
