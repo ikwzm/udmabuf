@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.5.0"
+#define DRIVER_VERSION     "4.6.0-RC1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -106,12 +106,6 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define USE_DEV_PROPERTY    1
 #else
 #define USE_DEV_PROPERTY    0
-#endif
-
-#if     (UDMABUF_DEBUG == 1)
-#define UDMABUF_DEBUG_CHECK(this,debug) (this->debug)
-#else
-#define UDMABUF_DEBUG_CHECK(this,debug) (0)
 #endif
 
 #if     (USE_OF_RESERVED_MEM == 1)
@@ -215,6 +209,12 @@ struct udmabuf_object {
     bool                 debug_vma;
 #endif
 };
+
+#if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
+#define UDMABUF_VMA_DEBUG(this) (this->debug_vma)
+#else
+#define UDMABUF_VMA_DEBUG(this) (0)
+#endif
 
 /**
  * sync_mode(synchronous mode) value
@@ -479,7 +479,7 @@ static inline void udmabuf_sys_class_set_attributes(void)
 static void udmabuf_mmap_vma_open(struct vm_area_struct* vma)
 {
     struct udmabuf_object* this = vma->vm_private_data;
-    if (UDMABUF_DEBUG_CHECK(this, debug_vma))
+    if (UDMABUF_VMA_DEBUG(this))
         dev_info(this->dma_dev, "vma_open(virt_addr=0x%lx, offset=0x%lx)\n", vma->vm_start, vma->vm_pgoff<<PAGE_SHIFT);
 }
 
@@ -491,7 +491,7 @@ static void udmabuf_mmap_vma_open(struct vm_area_struct* vma)
 static void udmabuf_mmap_vma_close(struct vm_area_struct* vma)
 {
     struct udmabuf_object* this = vma->vm_private_data;
-    if (UDMABUF_DEBUG_CHECK(this, debug_vma))
+    if (UDMABUF_VMA_DEBUG(this))
         dev_info(this->dma_dev, "vma_close()\n");
 }
 
@@ -526,7 +526,7 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
     virt_addr = (unsigned long)vmf->virtual_address;
 #endif
 
-    if (UDMABUF_DEBUG_CHECK(this, debug_vma))
+    if (UDMABUF_VMA_DEBUG(this))
         dev_info(this->dma_dev,
                  "vma_fault(virt_addr=%pad, phys_addr=%pad)\n", &virt_addr, &phys_addr
         );
