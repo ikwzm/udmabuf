@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.6.0-RC1"
+#define DRIVER_VERSION     "4.6.0-RC2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -111,6 +111,11 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 #if     (USE_OF_RESERVED_MEM == 1)
 #include <linux/of_reserved_mem.h>
+#endif
+
+#if     (USE_DMA_BUF_EXPORT == 1)
+#include <linux/dma-buf.h>
+MODULE_IMPORT_NS(DMA_BUF);
 #endif
 
 #ifndef U64_MAX
@@ -206,6 +211,7 @@ struct udmabuf_object {
 #if (USE_DMA_BUF_EXPORT == 1)
     int                  export;
     int                  export_fd;
+    struct dma_buf*      export_dma_buf;
 #endif
 #if (USE_OF_RESERVED_MEM == 1)
     bool                 of_reserved_mem;
@@ -362,21 +368,24 @@ static int udmabuf_sync_for_device(struct udmabuf_object* this)
 }
 
 /**
- * udmabuf_export_request()  -  call udmabuf_export_setup() when (export != 0)
+ * udmabuf_export_request() - call udmabuf_export_dma_buf_get() when (export != 0)
+ *                            call udmabuf_export_dma_buf_get() when (export == 0)
  * @this:       Pointer to the udmabuf object.
  * Return:      Success(=0) or error status(<0).
  */
 #if (USE_DMA_BUF_EXPORT == 1)
-static int udmabuf_export_setup(struct udmabuf_object* this, bool cloexec);
+static int udmabuf_export_dma_buf_get(struct udmabuf_object* this, bool cloexec);
+static int udmabuf_export_dma_buf_put(struct udmabuf_object* this);
 static int udmabuf_export_request(struct udmabuf_object* this)
 {
     int status = 0;
 
-    if (this->export) {
-        status = udmabuf_export_setup(this, false);
-        this->export = 0;
+    if ((this->export == 1) && (this->export_dma_buf == NULL)){
+        status = udmabuf_export_dma_buf_get(this, false);
     }
-
+    if ((this->export == 0) && (this->export_dma_buf != NULL)){
+        status = udmabuf_export_dma_buf_put(this);
+    }
     return status;
 }
 #endif
@@ -961,8 +970,6 @@ static const struct file_operations udmabuf_device_file_ops = {
  * DOC: Udmabuf dma-buf subsystem Operations.
  */
 #if (USE_DMA_BUF_EXPORT == 1)
-#include <linux/dma-buf.h>
-MODULE_IMPORT_NS(DMA_BUF);
 /**
  * udmabuf_export_dma_buf_map() -  dma-buf map operation.
  * @attachment: Pointer to dma-buf attachment structure.
@@ -1058,6 +1065,10 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s() start.\n", __func__);
 
+    this->export         = 0;
+    this->export_fd      = 0;
+    this->export_dma_buf = NULL;
+
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s() done.\n", __func__);
 }
@@ -1151,15 +1162,36 @@ static const struct dma_buf_ops udmabuf_export_ops = {
 };
 
 /**
- * udmabuf_export_setup() -  Setup udmabuf export.
+ * udmabuf_export_dma_buf_put() -  Put the udmabuf export dma-buf.
+ * @cloexec     close-on-exec flag.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int udmabuf_export_dma_buf_put(struct udmabuf_object* this)
+{
+    int retval = 0;
+
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() start.\n", __func__);
+
+    if (this->export_dma_buf != NULL) {
+        dma_buf_put(this->export_dma_buf);
+    }
+    
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() done.\n", __func__);
+
+    return retval;
+}
+/**
+ * udmabuf_export_dma_buf_get() -  Get udmabuf export dma-buf.
  * @this:       Pointer to the udmabuf object.
  * @cloexec     close-on-exec flag.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_export_setup(struct udmabuf_object* this, bool cloexec)
+static int udmabuf_export_dma_buf_get(struct udmabuf_object* this, bool cloexec)
 {
     DEFINE_DMA_BUF_EXPORT_INFO(export_info);
-    struct dma_buf *export_dma_buf;
+    struct dma_buf* export_dma_buf;
     int retval;
     u32 flags;
 
@@ -1176,7 +1208,7 @@ static int udmabuf_export_setup(struct udmabuf_object* this, bool cloexec)
     export_info.size  = this->alloc_size;
     export_info.priv  = (void*)this;
     export_info.flags = O_RDWR;
-    export_dma_buf    = dma_buf_export(&export_info);
+    export_dma_buf = dma_buf_export(&export_info);
     if (IS_ERR(export_dma_buf)) {
         retval = PTR_ERR(export_dma_buf);
         export_dma_buf = NULL;
@@ -1193,7 +1225,8 @@ static int udmabuf_export_setup(struct udmabuf_object* this, bool cloexec)
         goto failed;
     }
 
-    this->export_fd = retval;
+    this->export_fd      = retval;
+    this->export_dma_buf = dma_buf_get(this->export_fd);
 
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s() done.\n", __func__);
@@ -1201,6 +1234,9 @@ static int udmabuf_export_setup(struct udmabuf_object* this, bool cloexec)
     return 0;
 
  failed:
+    if (export_dma_buf != NULL) {
+        dma_buf_put(export_dma_buf);
+    }
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s() failed. return=%d\n", __func__, retval);
     return retval;
@@ -1499,6 +1535,15 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
     if (!this)
         return -ENODEV;
 
+#if (USE_DMA_BUF_EXPORT == 1)
+    if (this->export_dma_buf != NULL) {
+        udmabuf_export_dma_buf_put(this);
+        if (this->export_dma_buf != NULL) {
+            dev_err(this->sys_dev, "exported dma-buf is currently busy.\n");
+        }
+    }
+#endif
+    
     if (this->virt_addr != NULL) {
         dma_free_coherent(this->dma_dev, this->alloc_size, this->virt_addr, this->phys_addr);
         this->virt_addr = NULL;
@@ -1959,12 +2004,14 @@ static int udmabuf_platform_device_remove(struct device *dev, struct udmabuf_obj
         bool of_reserved_mem = obj->of_reserved_mem;
 #endif
         retval = udmabuf_object_destroy(obj);
-        dev_set_drvdata(dev, NULL);
+        if (retval != 0) {
+            dev_set_drvdata(dev, NULL);
 #if (USE_OF_RESERVED_MEM == 1)
-        if (of_reserved_mem) {
-            of_reserved_mem_device_release(dev);
-        }
+            if (of_reserved_mem) {
+                of_reserved_mem_device_release(dev);
+            }
 #endif
+        }
     } else {
         retval = -ENODEV;
     }
@@ -2223,7 +2270,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
      * export property
      */
     if (of_property_read_bool(dev->of_node, "export")) {
-        retval = udmabuf_export_setup(obj, false);
+        retval = udmabuf_export_dma_buf_get(obj, false);
         if (retval) 
             dev_err(dev, "export setup failed. return=%d\n", retval);
         retval = 0;
@@ -2726,7 +2773,7 @@ struct device* u_dma_buf_device_create(const char* name, int id, size_t size, u6
     if (!IS_ERR_OR_NULL(dev)) {
         int export = u_dma_buf_device_option_export(option);
         if (export) {
-            result = udmabuf_export_setup(dev_get_drvdata(dev), false);
+            result = udmabuf_export_dma_buf_get(dev_get_drvdata(dev), false);
             if (result)
                 return ERR_PTR(result);
         }
