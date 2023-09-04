@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.6.0-RC7"
+#define DRIVER_VERSION     "4.6.0-RC8"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -369,7 +369,7 @@ static int udmabuf_sync_for_device(struct udmabuf_object* this)
 
 /**
  * udmabuf_export_request() - call udmabuf_export_dma_buf_get() when (export != 0)
- *                            call udmabuf_export_dma_buf_get() when (export == 0)
+ *                            call udmabuf_export_dma_buf_put() when (export == 0)
  * @this:       Pointer to the udmabuf object.
  * Return:      Success(=0) or error status(<0).
  */
@@ -1174,7 +1174,11 @@ static int udmabuf_export_dma_buf_put(struct udmabuf_object* this)
         dev_info(this->sys_dev, "%s() start.\n", __func__);
 
     if (this->export_dma_buf != NULL) {
+        if (UDMABUF_EXPORT_DEBUG(this))
+            dev_info(this->sys_dev, "%s(): dma_buf_put() start.\n", __func__);
         dma_buf_put(this->export_dma_buf);
+        if (UDMABUF_EXPORT_DEBUG(this))
+            dev_info(this->sys_dev, "%s(): dma_buf_put() done.\n", __func__);
     }
     
     if (UDMABUF_EXPORT_DEBUG(this))
