@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.6.0-RC2"
+#define DRIVER_VERSION     "4.6.0-RC4"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1191,9 +1191,10 @@ static int udmabuf_export_dma_buf_put(struct udmabuf_object* this)
 static int udmabuf_export_dma_buf_get(struct udmabuf_object* this, bool cloexec)
 {
     DEFINE_DMA_BUF_EXPORT_INFO(export_info);
-    struct dma_buf* export_dma_buf;
-    int retval;
-    u32 flags;
+    struct dma_buf* export_dma_buf = NULL;
+    int             export_fd      = 0;
+    int             retval         = 0;
+    u32             flags          = 0;
 
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s() start.\n", __func__);
@@ -1208,7 +1209,7 @@ static int udmabuf_export_dma_buf_get(struct udmabuf_object* this, bool cloexec)
     export_info.size  = this->alloc_size;
     export_info.priv  = (void*)this;
     export_info.flags = O_RDWR;
-    export_dma_buf = dma_buf_export(&export_info);
+    export_dma_buf    = dma_buf_export(&export_info);
     if (IS_ERR(export_dma_buf)) {
         retval = PTR_ERR(export_dma_buf);
         export_dma_buf = NULL;
@@ -1216,17 +1217,19 @@ static int udmabuf_export_dma_buf_get(struct udmabuf_object* this, bool cloexec)
         goto failed;
     }
 
-    flags = 0;
     if (cloexec == true)
         flags |= O_CLOEXEC;
-    retval = dma_buf_fd(export_dma_buf, flags);
-    if (retval < 0) {
+    export_fd = dma_buf_fd(export_dma_buf, flags);
+    if (export_fd < 0) {
+        retval = export_fd;
+        export_fd = 0;
         dev_err(this->sys_dev, "%s(): dma_buf_fd() failed. return=%d\n", __func__, retval);
         goto failed;
     }
 
-    this->export_fd      = retval;
-    this->export_dma_buf = dma_buf_get(this->export_fd);
+    get_dma_buf(export_dma_buf);
+    this->export_dma_buf = export_dma_buf;
+    this->export_fd      = export_fd;
 
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s() done.\n", __func__);
