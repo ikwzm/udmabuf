@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.6.0-RC4"
+#define DRIVER_VERSION     "4.6.0-RC7"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1540,10 +1540,8 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
 
 #if (USE_DMA_BUF_EXPORT == 1)
     if (this->export_dma_buf != NULL) {
-        udmabuf_export_dma_buf_put(this);
-        if (this->export_dma_buf != NULL) {
-            dev_err(this->sys_dev, "exported dma-buf is currently busy.\n");
-        }
+        dev_err(this->sys_dev, "exported dma-buf is currently busy.\n");
+        return -EBUSY;
     }
 #endif
     
