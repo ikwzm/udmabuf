@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.6.0-RC10"
+#define DRIVER_VERSION     "4.6.0-RC11"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1185,11 +1185,15 @@ static int udmabuf_export_dma_buf_put(struct udmabuf_object* this)
         dev_info(this->sys_dev, "%s() start.\n", __func__);
 
     if (this->export_dma_buf != NULL) {
-        if (UDMABUF_EXPORT_DEBUG(this))
+        if (UDMABUF_EXPORT_DEBUG(this)) {
             dev_info(this->sys_dev, "%s(): dma_buf_put() start.\n", __func__);
+            dev_info(this->sys_dev, "file_count(export_dma_buf->file)=%ld\n", file_count(this->export_dma_buf->file));
+        }
         dma_buf_put(this->export_dma_buf);
-        if (UDMABUF_EXPORT_DEBUG(this))
+        if (UDMABUF_EXPORT_DEBUG(this)) {
             dev_info(this->sys_dev, "%s(): dma_buf_put() done.\n", __func__);
+            dev_info(this->sys_dev, "file_count(export_dma_buf->file)=%ld\n", file_count(this->export_dma_buf->file));
+        }
     }
     
     if (UDMABUF_EXPORT_DEBUG(this))
@@ -1246,8 +1250,11 @@ static int udmabuf_export_dma_buf_get(struct udmabuf_object* this, bool cloexec)
     this->export_dma_buf = export_dma_buf;
     this->export_fd      = export_fd;
 
-    if (UDMABUF_EXPORT_DEBUG(this))
+    if (UDMABUF_EXPORT_DEBUG(this)) {
+        dev_info(this->sys_dev, "export_fd=%d\n", this->export_fd);
+        dev_info(this->sys_dev, "file_count(export_dma_buf->file)=%ld\n", file_count(this->export_dma_buf->file));
         dev_info(this->sys_dev, "%s() done.\n", __func__);
+    }
 
     return 0;
 
