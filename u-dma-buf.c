@@ -2589,7 +2589,11 @@ static int __init u_dma_buf_init(void)
         goto failed;
     }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
     udmabuf_sys_class = class_create(THIS_MODULE, DRIVER_NAME);
+#else
+    udmabuf_sys_class = class_create(DRIVER_NAME);
+#endif
     if (IS_ERR_OR_NULL(udmabuf_sys_class)) {
         retval = PTR_ERR(udmabuf_sys_class);
         udmabuf_sys_class = NULL;
