@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.5.1"
+#define DRIVER_VERSION     "4.5.2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -2181,8 +2181,8 @@ static void udmabuf_static_device_create(const char* name, int id, unsigned int 
 }
 
 #define DEFINE_UDMABUF_STATIC_DEVICE_PARAM(__num)                        \
-    static int       udmabuf ## __num = 0;                               \
-    module_param(    udmabuf ## __num, int, S_IRUGO);                    \
+    static ulong       udmabuf ## __num = 0;                               \
+    module_param(    udmabuf ## __num, ulong, S_IRUGO);                    \
     MODULE_PARM_DESC(udmabuf ## __num, DRIVER_NAME #__num " buffer size");
 
 #define CALL_UDMABUF_STATIC_DEVICE_CREATE(__num)                         \
@@ -2589,7 +2589,11 @@ static int __init u_dma_buf_init(void)
         goto failed;
     }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
     udmabuf_sys_class = class_create(THIS_MODULE, DRIVER_NAME);
+#else
+    udmabuf_sys_class = class_create(DRIVER_NAME);
+#endif
     if (IS_ERR_OR_NULL(udmabuf_sys_class)) {
         retval = PTR_ERR(udmabuf_sys_class);
         udmabuf_sys_class = NULL;
