@@ -2181,8 +2181,8 @@ static void udmabuf_static_device_create(const char* name, int id, unsigned int 
 }
 
 #define DEFINE_UDMABUF_STATIC_DEVICE_PARAM(__num)                        \
-    static ulong       udmabuf ## __num = 0;                               \
-    module_param(    udmabuf ## __num, ulong, S_IRUGO);                    \
+    static ulong     udmabuf ## __num = 0;                               \
+    module_param(    udmabuf ## __num, ulong, S_IRUGO);                  \
     MODULE_PARM_DESC(udmabuf ## __num, DRIVER_NAME #__num " buffer size");
 
 #define CALL_UDMABUF_STATIC_DEVICE_CREATE(__num)                         \
