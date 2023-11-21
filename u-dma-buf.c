@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.5.2"
+#define DRIVER_VERSION     "4.5.3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -2067,7 +2067,7 @@ extern struct bus_type      pci_bus_type;
 #else
 #define PCI_BUS_TYPE
 #endif
-#if defined(CONFIG_PCIEPORTBUS)
+#if defined(CONFIG_PCIEPORTBUS) && (LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0))
 extern struct bus_type      pcie_port_bus_type;
 #define PCIE_PORT_BUS_TYPE &pcie_port_bus_type,
 #else
