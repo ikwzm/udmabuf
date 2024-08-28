@@ -72,6 +72,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define DEVICE_MAX_NUM      256
 #define UDMABUF_DEBUG       1
 #define USE_QUIRK_MMAP      1
+#define USE_QUIRK_MMAP_PAGE 1
 #define IN_KERNEL_FUNCTIONS 1
 
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
@@ -162,6 +163,7 @@ MODULE_PARM_DESC( bind, "bind device name. exp pci/0000:00:20:0");
 #define  QUIRK_MMAP_MODE_ALWAYS_OFF  1
 #define  QUIRK_MMAP_MODE_ALWAYS_ON   2
 #define  QUIRK_MMAP_MODE_AUTO        3
+#define  QUIRK_MMAP_MODE_PAGE        4
 #if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 static int        quirk_mmap_mode = QUIRK_MMAP_MODE_ALWAYS_ON;
 #define           QUIRK_MMAP_MODE_PARM_DESC_DEFAULT "(default=2)"
@@ -169,8 +171,13 @@ static int        quirk_mmap_mode = QUIRK_MMAP_MODE_ALWAYS_ON;
 static int        quirk_mmap_mode = QUIRK_MMAP_MODE_AUTO;
 #define           QUIRK_MMAP_MODE_PARM_DESC_DEFAULT "(default=3)"
 #endif
+#if (USE_QUIRK_MMAP_PAGE == 1)
+#define           QUIRK_MMAP_MODE_PARM_DESC_USAGE "(1:off,2:on,3:auto,4:page)"
+#else
+#define           QUIRK_MMAP_MODE_PARM_DESC_USAGE "(1:off,2:on,3:auto)"
+#endif
 module_param(     quirk_mmap_mode, int, S_IRUGO);
-MODULE_PARM_DESC( quirk_mmap_mode, "udmabuf default quirk mmap mode(1:off,2:on,3:auto)" QUIRK_MMAP_MODE_PARM_DESC_DEFAULT);
+MODULE_PARM_DESC( quirk_mmap_mode, "udmabuf default quirk mmap mode" QUIRK_MMAP_MODE_PARM_DESC_USAGE QUIRK_MMAP_MODE_PARM_DESC_DEFAULT);
 #endif /* #if (USE_QUIRK_MMAP == 1) */
 
 /**
@@ -203,6 +210,10 @@ struct udmabuf_object {
     u64                  sync_for_device;
 #if (USE_QUIRK_MMAP == 1)
     int                  quirk_mmap_mode;
+#if (USE_QUIRK_MMAP_PAGE == 1)
+    pgoff_t              pagecount;
+    struct page**        pages;
+#endif    
 #endif
 #if (USE_OF_RESERVED_MEM == 1)
     bool                 of_reserved_mem;
@@ -538,6 +549,14 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
     if (request_size > available_size)
         return VM_FAULT_SIGBUS;
 
+#if (USE_QUIRK_MMAP_PAGE == 1)
+    if (this->pages != NULL) {
+        if (vmf->pgoff >= this->pagecount)
+            return VM_FAULT_SIGBUS;
+        return vmf_insert_page(vma, virt_addr, this->pages[vmf->pgoff]);
+    }
+#endif
+    
     if (!pfn_valid(page_frame_num))
         return VM_FAULT_SIGBUS;
 
@@ -596,17 +615,22 @@ static const struct vm_operations_struct udmabuf_mmap_vm_ops = {
  */
 static inline int udmabuf_set_quirk_mmap_mode(struct udmabuf_object* this, int value)
 {
+    bool is_valid = false;
     if (!this)
         return -ENODEV;
         
-    if ((value == QUIRK_MMAP_MODE_ALWAYS_OFF) ||
-        (value == QUIRK_MMAP_MODE_ALWAYS_ON ) ||
-        (value == QUIRK_MMAP_MODE_AUTO      )) {
-        this->quirk_mmap_mode = value;
-        return 0;
-    } else {
+    is_valid |= (value == QUIRK_MMAP_MODE_ALWAYS_OFF);
+    is_valid |= (value == QUIRK_MMAP_MODE_ALWAYS_ON );
+    is_valid |= (value == QUIRK_MMAP_MODE_AUTO      );
+#if (USE_QUIRK_MMAP_PAGE == 1)
+    is_valid |= (value == QUIRK_MMAP_MODE_PAGE      );
+#endif
+
+    if (is_valid == false)
         return -EINVAL;
-    }
+
+    this->quirk_mmap_mode = value;
+    return 0;
 }
 
 /**
@@ -619,6 +643,10 @@ static bool udmabuf_quirk_mmap_enable(struct udmabuf_object* this)
     if (!this)
         return true;
 
+#if (USE_QUIRK_MMAP_PAGE == 1)
+    if (this->quirk_mmap_mode == QUIRK_MMAP_MODE_PAGE      )
+        return true;
+#endif
     if (this->quirk_mmap_mode == QUIRK_MMAP_MODE_ALWAYS_OFF)
         return false;
     if (this->quirk_mmap_mode == QUIRK_MMAP_MODE_ALWAYS_ON )
@@ -656,7 +684,12 @@ static bool udmabuf_quirk_mmap_enable(struct udmabuf_object* this)
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0))
 static inline void vm_flags_set(struct vm_area_struct* vma, vm_flags_t flags)
 {
-    vma->vm_flags |= flags;
+    vma->vm_flags |=  (flags);
+}
+static inline void vm_flags_mod(struct vm_area_struct* vma, vm_flags_t set, vm_flags_t clear)
+{
+    vma->vm_flags |=  (set);
+    vma->vm_flags &= ~(clear);
 }
 #endif
 
@@ -695,8 +728,17 @@ static int udmabuf_object_mmap(struct udmabuf_object* this, struct vm_area_struc
     if (udmabuf_quirk_mmap_enable(this))
     {
         unsigned long page_frame_num = (this->phys_addr >> PAGE_SHIFT) + vma->vm_pgoff;
+#if (USE_QUIRK_MMAP_PAGE == 1)
+        if (this->pages != NULL) {
+            vm_flags_mod(vma, VM_MIXEDMAP, VM_PFNMAP);
+            vma->vm_ops          = &udmabuf_mmap_vm_ops;
+            vma->vm_private_data = this;
+            udmabuf_mmap_vma_open(vma);
+            return 0;
+        }
+#endif        
         if (pfn_valid(page_frame_num)) {
-            vm_flags_set(vma, VM_PFNMAP);
+            vm_flags_mod(vma, VM_PFNMAP, VM_MIXEDMAP);
             vma->vm_ops          = &udmabuf_mmap_vm_ops;
             vma->vm_private_data = this;
             udmabuf_mmap_vma_open(vma);
@@ -1065,6 +1107,10 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
 #if (USE_QUIRK_MMAP == 1)
     {
         this->quirk_mmap_mode = quirk_mmap_mode;
+#if (USE_QUIRK_MMAP_PAGE == 1)
+        this->pagecount       = 0;
+        this->pages           = NULL;
+#endif
     }
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
@@ -1108,6 +1154,32 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
         this->virt_addr = NULL;
         return (retval == 0) ? -ENOMEM : retval;
     }
+#if ((USE_QUIRK_MMAP == 1) && USE_QUIRK_MMAP_PAGE == 1)
+    if (this->quirk_mmap_mode == QUIRK_MMAP_MODE_PAGE) {
+        pgoff_t       pg;
+        struct page*  pages = phys_to_page(this->phys_addr);
+
+        if (IS_ERR_OR_NULL(pages)) {
+            int retval = PTR_ERR(pages);
+            dev_warn(this->sys_dev, "pages get(phys_addr=%pad) failed. return(%d)\n", &this->phys_addr, retval);
+            return 0;
+        }
+
+        this->pagecount = this->alloc_size >> PAGE_SHIFT;
+        this->pages     = kmalloc_array(this->pagecount, sizeof(struct page*), GFP_KERNEL);
+        if (IS_ERR_OR_NULL(this->pages)) {
+            int retval = PTR_ERR(this->pages);
+            dev_warn(this->sys_dev, "pages allocate(pagecount=%zu) failed. return(%d)\n", this->pagecount, retval);
+            this->pagecount = 0;
+            this->pages     = NULL;
+            return 0;
+        }
+        for (pg = 0; pg < this->pagecount; pg++) {
+            this->pages[pg] = nth_page(pages, pg);
+            page_kasan_tag_reset(this->pages[pg]);
+        }
+    }
+#endif
     return 0;
 }
 
@@ -1171,6 +1243,12 @@ static void udmabuf_object_info(struct udmabuf_object* this)
         dev_info(this->sys_dev, "quirk mmap     = %d\n"       , udmabuf_quirk_mmap_enable(this));
 #endif
     }
+#if (USE_QUIRK_MMAP_PAGE == 1)
+    if (DMA_INFO_ENABLE) 
+        dev_info(this->sys_dev, "pages          = %pad\n"     , &this->pages);
+    if (DMA_INFO_ENABLE && (this->pages != NULL))
+        dev_info(this->sys_dev, "pages[0]       = %pad\n"     , &this->pages[0]);
+#endif
 }
 
 /**
@@ -1185,6 +1263,13 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
     if (!this)
         return -ENODEV;
 
+#if ((USE_QUIRK_MMAP == 1) && USE_QUIRK_MMAP_PAGE == 1)
+    if (this->pages != NULL) {
+        kfree(this->pages);
+        this->pages     = NULL;
+        this->pagecount = 0;
+    }
+#endif
     if (this->virt_addr != NULL) {
         dma_free_coherent(this->dma_dev, this->alloc_size, this->virt_addr, this->phys_addr);
         this->virt_addr = NULL;
@@ -1845,6 +1930,14 @@ static int udmabuf_platform_device_probe(struct device *dev)
     if (of_property_read_bool(dev->of_node, "quirk-mmap-auto")) {
         udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_AUTO);
     }
+#if (USE_QUIRK_MMAP_PAGE == 1)
+    /*
+     * quirk-mmap-page property
+     */
+    if (of_property_read_bool(dev->of_node, "quirk-mmap-page")) {
+        udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_PAGE);
+    }
+#endif
 #endif
     /*
      * sync-mode property
@@ -2360,7 +2453,7 @@ static inline type u_dma_buf_device_option_ ## name(u64 option) \
     return (type)((option >> (lo)) & mask);                     \
 }
 DEFINE_U_DMA_BUF_OPTION(dma_mask_size  ,u64, 0, 7)
-DEFINE_U_DMA_BUF_OPTION(quirk_mmap_mode,int,10,11)
+DEFINE_U_DMA_BUF_OPTION(quirk_mmap_mode,int,10,12)
 #endif
 
 /**
@@ -2368,7 +2461,7 @@ DEFINE_U_DMA_BUF_OPTION(quirk_mmap_mode,int,10,11)
  * @name:       device name or NULL.
  * @id:         device id or negative integer.
  * @size:       buffer size.
- * @option:     option. dma_mask=option[7:0], quirk_mmap_mode=option[11:10]
+ * @option:     option. dma_mask=option[7:0], quirk_mmap_mode=option[12:10]
  * @parent:     parent device or NULL.
  * Return:      handle to u-dma-buf device structure(>=0) or error status(<0).
  */
@@ -2570,6 +2663,7 @@ static int __init u_dma_buf_init(void)
                 "DEVICE_MAX_NUM="      NUM_TO_STR(DEVICE_MAX_NUM)      ","
                 "UDMABUF_DEBUG="       NUM_TO_STR(UDMABUF_DEBUG)       ","
                 "USE_QUIRK_MMAP="      NUM_TO_STR(USE_QUIRK_MMAP)      ","
+                "USE_QUIRK_MMAP_PAGE=" NUM_TO_STR(USE_QUIRK_MMAP_PAGE) ","
         #if defined(IS_DMA_COHERENT)
                 "IS_DMA_COHERENT=1," 
         #endif
