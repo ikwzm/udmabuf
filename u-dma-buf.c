@@ -1,6 +1,6 @@
 /*********************************************************************************
  *
- *       Copyright (C) 2015-2023 Ichiro Kawazome
+ *       Copyright (C) 2015-2024 Ichiro Kawazome
  *       All rights reserved.
  * 
  *       Redistribution and use in source and binary forms, with or without
@@ -164,11 +164,13 @@ MODULE_PARM_DESC( bind, "bind device name. exp pci/0000:00:20:0");
 #define  QUIRK_MMAP_MODE_AUTO        3
 #if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 static int        quirk_mmap_mode = QUIRK_MMAP_MODE_ALWAYS_ON;
+#define           QUIRK_MMAP_MODE_PARM_DESC_DEFAULT "(default=2)"
 #else
 static int        quirk_mmap_mode = QUIRK_MMAP_MODE_AUTO;
+#define           QUIRK_MMAP_MODE_PARM_DESC_DEFAULT "(default=3)"
 #endif
 module_param(     quirk_mmap_mode, int, S_IRUGO);
-MODULE_PARM_DESC( quirk_mmap_mode, "udmabuf default quirk mmap mode(1:off,2:on,3:auto)(default=3)");
+MODULE_PARM_DESC( quirk_mmap_mode, "udmabuf default quirk mmap mode(1:off,2:on,3:auto)" QUIRK_MMAP_MODE_PARM_DESC_DEFAULT);
 #endif /* #if (USE_QUIRK_MMAP == 1) */
 
 /**
