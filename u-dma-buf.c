@@ -66,13 +66,12 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.6.0-RC2"
+#define DRIVER_VERSION     "4.6.0-RC3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
 #define UDMABUF_DEBUG       1
 #define USE_QUIRK_MMAP      1
-#define USE_QUIRK_MMAP_PAGE 1
 #define IN_KERNEL_FUNCTIONS 1
 
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
@@ -107,6 +106,13 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define USE_DEV_PROPERTY    1
 #else
 #define USE_DEV_PROPERTY    0
+#endif
+
+#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0))
+#define USE_QUIRK_MMAP_PAGE 1
+#include <linux/dma-direct.h>
+#else
+#define USE_QUIRK_MMAP_PAGE 0
 #endif
 
 #if     (USE_OF_RESERVED_MEM == 1)
@@ -1157,7 +1163,8 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
 #if ((USE_QUIRK_MMAP == 1) && USE_QUIRK_MMAP_PAGE == 1)
     if (this->quirk_mmap_mode == QUIRK_MMAP_MODE_PAGE) {
         pgoff_t       pg;
-        struct page*  pages = phys_to_page(this->phys_addr);
+        phys_addr_t   paddr = dma_to_phys(this->dma_dev, this->phys_addr);
+        struct page*  pages = phys_to_page(paddr);
 
         if (IS_ERR_OR_NULL(pages)) {
             int retval = PTR_ERR(pages);
