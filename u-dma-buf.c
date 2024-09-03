@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.6.0-RC3"
+#define DRIVER_VERSION     "4.6.0-RC4"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -555,6 +555,9 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
     if (request_size > available_size)
         return VM_FAULT_SIGBUS;
 
+    if (!pfn_valid(page_frame_num))
+        return VM_FAULT_SIGBUS;
+
 #if (USE_QUIRK_MMAP_PAGE == 1)
     if (this->pages != NULL) {
         if (vmf->pgoff >= this->pagecount)
@@ -563,9 +566,6 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
     }
 #endif
     
-    if (!pfn_valid(page_frame_num))
-        return VM_FAULT_SIGBUS;
-
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))
     return vmf_insert_pfn(vma, virt_addr, page_frame_num);
 #else
@@ -1163,28 +1163,30 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
 #if ((USE_QUIRK_MMAP == 1) && USE_QUIRK_MMAP_PAGE == 1)
     if (this->quirk_mmap_mode == QUIRK_MMAP_MODE_PAGE) {
         pgoff_t       pg;
-        phys_addr_t   paddr = dma_to_phys(this->dma_dev, this->phys_addr);
-        struct page*  pages = phys_to_page(paddr);
+        phys_addr_t   phys_paddr     = dma_to_phys(this->dma_dev, this->phys_addr);
+        unsigned long page_frame_num = phys_paddr >> PAGE_SHIFT;
+        struct page*  phys_pages;
 
-        if (IS_ERR_OR_NULL(pages)) {
-            int retval = PTR_ERR(pages);
-            dev_warn(this->sys_dev, "pages get(phys_addr=%pad) failed. return(%d)\n", &this->phys_addr, retval);
-            return 0;
+        if (!pfn_valid(page_frame_num)) {
+            dev_warn(this->sys_dev, "get page(phys_addr=%pad) failed.", &this->phys_addr);
+            goto quirk_mmap_page_done;
         }
 
+        phys_pages      = pfn_to_page(page_frame_num);
         this->pagecount = this->alloc_size >> PAGE_SHIFT;
         this->pages     = kmalloc_array(this->pagecount, sizeof(struct page*), GFP_KERNEL);
         if (IS_ERR_OR_NULL(this->pages)) {
             int retval = PTR_ERR(this->pages);
-            dev_warn(this->sys_dev, "pages allocate(pagecount=%zu) failed. return(%d)\n", this->pagecount, retval);
+            dev_warn(this->sys_dev, "allocate pages(pagecount=%zu) failed. return(%d)\n", this->pagecount, retval);
             this->pagecount = 0;
             this->pages     = NULL;
-            return 0;
+            goto quirk_mmap_page_done;
         }
         for (pg = 0; pg < this->pagecount; pg++) {
-            this->pages[pg] = nth_page(pages, pg);
+            this->pages[pg] = nth_page(phys_pages, pg);
             page_kasan_tag_reset(this->pages[pg]);
         }
+      quirk_mmap_page_done:
     }
 #endif
     return 0;
