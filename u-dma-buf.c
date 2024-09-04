@@ -1187,6 +1187,7 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
             page_kasan_tag_reset(this->pages[pg]);
         }
       quirk_mmap_page_done:
+        ;
     }
 #endif
     return 0;
