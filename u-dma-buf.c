@@ -1177,7 +1177,7 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
         this->pages     = kmalloc_array(this->pagecount, sizeof(struct page*), GFP_KERNEL);
         if (IS_ERR_OR_NULL(this->pages)) {
             int retval = PTR_ERR(this->pages);
-            dev_warn(this->sys_dev, "allocate pages(pagecount=%zu) failed. return(%d)\n", this->pagecount, retval);
+            dev_warn(this->sys_dev, "allocate pages(pagecount=%lu) failed. return(%d)\n", (unsigned long)this->pagecount, retval);
             this->pagecount = 0;
             this->pages     = NULL;
             goto quirk_mmap_page_done;
