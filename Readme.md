@@ -156,7 +156,7 @@ The maximum number of DMA buffers that can be allocated using `insmod` is 8 (udm
 
 ```console
 zynq$ insmod u-dma-buf.ko udmabuf0=1048576
-u-dma-buf udmabuf0: driver version = 4.6.0-RC4
+u-dma-buf udmabuf0: driver version = 4.6.0-RC5
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -241,7 +241,7 @@ For example, to designate "0000:00:15.0" under the pci bus as the parent device,
 
 ```console
 shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 bind="pci/0000:00:15.0" 
-[13422.022482] u-dma-buf udmabuf0: driver version = 4.6.0-RC4
+[13422.022482] u-dma-buf udmabuf0: driver version = 4.6.0-RC5
 [13422.022483] u-dma-buf udmabuf0: major number   = 238
 [13422.022483] u-dma-buf udmabuf0: minor number   = 0
 [13422.022484] u-dma-buf udmabuf0: phys address   = 0x0000000070950000
@@ -286,7 +286,7 @@ allocate buffers and create device drivers when loaded by `insmod`.
 
 ```console
 zynq$ insmod u-dma-buf.ko
-u-dma-buf udmabuf0: driver version = 4.6.0-RC4
+u-dma-buf udmabuf0: driver version = 4.6.0-RC5
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -1387,7 +1387,7 @@ Install u-dma-buf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
 
 ```console
 zynq# insmod u-dma-buf.ko udmabuf0=8388608
-[ 1183.911189] u-dma-buf udmabuf0: driver version = 4.6.0-RC4
+[ 1183.911189] u-dma-buf udmabuf0: driver version = 4.6.0-RC5
 [ 1183.921238] u-dma-buf udmabuf0: major number   = 240
 [ 1183.931275] u-dma-buf udmabuf0: minor number   = 0
 [ 1183.936063] u-dma-buf udmabuf0: phys address   = 0x0000000041600000
