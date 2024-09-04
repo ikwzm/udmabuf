@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.6.0"
+#define DRIVER_VERSION     "4.6.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -108,7 +108,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define USE_DEV_PROPERTY    0
 #endif
 
-#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0))
+#if     ((LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)) && (USE_QUIRK_MMAP == 1))
 #define USE_QUIRK_MMAP_PAGE 1
 #include <linux/dma-direct.h>
 #else
@@ -614,6 +614,23 @@ static const struct vm_operations_struct udmabuf_mmap_vm_ops = {
 };
 
 /**
+ * udmabuf_check_quirk_mmap_mode() - check quirk-mmap mode.
+ * @value:      quirk-mmap mode.
+ * Return:      Valid(true) or NotValid(false).
+ */
+static inline bool udmabuf_check_quirk_mmap_mode(int value)
+{
+    bool is_valid = false;
+    is_valid |= (value == QUIRK_MMAP_MODE_ALWAYS_OFF);
+    is_valid |= (value == QUIRK_MMAP_MODE_ALWAYS_ON );
+    is_valid |= (value == QUIRK_MMAP_MODE_AUTO      );
+#if (USE_QUIRK_MMAP_PAGE == 1)
+    is_valid |= (value == QUIRK_MMAP_MODE_PAGE      );
+#endif
+    return is_valid;
+}
+
+/**
  * udmabuf_set_quirk_mmap_mode() - set quirk-mmap in udmabuf object.
  * @this:       Pointer to the udmabuf object.
  * @value:      quirk-mmap mode.
@@ -621,18 +638,10 @@ static const struct vm_operations_struct udmabuf_mmap_vm_ops = {
  */
 static inline int udmabuf_set_quirk_mmap_mode(struct udmabuf_object* this, int value)
 {
-    bool is_valid = false;
     if (!this)
         return -ENODEV;
-        
-    is_valid |= (value == QUIRK_MMAP_MODE_ALWAYS_OFF);
-    is_valid |= (value == QUIRK_MMAP_MODE_ALWAYS_ON );
-    is_valid |= (value == QUIRK_MMAP_MODE_AUTO      );
-#if (USE_QUIRK_MMAP_PAGE == 1)
-    is_valid |= (value == QUIRK_MMAP_MODE_PAGE      );
-#endif
 
-    if (is_valid == false)
+    if (udmabuf_check_quirk_mmap_mode(value) == false)
         return -EINVAL;
 
     this->quirk_mmap_mode = value;
@@ -1251,15 +1260,24 @@ static void udmabuf_object_info(struct udmabuf_object* this)
 #if defined(GET_IOMMU_DOMAIN_TYPE)
         dev_info(this->sys_dev, "iommu domain   = %s\n"       , GET_IOMMU_DOMAIN_TYPE(this->dma_dev));
 #endif
-#if (USE_QUIRK_MMAP == 1)
-        dev_info(this->sys_dev, "quirk mmap     = %d\n"       , udmabuf_quirk_mmap_enable(this));
-#endif
     }
+#if (USE_QUIRK_MMAP == 1)
+    if (DMA_INFO_ENABLE) {
+        dev_info(this->sys_dev, "mmap mode      = %d\n"       , this->quirk_mmap_mode);
+      if (udmabuf_quirk_mmap_enable(this) == true) {
+        dev_info(this->sys_dev, "mmap           = quirk-mmap\n");
 #if (USE_QUIRK_MMAP_PAGE == 1)
-    if (DMA_INFO_ENABLE) 
-        dev_info(this->sys_dev, "pages          = %pad\n"     , &this->pages);
-    if (DMA_INFO_ENABLE && (this->pages != NULL))
-        dev_info(this->sys_dev, "pages[0]       = %pad\n"     , &this->pages[0]);
+       if (this->pages != NULL) {
+        dev_info(this->sys_dev, "mmap pages     = %pad\n"     , &this->pages);
+        dev_info(this->sys_dev, "mmap pages[0]  = %pad\n"     , &this->pages[0]);
+       } else {
+        dev_info(this->sys_dev, "mmap pages     = NONE\n"     );
+       }
+#endif
+      } else {
+        dev_info(this->sys_dev, "mmap           = dma_mmap_coherent\n");
+      }
+    }
 #endif
 }
 
@@ -1310,6 +1328,8 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
  * * udmabuf_get_device_name_property()   - Get "device-name"  property from udmabuf device.
  * * udmabuf_get_size_property()          - Get "buffer-size"  property from udmabuf device.
  * * udmabuf_get_minor_number_property()  - Get "minor-number" property from udmabuf device.
+ * * udmabuf_get_option_property()        - Get "option"       property from udmabuf device.
+ * * udmabuf_get_quirk_mmap_property()    - Get "quirk_mmap"   property from "option" property.
  */
 
 #if (USE_DEV_PROPERTY != 0)
@@ -1327,6 +1347,7 @@ struct udmabuf_device_entry {
     const char*          device_name;
     u32                  minor_number;
     u64                  buffer_size;
+    u64                  option;
 #endif
     struct list_head     list;
 };
@@ -1409,7 +1430,6 @@ static int  udmabuf_get_size_property(struct device *dev, u64* value, bool lock)
  * @lock:       use mutex_lock()/mutex_unlock()
  * Return:      Success(=0) or error status(<0).
  */
-
 static int  udmabuf_get_minor_number_property(struct device *dev, u32* value, bool lock)
 {
 #if (USE_DEV_PROPERTY == 0)
@@ -1432,6 +1452,75 @@ static int  udmabuf_get_minor_number_property(struct device *dev, u32* value, bo
     return device_property_read_u32(dev, "minor-number", value);
 #endif
 }
+
+/**
+ * udmabuf_get_option_property() - Get "option" property from udmabuf device.
+ * @dev:        handle to the device structure.
+ * @value:      address of option value.
+ * @lock:       use mutex_lock()/mutex_unlock()
+ * Return:      Success(=0) or error status(<0).
+ */
+static int  udmabuf_get_option_property(struct device *dev, u64* value, bool lock)
+{
+#if (USE_DEV_PROPERTY == 0)
+    int                          status = -1;
+    struct udmabuf_device_entry* entry;
+
+    if (lock)
+        mutex_lock(&udmabuf_device_list_sem);
+    list_for_each_entry(entry, &udmabuf_device_list, list) {
+        if (entry->dev == dev) {
+            *value = entry->option;
+            status = 0;
+            break;
+        }
+    }
+    if (lock) 
+        mutex_unlock(&udmabuf_device_list_sem);
+    return status;
+#else
+    return device_property_read_u64(dev, "option", value);
+#endif
+}
+
+/**
+ * udmabuf_get_option_dma_mask_size()   - Get dma mask size   from option.
+ * udmabuf_get_option_quirk_mmap_mode() - Get quirk-mmap mode from option.
+ *
+ * @option:     option. dma_mask   = option[ 7: 0]
+ *                      quirk_mmap = option[12:10]
+ */
+#define DEFINE_UDMABUF_OPTION(name,type,lo,hi)             \
+static inline type udmabuf_get_option_ ## name(u64 option) \
+{                                                          \
+    const u64 mask = ((1 << ((hi)-(lo)+1))-1);             \
+    return (type)((option >> (lo)) & mask);                \
+}
+DEFINE_UDMABUF_OPTION(dma_mask_size   ,u64, 0, 7)
+DEFINE_UDMABUF_OPTION(quirk_mmap_mode ,int,10,12)
+
+/**
+ * udmabuf_get_quirk_mmap_property()    - Get "quirk_mmap" property from "option" property.
+ * @dev:        handle to the device structure.
+ * @value:      address of quirk_mmap value.
+ * @lock:       use mutex_lock()/mutex_unlock()
+ * Return:      Success(=0) or error status(<0).
+ */
+#if (USE_QUIRK_MMAP == 1)
+static int  udmabuf_get_quirk_mmap_property(struct device *dev, int* value, bool lock)
+{
+    u64 option;
+    int status = udmabuf_get_option_property(dev, &option, lock);
+    if (status == 0) {
+        int quirk_mmap_mode = udmabuf_get_option_quirk_mmap_mode(option);
+        if (udmabuf_check_quirk_mmap_mode(quirk_mmap_mode) == true)
+            *value = quirk_mmap_mode;
+        else
+            status = -EINVAL;
+    }
+    return status;
+}
+#endif
 
 /**
  * udmabuf_device_list_search()    - Search udmabuf device entry from list by name or number.
@@ -1481,11 +1570,12 @@ static struct udmabuf_device_entry* udmabuf_device_list_search(struct device *de
  * @name:       device name or NULL.
  * @id:         device id or negative integer.
  * @size:       buffer size.
+ * @option      option.
  * @prep_remove prepare function when remove entry from udmabuf device list or NULL.
  * @post_remove post function when remove entry from udmabuf device list or NULL.
  * Return:      pointer to the udmabuf device entry or NULL.
  */
-static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct device *dev, const char* name, int id, unsigned int size, void (*prep_remove)(struct device*), void (*post_remove)(struct device*))
+static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct device *dev, const char* name, int id, unsigned int size, u64 option, void (*prep_remove)(struct device*), void (*post_remove)(struct device*))
 {                              
     struct udmabuf_device_entry* exist_entry;
     struct udmabuf_device_entry* entry  = NULL;
@@ -1511,13 +1601,15 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
         entry->device_name  = (name != NULL) ? kstrdup(name, GFP_KERNEL) : NULL;
         entry->minor_number = id;
         entry->buffer_size  = size;
+        entry->option       = option;
     }
 #else
     {
         struct property_entry   props_list[] = {
-            PROPERTY_ENTRY_STRING("device-name" , name),
-            PROPERTY_ENTRY_U64(   "size"        , size),
-            PROPERTY_ENTRY_U32(   "minor-number", id  ),
+            PROPERTY_ENTRY_STRING("device-name" , name  ),
+            PROPERTY_ENTRY_U64(   "size"        , size  ),
+            PROPERTY_ENTRY_U32(   "minor-number", id    ),
+            PROPERTY_ENTRY_U64(   "option"      , option),
             {},
         };
         struct property_entry* props = (name != NULL) ? &props_list[0] : &props_list[1];
@@ -1655,14 +1747,15 @@ static void udmabuf_platform_device_put(struct device* dev)
  * @name:       device name or NULL.
  * @id:         device id or negative integer.
  * @size:       buffer size.
- * @dma_mask:   dma mask or 0.
+ * @option:     option.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_platform_device_create(const char* name, int id, unsigned int size, u64 dma_mask)
+static int udmabuf_platform_device_create(const char* name, int id, unsigned int size, u64 option)
 {
     struct platform_device*      pdev   = NULL;
     struct udmabuf_device_entry* entry  = NULL;
     int                          retval = 0;
+    u64                          dma_mask_size = udmabuf_get_option_dma_mask_size(option);
 
     if (size == 0)
         return -EINVAL;
@@ -1678,9 +1771,9 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
     if (!pdev->dev.dma_mask)
         pdev->dev.dma_mask = &pdev->dev.coherent_dma_mask;
 
-    if (dma_mask != 0) {
-        pdev->dev.coherent_dma_mask = dma_mask;
-        *pdev->dev.dma_mask         = dma_mask;
+    if (dma_mask_size != 0) {
+        pdev->dev.coherent_dma_mask = DMA_BIT_MASK(dma_mask_size);
+        *pdev->dev.dma_mask         = DMA_BIT_MASK(dma_mask_size);
     } else {
         pdev->dev.coherent_dma_mask = DMA_BIT_MASK(dma_mask_bit);
         *pdev->dev.dma_mask         = DMA_BIT_MASK(dma_mask_bit);
@@ -1690,6 +1783,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
                                              name,
                                              id,
                                              size,
+                                             option,
                                              udmabuf_platform_device_del,
                                              udmabuf_platform_device_put);
     if (IS_ERR_OR_NULL(entry)) {
@@ -1924,32 +2018,37 @@ static int udmabuf_platform_device_probe(struct device *dev)
     }
 #endif
 #if (USE_QUIRK_MMAP == 1)
-    /*
-     * quirk-mmap-on  property
-     */
-    if (of_property_read_bool(dev->of_node, "quirk-mmap-on")) {
-        udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_ALWAYS_ON);
-    }
-    /*
-     * quirk-mmap-off property
-     */
-    if (of_property_read_bool(dev->of_node, "quirk-mmap-off")) {
-        udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_ALWAYS_OFF);
-    }
-    /*
-     * quirk-mmap-auto property
-     */
-    if (of_property_read_bool(dev->of_node, "quirk-mmap-auto")) {
-        udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_AUTO);
-    }
+    {
+        int quirk_mmap_mode;
+        if (udmabuf_get_quirk_mmap_property(dev, &quirk_mmap_mode, true) == 0)
+            udmabuf_set_quirk_mmap_mode(obj, quirk_mmap_mode);
+        /*
+         * quirk-mmap-on  property
+         */
+        if (of_property_read_bool(dev->of_node, "quirk-mmap-on")) {
+            udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_ALWAYS_ON);
+        }
+        /*
+         * quirk-mmap-off property
+         */
+        if (of_property_read_bool(dev->of_node, "quirk-mmap-off")) {
+            udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_ALWAYS_OFF);
+        }
+        /*
+         * quirk-mmap-auto property
+         */
+        if (of_property_read_bool(dev->of_node, "quirk-mmap-auto")) {
+            udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_AUTO);
+        }
 #if (USE_QUIRK_MMAP_PAGE == 1)
-    /*
-     * quirk-mmap-page property
-     */
-    if (of_property_read_bool(dev->of_node, "quirk-mmap-page")) {
-        udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_PAGE);
-    }
+        /*
+         * quirk-mmap-page property
+         */
+        if (of_property_read_bool(dev->of_node, "quirk-mmap-page")) {
+            udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_PAGE);
+        }
 #endif
+    }
 #endif
     /*
      * sync-mode property
@@ -2060,10 +2159,11 @@ static void udmabuf_child_device_delete(struct device* dev)
  * @name:       device name or NULL.
  * @id:         device id or negative integer.
  * @size:       buffer size.
+ * @option      option.
  * @parent:     parent device.
  * Return:      Success(=0) or error status(<0).
  */
-static int udmabuf_child_device_create(const char* name, int id, unsigned int size, struct device* parent)
+static int udmabuf_child_device_create(const char* name, int id, unsigned int size, u64 option, struct device* parent)
 {
     const char*                  device_name = NULL;
     struct udmabuf_object*       obj         = NULL;
@@ -2101,6 +2201,12 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
      * set size
      */
     obj->size = size;
+#if (USE_QUIRK_MMAP == 1)
+    /*
+     * set quirk_mmap_mode
+     */
+    udmabuf_set_quirk_mmap_mode(obj, udmabuf_get_option_quirk_mmap_mode(option));
+#endif
     /*
      * create entry
      */
@@ -2108,6 +2214,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
                                              name,
                                              id,
                                              size,
+                                             option,
                                              NULL,
                                              udmabuf_child_device_delete);
     if (IS_ERR_OR_NULL(entry)) {
@@ -2282,7 +2389,7 @@ static void udmabuf_static_device_create(const char* name, int id, unsigned int 
         return;
 
     if (udmabuf_static_parent_device)
-        udmabuf_child_device_create(name, id, size, udmabuf_static_parent_device);
+        udmabuf_child_device_create(name, id, size, 0, udmabuf_static_parent_device);
     else
         udmabuf_platform_device_create(name, id, size, 0);
 }
@@ -2453,22 +2560,6 @@ EXPORT_SYMBOL(u_dma_buf_device_search);
 #endif
 
 /**
- * u_dma_buf_device_option_dma_mask_size() - Get dma mask size from create device option.
- *
- * @option:     option. dma_mask=option[7:0]
- */
-#if (IN_KERNEL_FUNCTIONS == 1)
-#define DEFINE_U_DMA_BUF_OPTION(name,type,lo,hi)                \
-static inline type u_dma_buf_device_option_ ## name(u64 option) \
-{                                                               \
-    const u64 mask = ((1 << ((hi)-(lo)+1))-1);                  \
-    return (type)((option >> (lo)) & mask);                     \
-}
-DEFINE_U_DMA_BUF_OPTION(dma_mask_size  ,u64, 0, 7)
-DEFINE_U_DMA_BUF_OPTION(quirk_mmap_mode,int,10,12)
-#endif
-
-/**
  * u_dma_buf_device_create() - Create u-dma-buf device for in-kernel.
  * @name:       device name or NULL.
  * @id:         device id or negative integer.
@@ -2484,22 +2575,15 @@ struct device* u_dma_buf_device_create(const char* name, int id, size_t size, u6
     struct device* dev;
 
     if (parent) {
-        result = udmabuf_child_device_create(name, id, size, parent);
+        result = udmabuf_child_device_create(name, id, size, option, parent);
     } else {
-        u64 dma_mask = DMA_BIT_MASK(u_dma_buf_device_option_dma_mask_size(option));
-        result = udmabuf_platform_device_create(name, id, size, dma_mask);
+        result = udmabuf_platform_device_create(name, id, size, option);
     }
 
     if (result)
         return ERR_PTR(result);
 
     dev = u_dma_buf_device_search(name, id);
-#if (USE_QUIRK_MMAP == 1)
-    if (!IS_ERR_OR_NULL(dev)) {
-        int quirk_mmap_mode = u_dma_buf_device_option_quirk_mmap_mode(option);
-        udmabuf_set_quirk_mmap_mode(dev_get_drvdata(dev), quirk_mmap_mode);
-    }
-#endif
     return dev;
 }
 EXPORT_SYMBOL(u_dma_buf_device_create);
