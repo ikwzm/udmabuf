@@ -1184,7 +1184,9 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
         }
         for (pg = 0; pg < this->pagecount; pg++) {
             this->pages[pg] = nth_page(phys_pages, pg);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0))
             page_kasan_tag_reset(this->pages[pg]);
+#endif
         }
       quirk_mmap_page_done:
         ;
