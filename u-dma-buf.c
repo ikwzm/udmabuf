@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.7.0-RC1"
+#define DRIVER_VERSION     "4.7.0-RC2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -970,30 +970,59 @@ static loff_t udmabuf_device_file_llseek(struct file* file, loff_t offset, int w
 #include <linux/ioctl.h>
 #define U_DMA_BUF_IOCTL_H
 
-struct u_dma_buf_ioctl_sync_args {
-  u64 flags;
-  u64 size;
-  u64 offset;
+#define DEFINE_U_DMA_BUF_IOCTL_FLAGS(name,type,lo,hi)                   \
+static const  int      U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT = (lo); \
+static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  = ((1 << ((hi)-(lo)+1))-1); \
+static inline void SET_U_DMA_BUF_IOCTL_FLAGS_ ## name(uint64_t* flags,  \
+                                                      type value)       \
+{                                                                       \
+    const int      shift = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT;    \
+    const uint64_t mask  = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK;     \
+    *flags &= ~(mask << shift);                                         \
+    *flags |= ((value & mask) << shift);                                \
+}                                                                       \
+static inline type GET_U_DMA_BUF_IOCTL_FLAGS_ ## name(uint64_t flags)   \
+{                                                                       \
+    const int      shift = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT;    \
+    const uint64_t mask  = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK;     \
+    return (type)((flags >> shift) & mask);                             \
+}
+
+struct u_dma_buf_ioctl_dma_info {
+  uint64_t flags;
+  uint64_t size;
+  uint64_t addr;
 };
-#define U_DMA_BUF_IOCTL_SYNC_FLAGS_CMD_SHIFT       (0)
-#define U_DMA_BUF_IOCTL_SYNC_FLAGS_CMD_MASK        (0x0000000000000003)
-#define U_DMA_BUF_IOCTL_SYNC_FLAGS_CMD_FOR_CPU     (0x01)
-#define U_DMA_BUF_IOCTL_SYNC_FLAGS_CMD_FOR_DEVICE  (0x03)
-#define U_DMA_BUF_IOCTL_SYNC_FLAGS_DIR_SHIFT       (2)
-#define U_DMA_BUF_IOCTL_SYNC_FLAGS_DIR_MASK        (0x000000000000000C)
-#define U_DMA_BUF_IOCTL_SYNC_FLAGS_MODE_SHIFT      (8)
-#define U_DMA_BUF_IOCTL_SYNC_FLAGS_MODE_MASK       (0x000000000000FF00)
-#define U_DMA_BUF_IOCTL_SYNC_FLAGS_OWNER_SHIFT     (16)
-#define U_DMA_BUF_IOCTL_SYNC_FLAGS_OWNER_MASK      (0x0000000000010000)
+
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(DMA_MASK    , int,  0,  7)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(DMA_COHERENT, int,  9,  9)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(MMAP_MODE   , int, 10, 12)
+
+struct u_dma_buf_ioctl_sync_args {
+  uint64_t flags;
+  uint64_t size;
+  uint64_t offset;
+};
+
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_CMD    , int,  0,  1)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_DIR    , int,  2,  3)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_MODE   , int,  8, 15)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_OWNER  , int, 16, 16)
+
+enum {
+    U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU    = 1,
+    U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE = 3
+};
 
 #define U_DMA_BUF_IOCTL_MAGIC               'U'
-#define U_DMA_BUF_IOCTL_GET_SIZE            _IOR(U_DMA_BUF_IOCTL_MAGIC, 2, u64)
-#define U_DMA_BUF_IOCTL_GET_DMA_ADDR        _IOR(U_DMA_BUF_IOCTL_MAGIC, 3, u64)
-#define U_DMA_BUF_IOCTL_GET_SYNC_OWNER      _IOR(U_DMA_BUF_IOCTL_MAGIC, 4, u32)
-#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU    _IOW(U_DMA_BUF_IOCTL_MAGIC, 5, u64)
-#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE _IOW(U_DMA_BUF_IOCTL_MAGIC, 6, u64)
-#define U_DMA_BUF_IOCTL_GET_SYNC            _IOR(U_DMA_BUF_IOCTL_MAGIC, 7, struct u_dma_buf_ioctl_sync_args)
-#define U_DMA_BUF_IOCTL_SET_SYNC            _IOW(U_DMA_BUF_IOCTL_MAGIC, 8, struct u_dma_buf_ioctl_sync_args)
+#define U_DMA_BUF_IOCTL_GET_SIZE            _IOR(U_DMA_BUF_IOCTL_MAGIC, 2, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_DMA_ADDR        _IOR(U_DMA_BUF_IOCTL_MAGIC, 3, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_SYNC_OWNER      _IOR(U_DMA_BUF_IOCTL_MAGIC, 4, uint32_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU    _IOW(U_DMA_BUF_IOCTL_MAGIC, 5, uint64_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE _IOW(U_DMA_BUF_IOCTL_MAGIC, 6, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_DMA_INFO        _IOR(U_DMA_BUF_IOCTL_MAGIC, 7, struct u_dma_buf_ioctl_dma_info)
+#define U_DMA_BUF_IOCTL_GET_SYNC            _IOR(U_DMA_BUF_IOCTL_MAGIC, 8, struct u_dma_buf_ioctl_sync_args)
+#define U_DMA_BUF_IOCTL_SET_SYNC            _IOW(U_DMA_BUF_IOCTL_MAGIC, 9, struct u_dma_buf_ioctl_sync_args)
 #endif /* #ifndef U_DMA_BUF_IOCTL_H */
 #endif /* #if (IOCTL_VERSION > 0) */
 
@@ -1013,7 +1042,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
 
     switch(cmd) {
         case U_DMA_BUF_IOCTL_GET_SIZE: {
-            u64 size = (u64)this->size;
+            uint64_t size = (uint64_t)this->size;
             if (copy_to_user(argp, &size, sizeof(size)) != 0)
                 result = -EINVAL;
             else 
@@ -1021,7 +1050,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             break;
         }
         case U_DMA_BUF_IOCTL_GET_DMA_ADDR: {
-            u64 dma_addr = (u64)this->phys_addr;
+            uint64_t dma_addr = (uint64_t)this->phys_addr;
             if (copy_to_user(argp, &dma_addr, sizeof(dma_addr)) != 0)
                 result = -EINVAL;
             else 
@@ -1029,8 +1058,34 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             break;
         }
         case U_DMA_BUF_IOCTL_GET_SYNC_OWNER: {
-            u32 sync_owner = (u32)this->sync_owner;
+            uint32_t sync_owner = (uint32_t)this->sync_owner;
             if (copy_to_user(argp, &sync_owner, sizeof(sync_owner)) != 0)
+                result = -EINVAL;
+            else 
+                result = 0;
+            break;
+        }
+        case U_DMA_BUF_IOCTL_GET_DMA_INFO: {
+            struct u_dma_buf_ioctl_dma_info dma_info;
+            u64    dma_mask = *this->dma_dev->dma_mask;
+            int    dma_mask_size = 0;
+	    u64    dma_mask_bit  = (1 << dma_mask_size);
+            while (dma_mask_size < 64) {
+                if ((dma_mask & dma_mask_bit) == 0)
+                    break;
+                dma_mask_size++;
+                dma_mask_bit = dma_mask_bit << 1;
+            }
+            SET_U_DMA_BUF_IOCTL_FLAGS_DMA_MASK    (&dma_info.flags, dma_mask_size);
+#if defined(IS_DMA_COHERENT)
+            SET_U_DMA_BUF_IOCTL_FLAGS_DMA_COHERENT(&dma_info.flags, IS_DMA_COHERENT(this->dma_dev));
+#endif
+#if (USE_QUIRK_MMAP == 1)
+            SET_U_DMA_BUF_IOCTL_FLAGS_MMAP_MODE   (&dma_info.flags, this->quirk_mmap_mode);
+#endif
+            dma_info.size = (uint64_t)(this->size);
+            dma_info.addr = (uint64_t)(this->phys_addr);
+            if (copy_to_user(argp, &dma_info, sizeof(dma_info)) != 0)
                 result = -EINVAL;
             else 
                 result = 0;
@@ -1038,11 +1093,11 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         }
         case U_DMA_BUF_IOCTL_GET_SYNC: {
             struct u_dma_buf_ioctl_sync_args sync_args;
-            sync_args.flags  = ((u64)this->sync_direction << U_DMA_BUF_IOCTL_SYNC_FLAGS_DIR_SHIFT   & U_DMA_BUF_IOCTL_SYNC_FLAGS_DIR_MASK  );
-            sync_args.flags |= ((u64)this->sync_mode      << U_DMA_BUF_IOCTL_SYNC_FLAGS_MODE_SHIFT  & U_DMA_BUF_IOCTL_SYNC_FLAGS_MODE_MASK );
-            sync_args.flags |= ((u64)this->sync_owner     << U_DMA_BUF_IOCTL_SYNC_FLAGS_OWNER_SHIFT & U_DMA_BUF_IOCTL_SYNC_FLAGS_OWNER_MASK);
-            sync_args.size   = (u64)this->sync_size;
-            sync_args.offset = (u64)this->sync_offset;
+            SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR  (&sync_args.flags, this->sync_direction);
+            SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE (&sync_args.flags, this->sync_mode);
+            SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_OWNER(&sync_args.flags, this->sync_owner);
+            sync_args.size   = (uint64_t)this->sync_size;
+            sync_args.offset = (uint64_t)this->sync_offset;
             if (copy_to_user(argp, &sync_args, sizeof(sync_args)) != 0)
                 result = -EINVAL;
             else 
@@ -1054,10 +1109,10 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
                 result = -EINVAL;
             else {
-                int    sync_command   = (sync_args.flags & U_DMA_BUF_IOCTL_SYNC_FLAGS_CMD_MASK ) >> U_DMA_BUF_IOCTL_SYNC_FLAGS_CMD_SHIFT ;
-                int    sync_direction = (sync_args.flags & U_DMA_BUF_IOCTL_SYNC_FLAGS_DIR_MASK ) >> U_DMA_BUF_IOCTL_SYNC_FLAGS_DIR_SHIFT ;
-                int    sync_mode      = (sync_args.flags & U_DMA_BUF_IOCTL_SYNC_FLAGS_MODE_MASK) >> U_DMA_BUF_IOCTL_SYNC_FLAGS_MODE_SHIFT;
-                u64    sync_offset    = sync_args.offset;
+                int    sync_command   = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD (sync_args.flags);
+                int    sync_direction = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR (sync_args.flags);
+                int    sync_mode      = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE(sync_args.flags);
+                u64    sync_offset    = (u64)(sync_args.offset);
                 size_t sync_size      = (size_t)(sync_args.size);
                 switch(sync_direction) {
                     case 0   : this->sync_direction = 0; break;
@@ -1069,11 +1124,11 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
                 if (sync_offset >= 0) {this->sync_offset = sync_offset;}
                 if (sync_size   >  0) {this->sync_size   = sync_size  ;}
                 switch(sync_command) {
-                    case U_DMA_BUF_IOCTL_SYNC_FLAGS_CMD_FOR_CPU:
+                    case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU:
                         this->sync_for_cpu = 1;
                         result = udmabuf_sync_for_cpu(this);
                         break;
-                    case U_DMA_BUF_IOCTL_SYNC_FLAGS_CMD_FOR_DEVICE:
+                    case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE:
                         this->sync_for_device = 1;
                         result = udmabuf_sync_for_device(this);
                         break;
