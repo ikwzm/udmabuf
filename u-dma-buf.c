@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.7.0-RC3"
+#define DRIVER_VERSION     "4.7.0-RC4"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -989,6 +989,18 @@ static inline int  GET_U_DMA_BUF_IOCTL_FLAGS_ ## name(type *p)            \
 
 typedef struct {
     uint64_t flags;
+    char     version[16];
+} u_dma_buf_ioctl_drv_info;
+
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(IOCTL_VERSION      , u_dma_buf_ioctl_drv_info ,  0,  7)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(IN_KERNEL_FUNCTIONS, u_dma_buf_ioctl_drv_info ,  8,  8)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_DMA_CONFIG  , u_dma_buf_ioctl_drv_info , 12, 12)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_RESERVED_MEM, u_dma_buf_ioctl_drv_info , 13, 13)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP     , u_dma_buf_ioctl_drv_info , 16, 16)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP_PAGE, u_dma_buf_ioctl_drv_info , 17, 17)
+
+typedef struct {
+    uint64_t flags;
     uint64_t size;
     uint64_t addr;
 } u_dma_buf_ioctl_dev_info;
@@ -1014,6 +1026,7 @@ enum {
 };
 
 #define U_DMA_BUF_IOCTL_MAGIC               'U'
+#define U_DMA_BUF_IOCTL_GET_DRV_INFO        _IOR(U_DMA_BUF_IOCTL_MAGIC, 1, u_dma_buf_ioctl_drv_info)
 #define U_DMA_BUF_IOCTL_GET_SIZE            _IOR(U_DMA_BUF_IOCTL_MAGIC, 2, uint64_t)
 #define U_DMA_BUF_IOCTL_GET_DMA_ADDR        _IOR(U_DMA_BUF_IOCTL_MAGIC, 3, uint64_t)
 #define U_DMA_BUF_IOCTL_GET_SYNC_OWNER      _IOR(U_DMA_BUF_IOCTL_MAGIC, 4, uint32_t)
@@ -1040,6 +1053,21 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
     int                    result = 0;
 
     switch(cmd) {
+        case U_DMA_BUF_IOCTL_GET_DRV_INFO: {
+            u_dma_buf_ioctl_drv_info drv_info;
+            SET_U_DMA_BUF_IOCTL_FLAGS_IOCTL_VERSION      (&drv_info, IOCTL_VERSION);
+            SET_U_DMA_BUF_IOCTL_FLAGS_IN_KERNEL_FUNCTIONS(&drv_info, IN_KERNEL_FUNCTIONS);
+            SET_U_DMA_BUF_IOCTL_FLAGS_USE_OF_DMA_CONFIG  (&drv_info, USE_OF_DMA_CONFIG);
+            SET_U_DMA_BUF_IOCTL_FLAGS_USE_OF_RESERVED_MEM(&drv_info, USE_OF_RESERVED_MEM);
+            SET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP     (&drv_info, USE_QUIRK_MMAP);
+            SET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP_PAGE(&drv_info, USE_QUIRK_MMAP_PAGE);
+	    strlcpy(&drv_info.version[0], DRIVER_VERSION, sizeof(drv_info.version));
+            if (copy_to_user(argp, &drv_info, sizeof(drv_info)) != 0)
+                result = -EINVAL;
+            else 
+                result = 0;
+            break;
+        }
         case U_DMA_BUF_IOCTL_GET_SIZE: {
             uint64_t size = (uint64_t)this->size;
             if (copy_to_user(argp, &size, sizeof(size)) != 0)
