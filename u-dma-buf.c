@@ -66,13 +66,14 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.6.1"
+#define DRIVER_VERSION     "4.7.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
 #define UDMABUF_DEBUG       1
 #define USE_QUIRK_MMAP      1
 #define IN_KERNEL_FUNCTIONS 1
+#define IOCTL_VERSION       1
 
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 #include <linux/dma-map-ops.h>
@@ -267,6 +268,7 @@ struct udmabuf_object {
  * * /sys/class/u-dma-buf/<device-name>/sync_for_device
  * * /sys/class/u-dma-buf/<device-name>/dma_coherent
  * * /sys/class/u-dma-buf/<device-name>/quirk_mmap_mode
+ * * /sys/class/u-dma-buf/<device-name>/ioctl_version
  * * 
  */
 
@@ -423,6 +425,10 @@ DEF_ATTR_SHOW(debug_vma      , "%d\n"    , this->debug_vma                      
 DEF_ATTR_SET( debug_vma                  , 0, 1,        NO_ACTION, NO_ACTION              );
 #endif
 
+#if (IOCTL_VERSION > 0)
+DEF_ATTR_SHOW(ioctl_version  , "%d\n"    , (int)(IOCTL_VERSION)                           );
+#endif
+
 static struct device_attribute udmabuf_device_attrs[] = {
   __ATTR(driver_version , 0444, udmabuf_show_driver_version  , NULL                       ),
   __ATTR(size           , 0444, udmabuf_show_size            , NULL                       ),
@@ -442,6 +448,9 @@ static struct device_attribute udmabuf_device_attrs[] = {
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
   __ATTR(debug_vma      , 0664, udmabuf_show_debug_vma       , udmabuf_set_debug_vma      ),
+#endif
+#if (IOCTL_VERSION > 0)
+  __ATTR(ioctl_version  , 0444, udmabuf_show_ioctl_version   , NULL                       ),
 #endif
   __ATTR_NULL,
 };
@@ -776,6 +785,7 @@ static int udmabuf_object_mmap(struct udmabuf_object* this, struct vm_area_struc
  * * udmabuf_device_file_read()    - udmabuf device file read operation.
  * * udmabuf_device_file_write()   - udmabuf device file write operation.
  * * udmabuf_device_file_llseek()  - udmabuf device file llseek operation.
+ * * udmabuf_device_file_ioctl()   - udmabuf device file ioctl operation.
  * * udmabuf_device_file_ops       - udmabuf device file operation table.
  */
 
@@ -952,16 +962,260 @@ static loff_t udmabuf_device_file_llseek(struct file* file, loff_t offset, int w
 }
 
 /**
+ * u_dma_buf_ioctl.h - u-dma-buf ioctl header file
+ *
+ * This source code(u-dma-buf.c) has built-in header file(u-dma-buf-ioctl.h) 
+ * so that it can be built with only one source code.
+ * To generate a header file (u-dma-buf-ioctl.h) from this source code (u-dma-buf.c), 
+ * do the following
+ * 
+ * sed -n '/^\/\*\*\*\*\*\*\*\*\*\*\**$/,/\**\*\*\*\*\*\*\*\*\*\*\/$/p' u-dma-buf.c >  u-dma-buf-ioctl.h
+ * sed -n '/^#ifndef.*U_DMA_BUF_IOCTL_H/,/^#endif.*U_DMA_BUF_IOCTL_H/p' u-dma-buf.c >> u-dma-buf-ioctl.h
+ * 
+ */
+#if (IOCTL_VERSION > 0)
+#ifndef  U_DMA_BUF_IOCTL_H
+#define  U_DMA_BUF_IOCTL_H
+#include <linux/ioctl.h>
+
+#define DEFINE_U_DMA_BUF_IOCTL_FLAGS(name,type,lo,hi)                     \
+static const  int      U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT = (lo);   \
+static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  = ((1 << ((hi)-(lo)+1))-1); \
+static inline void SET_U_DMA_BUF_IOCTL_FLAGS_ ## name(type *p, int value) \
+{                                                                         \
+    const int      shift = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT;      \
+    const uint64_t mask  = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK;       \
+    p->flags &= ~(mask << shift);                                         \
+    p->flags |= ((value & mask) << shift);                                \
+}                                                                         \
+static inline int  GET_U_DMA_BUF_IOCTL_FLAGS_ ## name(type *p)            \
+{                                                                         \
+    const int      shift = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT;      \
+    const uint64_t mask  = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK;       \
+    return (int)((p->flags >> shift) & mask);                             \
+}
+
+typedef struct {
+    uint64_t flags;
+    char     version[16];
+} u_dma_buf_ioctl_drv_info;
+
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(IOCTL_VERSION      , u_dma_buf_ioctl_drv_info ,  0,  7)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(IN_KERNEL_FUNCTIONS, u_dma_buf_ioctl_drv_info ,  8,  8)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_DMA_CONFIG  , u_dma_buf_ioctl_drv_info , 12, 12)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_RESERVED_MEM, u_dma_buf_ioctl_drv_info , 13, 13)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP     , u_dma_buf_ioctl_drv_info , 16, 16)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP_PAGE, u_dma_buf_ioctl_drv_info , 17, 17)
+
+typedef struct {
+    uint64_t flags;
+    uint64_t size;
+    uint64_t addr;
+} u_dma_buf_ioctl_dev_info;
+
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(DMA_MASK    , u_dma_buf_ioctl_dev_info ,  0,  7)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(DMA_COHERENT, u_dma_buf_ioctl_dev_info ,  9,  9)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(MMAP_MODE   , u_dma_buf_ioctl_dev_info , 10, 12)
+
+typedef struct {
+    uint64_t flags;
+    uint64_t size;
+    uint64_t offset;
+} u_dma_buf_ioctl_sync_args;
+
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_CMD    , u_dma_buf_ioctl_sync_args,  0,  1)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_DIR    , u_dma_buf_ioctl_sync_args,  2,  3)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_MODE   , u_dma_buf_ioctl_sync_args,  8, 15)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_OWNER  , u_dma_buf_ioctl_sync_args, 16, 16)
+
+enum {
+    U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU    = 1,
+    U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE = 3
+};
+
+#define U_DMA_BUF_IOCTL_MAGIC               'U'
+#define U_DMA_BUF_IOCTL_GET_DRV_INFO        _IOR(U_DMA_BUF_IOCTL_MAGIC, 1, u_dma_buf_ioctl_drv_info)
+#define U_DMA_BUF_IOCTL_GET_SIZE            _IOR(U_DMA_BUF_IOCTL_MAGIC, 2, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_DMA_ADDR        _IOR(U_DMA_BUF_IOCTL_MAGIC, 3, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_SYNC_OWNER      _IOR(U_DMA_BUF_IOCTL_MAGIC, 4, uint32_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU    _IOW(U_DMA_BUF_IOCTL_MAGIC, 5, uint64_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE _IOW(U_DMA_BUF_IOCTL_MAGIC, 6, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_DEV_INFO        _IOR(U_DMA_BUF_IOCTL_MAGIC, 7, u_dma_buf_ioctl_dev_info)
+#define U_DMA_BUF_IOCTL_GET_SYNC            _IOR(U_DMA_BUF_IOCTL_MAGIC, 8, u_dma_buf_ioctl_sync_args)
+#define U_DMA_BUF_IOCTL_SET_SYNC            _IOW(U_DMA_BUF_IOCTL_MAGIC, 9, u_dma_buf_ioctl_sync_args)
+#endif /* #ifndef U_DMA_BUF_IOCTL_H */
+#endif /* #if (IOCTL_VERSION > 0) */
+
+/**
+ * udmabuf_device_file_ioctl() - udmabuf device file ioctl operation.
+ * @file:       Pointer to the file structure.
+ * @cmd:        The ioctl command to be executed.
+ * @arg:        Pointer to user space data associated with the ioctl command.
+ * Return:      Success(=0) or error status(<0).
+ */
+#if (IOCTL_VERSION > 0)
+static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsigned long arg)
+{
+    struct udmabuf_object* this   = file->private_data;
+    void __user*           argp   = (void __user*)arg;
+    int                    result = 0;
+
+    switch(cmd) {
+        case U_DMA_BUF_IOCTL_GET_DRV_INFO: {
+            u_dma_buf_ioctl_drv_info drv_info;
+            SET_U_DMA_BUF_IOCTL_FLAGS_IOCTL_VERSION      (&drv_info, IOCTL_VERSION);
+            SET_U_DMA_BUF_IOCTL_FLAGS_IN_KERNEL_FUNCTIONS(&drv_info, IN_KERNEL_FUNCTIONS);
+            SET_U_DMA_BUF_IOCTL_FLAGS_USE_OF_DMA_CONFIG  (&drv_info, USE_OF_DMA_CONFIG);
+            SET_U_DMA_BUF_IOCTL_FLAGS_USE_OF_RESERVED_MEM(&drv_info, USE_OF_RESERVED_MEM);
+            SET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP     (&drv_info, USE_QUIRK_MMAP);
+            SET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP_PAGE(&drv_info, USE_QUIRK_MMAP_PAGE);
+	    strlcpy(&drv_info.version[0], DRIVER_VERSION, sizeof(drv_info.version));
+            if (copy_to_user(argp, &drv_info, sizeof(drv_info)) != 0)
+                result = -EINVAL;
+            else 
+                result = 0;
+            break;
+        }
+        case U_DMA_BUF_IOCTL_GET_SIZE: {
+            uint64_t size = (uint64_t)this->size;
+            if (copy_to_user(argp, &size, sizeof(size)) != 0)
+                result = -EINVAL;
+            else 
+                result = 0;
+            break;
+        }
+        case U_DMA_BUF_IOCTL_GET_DMA_ADDR: {
+            uint64_t dma_addr = (uint64_t)this->phys_addr;
+            if (copy_to_user(argp, &dma_addr, sizeof(dma_addr)) != 0)
+                result = -EINVAL;
+            else 
+                result = 0;
+            break;
+        }
+        case U_DMA_BUF_IOCTL_GET_SYNC_OWNER: {
+            uint32_t sync_owner = (uint32_t)this->sync_owner;
+            if (copy_to_user(argp, &sync_owner, sizeof(sync_owner)) != 0)
+                result = -EINVAL;
+            else 
+                result = 0;
+            break;
+        }
+        case U_DMA_BUF_IOCTL_GET_DEV_INFO: {
+            u_dma_buf_ioctl_dev_info dev_info;
+            u64    dma_mask = *this->dma_dev->dma_mask;
+            int    dma_mask_size = 0;
+	    u64    dma_mask_bit  = (1 << dma_mask_size);
+            while (dma_mask_size < 64) {
+                if ((dma_mask & dma_mask_bit) == 0)
+                    break;
+                dma_mask_size++;
+                dma_mask_bit = dma_mask_bit << 1;
+            }
+            SET_U_DMA_BUF_IOCTL_FLAGS_DMA_MASK    (&dev_info, dma_mask_size);
+#if defined(IS_DMA_COHERENT)
+            SET_U_DMA_BUF_IOCTL_FLAGS_DMA_COHERENT(&dev_info, IS_DMA_COHERENT(this->dma_dev));
+#endif
+#if (USE_QUIRK_MMAP == 1)
+            SET_U_DMA_BUF_IOCTL_FLAGS_MMAP_MODE   (&dev_info, this->quirk_mmap_mode);
+#endif
+            dev_info.size = (uint64_t)(this->size);
+            dev_info.addr = (uint64_t)(this->phys_addr);
+            if (copy_to_user(argp, &dev_info, sizeof(dev_info)) != 0)
+                result = -EINVAL;
+            else 
+                result = 0;
+            break;
+        }
+        case U_DMA_BUF_IOCTL_GET_SYNC: {
+            u_dma_buf_ioctl_sync_args sync_args;
+            SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR  (&sync_args, this->sync_direction);
+            SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE (&sync_args, this->sync_mode);
+            SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_OWNER(&sync_args, this->sync_owner);
+            sync_args.size   = (uint64_t)this->sync_size;
+            sync_args.offset = (uint64_t)this->sync_offset;
+            if (copy_to_user(argp, &sync_args, sizeof(sync_args)) != 0)
+                result = -EINVAL;
+            else 
+                result = 0;
+            break;
+        }
+        case U_DMA_BUF_IOCTL_SET_SYNC: {
+            u_dma_buf_ioctl_sync_args sync_args;
+            if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
+                result = -EINVAL;
+            else {
+                int    sync_command   = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD (&sync_args);
+                int    sync_direction = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR (&sync_args);
+                int    sync_mode      = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE(&sync_args);
+                u64    sync_offset    = (u64)(sync_args.offset);
+                size_t sync_size      = (size_t)(sync_args.size);
+                switch(sync_direction) {
+                    case 0   : this->sync_direction = 0; break;
+                    case 1   : this->sync_direction = 1; break;
+                    case 2   : this->sync_direction = 2; break;
+                    default  : /* none */                break;
+                }
+                if (sync_mode   >  0) {this->sync_mode   = sync_mode  ;}
+                if (sync_offset >= 0) {this->sync_offset = sync_offset;}
+                if (sync_size   >  0) {this->sync_size   = sync_size  ;}
+                switch(sync_command) {
+                    case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU:
+                        this->sync_for_cpu = 1;
+                        result = udmabuf_sync_for_cpu(this);
+                        break;
+                    case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE:
+                        this->sync_for_device = 1;
+                        result = udmabuf_sync_for_device(this);
+                        break;
+                    default  :
+                        result = 0;
+                        break;
+                }
+            }
+            break;
+        }
+        case U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU: {
+            u64 sync_args;
+            if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
+                result = -EINVAL;
+            else {
+                this->sync_for_cpu = sync_args;
+                result = udmabuf_sync_for_cpu(this);
+            }
+            break;
+        }
+        case U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE: {
+            u64 sync_args;
+            if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
+                result = -EINVAL;
+            else {
+                this->sync_for_device = sync_args;
+                result = udmabuf_sync_for_device(this);
+            }
+            break;
+        }
+        default:
+            result = -EINVAL;
+    }
+    return (long)result;
+}
+
+#endif /* #if (IOCTL_VERSION > 0) */
+
+/**
  * udmabuf device file operation table.
  */
 static const struct file_operations udmabuf_device_file_ops = {
-    .owner   = THIS_MODULE,
-    .open    = udmabuf_device_file_open,
-    .release = udmabuf_device_file_release,
-    .mmap    = udmabuf_device_file_mmap,
-    .read    = udmabuf_device_file_read,
-    .write   = udmabuf_device_file_write,
-    .llseek  = udmabuf_device_file_llseek,
+    .owner          = THIS_MODULE,
+    .open           = udmabuf_device_file_open,
+    .release        = udmabuf_device_file_release,
+    .mmap           = udmabuf_device_file_mmap,
+    .read           = udmabuf_device_file_read,
+    .write          = udmabuf_device_file_write,
+    .llseek         = udmabuf_device_file_llseek,
+#if (IOCTL_VERSION > 0)
+    .unlocked_ioctl = udmabuf_device_file_ioctl,
+#endif
 };
 
 /**
@@ -2767,7 +3021,8 @@ static int __init u_dma_buf_init(void)
                 "USE_OF_RESERVED_MEM=" NUM_TO_STR(USE_OF_RESERVED_MEM) ","
                 "USE_OF_DMA_CONFIG="   NUM_TO_STR(USE_OF_DMA_CONFIG)   ","
                 "USE_DEV_PROPERTY="    NUM_TO_STR(USE_DEV_PROPERTY)    ","
-                "IN_KERNEL_FUNCTIONS=" NUM_TO_STR(IN_KERNEL_FUNCTIONS) );
+                "IN_KERNEL_FUNCTIONS=" NUM_TO_STR(IN_KERNEL_FUNCTIONS) ","
+                "IOCTL_VERSION="       NUM_TO_STR(IOCTL_VERSION)        );
     }
 
     ida_init(&udmabuf_device_ida);
