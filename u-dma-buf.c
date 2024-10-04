@@ -964,11 +964,19 @@ static loff_t udmabuf_device_file_llseek(struct file* file, loff_t offset, int w
 /**
  * u_dma_buf_ioctl.h - u-dma-buf ioctl header file
  *
+ * This source code(u-dma-buf.c) has built-in header file(u-dma-buf-ioctl.h) 
+ * so that it can be built with only one source code.
+ * To generate a header file (u-dma-buf-ioctl.h) from this source code (u-dma-buf.c), 
+ * do the following
+ * 
+ * sed -n '/^\/\*\*\*\*\*\*\*\*\*\*\**$/,/\**\*\*\*\*\*\*\*\*\*\*\/$/p' u-dma-buf.c >  u-dma-buf-ioctl.h
+ * sed -n '/^#ifndef.*U_DMA_BUF_IOCTL_H/,/^#endif.*U_DMA_BUF_IOCTL_H/p' u-dma-buf.c >> u-dma-buf-ioctl.h
+ * 
  */
 #if (IOCTL_VERSION > 0)
 #ifndef  U_DMA_BUF_IOCTL_H
-#include <linux/ioctl.h>
 #define  U_DMA_BUF_IOCTL_H
+#include <linux/ioctl.h>
 
 #define DEFINE_U_DMA_BUF_IOCTL_FLAGS(name,type,lo,hi)                     \
 static const  int      U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT = (lo);   \
