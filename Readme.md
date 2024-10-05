@@ -35,7 +35,7 @@ Figure 1. Architecture
 
 ## Supported platforms
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.0 - 5.10 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.4, 5.10).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.0 - 5.10, 6.1 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.4, 5.10, 6.1).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: x86(64bit) However, verification is not enough. I hope the results from everyone.
@@ -156,7 +156,7 @@ The maximum number of DMA buffers that can be allocated using `insmod` is 8 (udm
 
 ```console
 zynq$ insmod u-dma-buf.ko udmabuf0=1048576
-u-dma-buf udmabuf0: driver version = 4.4.1
+u-dma-buf udmabuf0: driver version = 4.6.1
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -194,18 +194,18 @@ The u-dma-buf kernel module has the following module parameters:
 
 | Parameter Name  | Type  | Default | Description                         |
 |:----------------|:------|---------|:------------------------------------|
-| udmabuf0        | int   |    0    | u-dma-buf0 buffer size              |
-| udmabuf1        | int   |    0    | u-dma-buf1 buffer size              |
-| udmabuf2        | int   |    0    | u-dma-buf2 buffer size              |
-| udmabuf3        | int   |    0    | u-dma-buf3 buffer size              |
-| udmabuf4        | int   |    0    | u-dma-buf4 buffer size              |
-| udmabuf5        | int   |    0    | u-dma-buf5 buffer size              |
-| udmabuf6        | int   |    0    | u-dma-buf6 buffer size              |
-| udmabuf7        | int   |    0    | u-dma-buf7 buffer size              |
+| udmabuf0        | ulong |    0    | u-dma-buf0 buffer size              |
+| udmabuf1        | ulong |    0    | u-dma-buf1 buffer size              |
+| udmabuf2        | ulong |    0    | u-dma-buf2 buffer size              |
+| udmabuf3        | ulong |    0    | u-dma-buf3 buffer size              |
+| udmabuf4        | ulong |    0    | u-dma-buf4 buffer size              |
+| udmabuf5        | ulong |    0    | u-dma-buf5 buffer size              |
+| udmabuf6        | ulong |    0    | u-dma-buf6 buffer size              |
+| udmabuf7        | ulong |    0    | u-dma-buf7 buffer size              |
 | info_enable     | int   |    1    | install/uninstall infomation enable |
 | dma_mask_bit    | int   |   32    | dma mask bit size                   |
 | bind            | charp |   ""    | bind device name                    |
-| quirk_mmap_mode | int   | 2 or 3  | quirk mmap mode(1:off,2:on,3:auto)  |
+| quirk_mmap_mode | int   | 2 or 3  | quirk mmap mode(1:off,2:on,3:auto,4:page) |
 
 ### `udmabuf[0-7]`
 
@@ -241,7 +241,7 @@ For example, to designate "0000:00:15.0" under the pci bus as the parent device,
 
 ```console
 shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 bind="pci/0000:00:15.0" 
-[13422.022482] u-dma-buf udmabuf0: driver version = 4.4.1
+[13422.022482] u-dma-buf udmabuf0: driver version = 4.6.1
 [13422.022483] u-dma-buf udmabuf0: major number   = 238
 [13422.022483] u-dma-buf udmabuf0: minor number   = 0
 [13422.022484] u-dma-buf udmabuf0: phys address   = 0x0000000070950000
@@ -251,7 +251,8 @@ shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 bind="pci/0000:00
 [13422.022486] u-dma-buf udmabuf0: dma coherent   = 1
 [13422.022487] u-dma-buf udmabuf0: dma mask       = 0x00000000ffffffff
 [13422.022487] u-dma-buf udmabuf0: iommu domain   = NONE
-[13422.022487] u-dma-buf udmabuf0: quirk mmap     = 0
+[13422.022487] u-dma-buf udmabuf0: mmap mode      = 3
+[13422.022487] u-dma-buf udmabuf0: mmap           = dma_mmap_coherent
 [13422.022488] u-dma-buf: udmabuf0 installed.
 ```
 
@@ -261,7 +262,8 @@ This parameter specifies the default value of quirk-mmap-mode.
 quirk-mmap is described in detail below.   
 If this parameter is 1, quirk-mmap is prohibited.  
 If this parameter is 2, quirk-mmap is used.   
-If this parameter is 3, quirk-mmap is not used if the device has a dma-cohrent of true, and quirk-mmap is used only if dma-coherent is false.  
+If this parameter is 3, quirk-mmap is not used if the device has a dma-cohrent of true, and quirk-mmap is used only if dma-coherent is false.   
+If this parameter is 4, quirk-mmap is used in quirk-mmap-page mode.   
 
 If the architecture is ARM or ARM64, this parameter defaults to 2.   
 If the architecture is other than the above, this parameter defaults to 3.   
@@ -285,7 +287,7 @@ allocate buffers and create device drivers when loaded by `insmod`.
 
 ```console
 zynq$ insmod u-dma-buf.ko
-u-dma-buf udmabuf0: driver version = 4.4.1
+u-dma-buf udmabuf0: driver version = 4.6.1
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -311,6 +313,7 @@ The following properties can be set in the device tree.
   *  `quirk-mmap-off`
   *  `quirk-mmap-on`
   *  `quirk-mmap-auto`
+  *  `quirk-mmap-page`
   *  `memory-region`
 
 ### `compatible`
@@ -524,6 +527,12 @@ If the `quirk-mmap-on` property is specified, quirk-mmap. is used.
 ### `quirk-mmap-auto`
 
 If the `quirk-mmap-auto` property is specified, quirk-mmap is not used if the device has a dma-cohrent of true, and quirk-mmap is used only if dma-coherent is false.
+
+### `quirk-mmap-page`
+
+If the `quirk-mmap-page` property is specified, quirk-mmap. is used in quirk-mmap-page mode.   
+In quirk-mmap-page mode, there is no error when u-dma-buf is subject to O_DIRECT.   
+This mode is currently under development. Please use with caution.
 
 ### `memory-region`
 
@@ -841,6 +850,309 @@ The value written to this device file can include sync_offset, sync_size, and sy
 ```
 
 The sync_offset/sync_size/sync_direction specified by ```sync_for_device``` is temporary and does not affect the ```sync_offset``` or ```sync_size``` or ```sync_direction``` device files.
+
+Details of manual cache management is described in the next section.
+
+## ioctl
+
+Starting with u-dma-buf v4.7.0, devices can be controlled by issuing ioctl to the device file.
+The ioctl can do the following
+
+ * `U_DMA_BUF_IOCTL_GET_DRV_INFO`
+ * `U_DMA_BUF_IOCTL_GET_SIZE`
+ * `U_DMA_BUF_IOCTL_GET_DMA_ADDR`
+ * `U_DMA_BUF_IOCTL_GET_SYNC_OWNER`
+ * `U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU`
+ * `U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE`
+ * `U_DMA_BUF_IOCTL_GET_DEV_INFO`
+ * `U_DMA_BUF_IOCTL_GET_SYNC`
+ * `U_DMA_BUF_IOCTL_SET_SYNC`
+
+### u-dma-buf-ioctl.h
+
+The following header file is required to use ioctl.
+
+```C:u-dma-buf-ioctl.h
+#ifndef  U_DMA_BUF_IOCTL_H
+#define  U_DMA_BUF_IOCTL_H
+#include <linux/ioctl.h>
+
+#define DEFINE_U_DMA_BUF_IOCTL_FLAGS(name,type,lo,hi)                     \
+static const  int      U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT = (lo);   \
+static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  = ((1 << ((hi)-(lo)+1))-1); \
+static inline void SET_U_DMA_BUF_IOCTL_FLAGS_ ## name(type *p, int value) \
+{                                                                         \
+    const int      shift = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT;      \
+    const uint64_t mask  = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK;       \
+    p->flags &= ~(mask << shift);                                         \
+    p->flags |= ((value & mask) << shift);                                \
+}                                                                         \
+static inline int  GET_U_DMA_BUF_IOCTL_FLAGS_ ## name(type *p)            \
+{                                                                         \
+    const int      shift = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT;      \
+    const uint64_t mask  = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK;       \
+    return (int)((p->flags >> shift) & mask);                             \
+}
+
+typedef struct {
+    uint64_t flags;
+    char     version[16];
+} u_dma_buf_ioctl_drv_info;
+
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(IOCTL_VERSION      , u_dma_buf_ioctl_drv_info ,  0,  7)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(IN_KERNEL_FUNCTIONS, u_dma_buf_ioctl_drv_info ,  8,  8)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_DMA_CONFIG  , u_dma_buf_ioctl_drv_info , 12, 12)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_RESERVED_MEM, u_dma_buf_ioctl_drv_info , 13, 13)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP     , u_dma_buf_ioctl_drv_info , 16, 16)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP_PAGE, u_dma_buf_ioctl_drv_info , 17, 17)
+
+typedef struct {
+    uint64_t flags;
+    uint64_t size;
+    uint64_t addr;
+} u_dma_buf_ioctl_dev_info;
+
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(DMA_MASK    , u_dma_buf_ioctl_dev_info ,  0,  7)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(DMA_COHERENT, u_dma_buf_ioctl_dev_info ,  9,  9)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(MMAP_MODE   , u_dma_buf_ioctl_dev_info , 10, 12)
+
+typedef struct {
+    uint64_t flags;
+    uint64_t size;
+    uint64_t offset;
+} u_dma_buf_ioctl_sync_args;
+
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_CMD    , u_dma_buf_ioctl_sync_args,  0,  1)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_DIR    , u_dma_buf_ioctl_sync_args,  2,  3)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_MODE   , u_dma_buf_ioctl_sync_args,  8, 15)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_OWNER  , u_dma_buf_ioctl_sync_args, 16, 16)
+
+enum {
+    U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU    = 1,
+    U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE = 3
+};
+
+#define U_DMA_BUF_IOCTL_MAGIC               'U'
+#define U_DMA_BUF_IOCTL_GET_DRV_INFO        _IOR(U_DMA_BUF_IOCTL_MAGIC, 1, u_dma_buf_ioctl_drv_info)
+#define U_DMA_BUF_IOCTL_GET_SIZE            _IOR(U_DMA_BUF_IOCTL_MAGIC, 2, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_DMA_ADDR        _IOR(U_DMA_BUF_IOCTL_MAGIC, 3, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_SYNC_OWNER      _IOR(U_DMA_BUF_IOCTL_MAGIC, 4, uint32_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU    _IOW(U_DMA_BUF_IOCTL_MAGIC, 5, uint64_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE _IOW(U_DMA_BUF_IOCTL_MAGIC, 6, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_DEV_INFO        _IOR(U_DMA_BUF_IOCTL_MAGIC, 7, u_dma_buf_ioctl_dev_info)
+#define U_DMA_BUF_IOCTL_GET_SYNC            _IOR(U_DMA_BUF_IOCTL_MAGIC, 8, u_dma_buf_ioctl_sync_args)
+#define U_DMA_BUF_IOCTL_SET_SYNC            _IOW(U_DMA_BUF_IOCTL_MAGIC, 9, u_dma_buf_ioctl_sync_args)
+#endif /* #ifndef U_DMA_BUF_IOCTL_H */
+```
+
+### Example of required header files
+
+```C:u-dma-buf-ioctl-test.c
+#include <inttypes.h>
+#include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include "u-dma-buf-ioctl.h"
+```
+
+### `U_DMA_BUF_IOCTL_GET_DRV_INFO`
+
+This ioctl is for get driver information.
+The driver information obtained by this ioctl includes the driver support and version number.
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        u_dma_buf_ioctl_drv_info drv_info = {0};
+        int status = ioctl(fd, U_DMA_BUF_IOCTL_GET_DRV_INFO, &drv_info);
+        int ioctl_version       = GET_U_DMA_BUF_IOCTL_FLAGS_IOCTL_VERSION(&drv_info);
+        int in_kernel_function  = GET_U_DMA_BUF_IOCTL_FLAGS_IN_KERNEL_FUNCTIONS(&drv_info);
+        int use_of_dma_config   = GET_U_DMA_BUF_IOCTL_FLAGS_USE_OF_DMA_CONFIG(&drv_info);
+        int use_of_reserved_mem = GET_U_DMA_BUF_IOCTL_FLAGS_USE_OF_RESERVED_MEM(&drv_info);
+        int use_quirk_mmap      = GET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP(&drv_info);
+        int use_quirk_mmap_page = GET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP_PAGE(&drv_info);
+	char* drv_version       = strdup(&drv_info.version[0]);
+        close(fd);
+    }
+```
+
+### `U_DMA_BUF_IOCTL_GET_SIZE`
+
+This ioctl is for get size of a DMA Buffer.
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        uint64_t buf_size;
+        status = ioctl(fd, U_DMA_BUF_IOCTL_GET_SIZE, &buf_size);
+        close(fd);
+    }
+```
+
+### `U_DMA_BUF_IOCTL_GET_DMA_ADDR`
+
+This ioctl is for get physical address of a DMA Buffer.
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        uint64_t phys_addr;
+        status = ioctl(fd, U_DMA_BUF_IOCTL_GET_DMA_ADDR, &phys_addr);
+        close(fd);
+    }
+```
+
+### `U_DMA_BUF_IOCTL_GET_SYNC_OWNER`
+
+This ioctl is for get owner of the memory block in the manual cache management mode.
+If this value is 1, the buffer is owned by the device.
+If this value is 0, the buffer is owned by the cpu.
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        int sync_owner;
+        status = ioctl(fd, U_DMA_BUF_IOCTL_GET_SYNC_OWNER, &sync_owner);
+        close(fd);
+    }
+```
+
+### `U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU`
+
+This ioctl writes a value to sync_for_cpu.
+If '1' is written to sync_for_cpu, if `sync_direction` is 2(=DMA_FROM_DEVICE) or 0(=DMA_BIDIRECTIONAL),
+the write to the device file invalidates a cache specified by `sync_offset` and `sync_size`.
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        uint64_t sync_for_cpu = 1;
+        status = ioctl(fd, U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU, &sync_for_cpu);
+        close(fd);
+    }
+```
+
+The value written to sync_for_cpu can include sync_offset, sync_size, and sync_direction. 
+
+```C:u-dma-buf_test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        unsigned long sync_offset     = 0;
+        unsigned long sync_size       = 0x10000;
+        unsigned int  sync_direction  = 0;
+        uint64_t      sync_for_cpu    = ((uint64_t)(sync_offset    & 0xFFFFFFFF) << 32) |
+	                                ((uint64_t)(sync_size      & 0xFFFFFFF0) <<  0) |
+					((uint64_t)(sync_direction & 0x00000003) <<  2) |
+					0x00000001;
+        status = ioctl(fd, U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU, &sync_for_cpu);
+        close(fd);
+    }
+```
+
+The sync_offset/sync_size/sync_direction specified by ```sync_for_cpu``` is temporary and does not affect the ```sync_offset``` or ```sync_size``` or ```sync_direction``` device files.
+
+Details of manual cache management is described in the next section.
+
+
+### `U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE`
+
+This ioctl writes a value to sync_for_device.
+If '1' is written to sync_for_device, if `sync_direction` is 1(=DMA_TO_DEVICE) or 0(=DMA_BIDIRECTIONAL),
+the write to the device file flushes a cache specified by `sync_offset` and `sync_size` (i.e. the
+cached data, if any, will be updated with data on DDR memory).
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        uint64_t sync_for_device = 1;
+        status = ioctl(fd, U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE, &sync_for_device);
+        close(fd);
+    }
+```
+
+The value written to sync_for_cpu can include sync_offset, sync_size, and sync_direction. 
+
+```C:u-dma-buf_test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        unsigned long sync_offset     = 0;
+        unsigned long sync_size       = 0x10000;
+        unsigned int  sync_direction  = 0;
+        uint64_t      sync_for_device = ((uint64_t)(sync_offset    & 0xFFFFFFFF) << 32) |
+	                                ((uint64_t)(sync_size      & 0xFFFFFFF0) <<  0) |
+					((uint64_t)(sync_direction & 0x00000003) <<  2) |
+					0x00000001;
+        status = ioctl(fd, U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE, &sync_for_device);
+        close(fd);
+    }
+```
+
+The sync_offset/sync_size/sync_direction specified by ```sync_for_cpu``` is temporary and does not affect the ```sync_offset``` or ```sync_size``` or ```sync_direction``` device files.
+
+Details of manual cache management is described in the next section.
+
+### `U_DMA_BUF_IOCTL_GET_DEV_INFO`
+
+This ioctl is for get device information.
+The device information obtained by this ioctl includes physical address and size of a DMA Buffer.
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        u_dma_buf_ioctl_dev_info dev_info = {0};
+        status = ioctl(fd, U_DMA_BUF_IOCTL_GET_DEV_INFO, &dev_info);
+        int      dma_mask     = GET_U_DMA_BUF_IOCTL_FLAGS_DMA_MASK(&dev_info);
+	int      dma_coherent = GET_U_DMA_BUF_IOCTL_FLAGS_DMA_COHERENT(&dev_info);
+	int      mmap_mode    = GET_U_DMA_BUF_IOCTL_FLAGS_MMAP_MODE(&dev_info);
+        uint64_t phys_addr    = dev_info.addr;
+        uint64_t buf_size     = dev_info.size;
+        close(fd);
+    }
+```
+
+### `U_DMA_BUF_IOCTL_GET_SYNC`
+
+This ioctl is for get sync_offset/sync_size/sync_direction/sync_owner/sync_mode.
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        u_dma_buf_ioctl_sync_args sync_args = {0};
+        status = ioctl(fd, U_DMA_BUF_IOCTL_GET_SYNC, &sync_args);
+	uint64_t sync_offset    = sync_args.offset;
+	uint64_t sync_size      = sync_args.size;
+	int      sync_direction = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR(&sync_args);
+	int      sync_owner     = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_OWNER(&sync_args);
+	int      sync_mode      = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE(&sync_args);
+        close(fd);
+    }
+```
+
+### `U_DMA_BUF_IOCTL_SET_SYNC`
+
+This ioctl is for set sync_offset/sync_size/sync_direction/sync_mode.
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        u_dma_buf_ioctl_sync_args sync_args = {0};
+        uint64_t sync_offset    = 0;
+        uint64_t sync_size      = 0x10000;
+        int      sync_direction = 0;
+	sync_args.offset = sync_offset;
+	sync_args.size   = sync_size;
+	SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR(&sync_args, sync_direction);
+        status = ioctl(fd, U_DMA_BUF_IOCTL_SET_SYNC, &sync_args);
+        close(fd);
+    }
+```
+
+Also, by specifying a sync command in flags of the sync_args of this ioctl, sync_for_cpu or sync_for_device can be triggered.
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        u_dma_buf_ioctl_sync_args sync_args = {0};
+        uint64_t sync_offset    = 0;
+        uint64_t sync_size      = 0x10000;
+        int      sync_direction = 0;
+	sync_args.offset = sync_offset;
+	sync_args.size   = sync_size;
+	SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR(&sync_args, sync_direction);
+	SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD(&sync_args, U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU);
+        status = ioctl(fd, U_DMA_BUF_IOCTL_SET_SYNC, &sync_args);
+        close(fd);
+    }
+```
 
 Details of manual cache management is described in the next section.
 
@@ -1379,7 +1691,7 @@ Install u-dma-buf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
 
 ```console
 zynq# insmod u-dma-buf.ko udmabuf0=8388608
-[ 1183.911189] u-dma-buf udmabuf0: driver version = 4.4.1
+[ 1183.911189] u-dma-buf udmabuf0: driver version = 4.6.1
 [ 1183.921238] u-dma-buf udmabuf0: major number   = 240
 [ 1183.931275] u-dma-buf udmabuf0: minor number   = 0
 [ 1183.936063] u-dma-buf udmabuf0: phys address   = 0x0000000041600000
