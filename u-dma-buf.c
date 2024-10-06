@@ -66,14 +66,14 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.8.0-RC1"
+#define DRIVER_VERSION     "4.8.0-RC2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
 #define UDMABUF_DEBUG       1
 #define USE_QUIRK_MMAP      1
 #define IN_KERNEL_FUNCTIONS 1
-#define IOCTL_VERSION       1
+#define IOCTL_VERSION       2
 #define USE_DMA_BUF_EXPORT  1
 
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
@@ -229,9 +229,8 @@ struct udmabuf_object {
 #endif    
 #endif
 #if (USE_DMA_BUF_EXPORT == 1)
-    int                  export;
-    int                  export_fd;
-    struct dma_buf*      export_dma_buf;
+    struct list_head     export_dma_buf_list;
+    struct mutex         export_dma_buf_list_sem;
 #endif
 #if (USE_OF_RESERVED_MEM == 1)
     bool                 of_reserved_mem;
@@ -386,29 +385,6 @@ static int udmabuf_sync_for_device(struct udmabuf_object* this)
     return status;
 }
 
-/**
- * udmabuf_export_request() - call udmabuf_export_dma_buf_get() when (export != 0)
- *                            call udmabuf_export_dma_buf_get() when (export == 0)
- * @this:       Pointer to the udmabuf object.
- * Return:      Success(=0) or error status(<0).
- */
-#if (USE_DMA_BUF_EXPORT == 1)
-static int udmabuf_export_dma_buf_get(struct udmabuf_object* this, bool cloexec);
-static int udmabuf_export_dma_buf_put(struct udmabuf_object* this);
-static int udmabuf_export_request(struct udmabuf_object* this)
-{
-    int status = 0;
-
-    if ((this->export == 1) && (this->export_dma_buf == NULL)){
-        status = udmabuf_export_dma_buf_get(this, false);
-    }
-    if ((this->export == 0) && (this->export_dma_buf != NULL)){
-        status = udmabuf_export_dma_buf_put(this);
-    }
-    return status;
-}
-#endif
-
 #define DEF_ATTR_SHOW(__attr_name, __format, __value) \
 static ssize_t udmabuf_show_ ## __attr_name(struct device *dev, struct device_attribute *attr, char *buf) \
 {                                                            \
@@ -460,11 +436,6 @@ DEF_ATTR_SET( sync_for_device            , 0, U64_MAX,  NO_ACTION, udmabuf_sync_
 #if (USE_QUIRK_MMAP == 1)
 DEF_ATTR_SHOW(quirk_mmap_mode, "%d\n"    , this->quirk_mmap_mode                          );
 #endif
-#if (USE_DMA_BUF_EXPORT == 1)
-DEF_ATTR_SHOW(export         , "%d\n"    , this->export                                   );
-DEF_ATTR_SET( export                     , 0, 1,        NO_ACTION, udmabuf_export_request );
-DEF_ATTR_SHOW(export_fd      , "%d\n"    , this->export_fd                                );
-#endif
 #if defined(IS_DMA_COHERENT)
 DEF_ATTR_SHOW(dma_coherent   , "%d\n"    , IS_DMA_COHERENT(this->dma_dev)                 );
 #endif
@@ -494,10 +465,6 @@ static struct device_attribute udmabuf_device_attrs[] = {
   __ATTR(sync_for_device, 0664, udmabuf_show_sync_for_device , udmabuf_set_sync_for_device),
 #if (USE_QUIRK_MMAP == 1)
   __ATTR(quirk_mmap_mode, 0444, udmabuf_show_quirk_mmap_mode , NULL                       ),
-#endif
-#if (USE_DMA_BUF_EXPORT == 1)
-  __ATTR(export         , 0664, udmabuf_show_export          , udmabuf_set_export         ),
-  __ATTR(export_fd      , 0444, udmabuf_show_export_fd       , NULL                       ),
 #endif
 #if defined(IS_DMA_COHERENT)
   __ATTR(dma_coherent   , 0444, udmabuf_show_dma_coherent    , NULL                       ),
@@ -834,6 +801,395 @@ static int udmabuf_object_mmap(struct udmabuf_object* this, struct vm_area_struc
 }
 
 /**
+ * DOC: Udmabuf Export DMA-BUF Operations.
+ *
+ * struct udmabuf_export_entry    - udmabuf export dma-buf entry structure.
+ * udmabuf_export_dma_buf_map()   - udmabuf export dma-buf map operation.
+ * udmabuf_export_dma_buf_unmap() - udmabuf export dma-buf unmap operation.
+ * udmabuf_export_release()       - udmabuf export dma-buf release operation.
+ * udmabuf_export_mmap()          - udmabuf export dma-buf memory map operation.
+ * udmabuf_export_begin_cpu()     - udmabuf export dma-buf begin_cpu operation.
+ * udmabuf_export_end_cpu()       - udmabuf export dma-buf end_cpu operation.
+ * udmabuf_export_ops             - udmabuf export dma-buf operation table.
+ * udmabuf_export_create_entry()  - Create udmabuf export dma-buf entry and add list.
+ */
+#if (USE_DMA_BUF_EXPORT == 1)
+struct udmabuf_export_entry {
+    struct udmabuf_object* object;
+    struct udmabuf_object  object_data;
+    struct dma_buf*        dma_buf;
+    int                    fd;
+    u64                    offset;
+    size_t                 size;
+    struct list_head       list;
+};
+
+/**
+ * udmabuf_export_dma_buf_map() -  udmabuf export dma-buf map operation.
+ * @attachment: Pointer to dma-buf attachment structure.
+ * @direction:  length of range for cpu access.
+ * Return:      handle to scatter gather table(>=0) or error status(<0).
+ */
+static struct sg_table *udmabuf_export_dma_buf_map(struct dma_buf_attachment* attachment,
+                                           enum   dma_data_direction  direction)
+{
+    struct dma_buf*              dma_buf = attachment->dmabuf;
+    struct udmabuf_export_entry* entry;
+    struct udmabuf_object*       this;
+    unsigned int                 done    = 0;
+    const unsigned int           DONE_ALLOC_SG_TABLE = (1 << 0);
+    const unsigned int           DONE_GET_SG_TABLE   = (1 << 1);
+    const unsigned int           DONE_MAP_SG_TABLE   = (1 << 2);
+    struct sg_table*             sg_table;
+    int                          retval;
+
+    if (dma_buf == NULL)
+        return ERR_PTR(-ENODEV);
+
+    if ((entry = dma_buf->priv) == NULL)
+        return ERR_PTR(-ENODEV);
+
+    this = &entry->object_data;
+
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() start.\n", __func__);
+
+    sg_table = kzalloc(sizeof(*sg_table), GFP_KERNEL);
+    if (IS_ERR_OR_NULL(sg_table)) {
+        retval   = PTR_ERR(sg_table);
+        dev_err(this->sys_dev, "%s(): kzalloc() failed. return=%d\n", __func__, retval);
+        goto failed;
+    }
+    done |= DONE_ALLOC_SG_TABLE;
+
+    retval = dma_get_sgtable(this->dma_dev, sg_table, this->virt_addr, this->phys_addr, this->alloc_size);
+    if (retval) {
+        dev_err(this->sys_dev, "%s(): dma_get_sgtable() failed. return=%d\n", __func__, retval);
+        goto failed;
+    }
+    done |= DONE_GET_SG_TABLE;
+
+    retval = dma_map_sgtable(attachment->dev, sg_table, direction, 0);
+    if (retval) {
+        dev_err(this->sys_dev, "%s(): dma_map_sgtable() failed. return=%d\n", __func__, retval);
+        goto failed;
+    }
+    done |= DONE_MAP_SG_TABLE;
+
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() done.\n", __func__);
+
+    return sg_table;
+
+ failed:
+    if (done & DONE_MAP_SG_TABLE  ) {dma_unmap_sgtable(attachment->dev, sg_table, direction, 0);}
+    if (done & DONE_GET_SG_TABLE  ) {sg_free_table(sg_table);};
+    if (done & DONE_ALLOC_SG_TABLE) {kfree(sg_table);}
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() failed. return=%d\n", __func__, retval);
+    return ERR_PTR(retval);
+}
+
+/**
+ * udmabuf_export_dma_buf_unmap() - udmabuf export dma-buf unmap operation.
+ * @attachment: Pointer to dma-buf attachment structure.
+ * @sg_table:   scatter gather table.
+ * @direction:  length of range for cpu access.
+ */
+static void udmabuf_export_dma_buf_unmap(struct dma_buf_attachment* attachment,
+			         struct sg_table*           sg_table,
+			         enum   dma_data_direction  direction)
+{
+    struct dma_buf*              dma_buf = attachment->dmabuf;
+    struct udmabuf_export_entry* entry;
+    struct udmabuf_object*       this;
+
+    if (dma_buf == NULL)
+        return;
+
+    if ((entry = dma_buf->priv) == NULL)
+        return;
+
+    this = &entry->object_data;
+
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() start.\n", __func__);
+
+    if (sg_table == NULL)
+        goto done;
+    
+    dma_unmap_sgtable(attachment->dev, sg_table, direction, 0);
+    sg_free_table(sg_table);
+    kfree(sg_table);
+ done:
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() done.\n", __func__);
+}
+
+/**
+ * udmabuf_export_release() - udmabuf export dma-buf release operation.
+ * @dma_buf:	Pointer to dma-buf structure.
+ */
+static void udmabuf_export_release(struct dma_buf *dma_buf)
+{
+    struct udmabuf_export_entry* entry = dma_buf->priv; 
+    struct udmabuf_object*       this;
+
+    if (entry == NULL)
+        return;
+
+    if ((this = entry->object) == NULL)
+        return;
+    
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() start.\n", __func__);
+
+    mutex_lock(&this->export_dma_buf_list_sem);
+    list_del(&entry->list);
+    mutex_unlock(&this->export_dma_buf_list_sem);
+    kfree(entry);
+
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() done.\n", __func__);
+}
+
+/**
+ * udmabuf_export_mmap() - udmabuf export dma-buf memory map operation.
+ * @dma_buf:	Pointer to dma-buf structure.
+ * @vma:        Pointer to the vm area structure.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int udmabuf_export_mmap(struct dma_buf* dma_buf, struct vm_area_struct* vma)
+{
+    struct udmabuf_export_entry* entry = dma_buf->priv; 
+    struct udmabuf_object*       this;
+    bool                         force_sync = false;
+    int                          retval = 0;
+
+    if (entry == NULL)
+        return -ENODEV;
+
+    this = &entry->object_data;
+    
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() start.\n", __func__);
+
+    retval = udmabuf_object_mmap(this, vma, force_sync);
+    if (retval) {
+        dev_err(this->sys_dev, "%s(): udmabuf_object_mmap() failed return=%d\n", __func__, retval);
+        goto failed;
+    }
+
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() done.\n", __func__);
+    return 0;
+
+ failed:
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() failed. return=%d\n", __func__, retval);
+    return retval;
+}
+
+/**
+ * udmabuf_export_begin_cpu() - udmabuf export dma-buf begin_cpu operation.
+ *                              This is called from dma_buf_begin_cpu_access().
+ * @dma_buf:	Pointer to dma-buf structure.
+ * @direction:  length of range for cpu access.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int udmabuf_export_begin_cpu(struct dma_buf* dma_buf, enum dma_data_direction direction)
+{
+    struct udmabuf_export_entry* entry = dma_buf->priv; 
+    struct udmabuf_object*       this;
+
+    if (entry == NULL)
+        return -ENODEV;
+
+    this = &entry->object_data;
+    
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() start.\n", __func__);
+
+    this->sync_for_cpu    = 1;
+    this->sync_offset     = 0;
+    this->sync_size       = this->alloc_size;
+    this->sync_direction  = direction;
+    udmabuf_sync_for_cpu(this);
+
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() done.\n", __func__);
+
+    return 0;
+}
+
+/**
+ * udmabuf_export_end_cpu() - udmabuf export dma-buf end_cpu operation.
+ *                            This is called from dma_buf_end_cpu_access()
+ * @dma_buf:	Pointer to dma-buf structure.
+ * @direction:  length of range for cpu access.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int udmabuf_export_end_cpu(struct dma_buf* dma_buf, enum dma_data_direction direction)
+{
+    struct udmabuf_export_entry* entry = dma_buf->priv; 
+    struct udmabuf_object*       this;
+
+    if (entry == NULL)
+        return -ENODEV;
+
+    this = &entry->object_data;
+    
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() start.\n", __func__);
+
+    this->sync_for_device = 1;
+    this->sync_offset     = 0;
+    this->sync_size       = this->alloc_size;
+    this->sync_direction  = direction;
+    udmabuf_sync_for_device(this);
+
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() done.\n", __func__);
+
+    return 0;
+}
+
+/**
+ * udmabuf export dma-buf operation table.
+ */
+static const struct dma_buf_ops udmabuf_export_ops = {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+    .cache_sgt_mapping = true,
+#endif
+    .map_dma_buf       = udmabuf_export_dma_buf_map,
+    .unmap_dma_buf     = udmabuf_export_dma_buf_unmap,
+    .release           = udmabuf_export_release,
+    .mmap              = udmabuf_export_mmap,
+    .begin_cpu_access  = udmabuf_export_begin_cpu,
+    .end_cpu_access    = udmabuf_export_end_cpu,
+};
+
+/**
+ * udmabuf_export_create_entry() - Create udmabuf export dma-buf entry and add list.
+ * @this:       Pointer to the udmabuf object.
+ * Return:      Pointer to the udmabuf export_dma_buf(>0) or error status(<=0).
+ */
+static struct udmabuf_export_entry* udmabuf_export_create_entry(
+     struct udmabuf_object*  this     ,
+     u64                     offset   ,
+     size_t                  size     ,
+     bool                    cloexec  )
+{
+    DEFINE_DMA_BUF_EXPORT_INFO(export_info);
+    struct udmabuf_export_entry* entry  = NULL;
+    int                          retval = 0;
+    u32                          flags  = 0;
+
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() start.\n", __func__);
+
+    if ((offset & PAGE_MASK) != 0) {
+        dev_err(this->sys_dev, "%s() offset is not page allignment\n", __func__);
+        retval = -EINVAL;
+        goto failed;
+    }
+
+    if ((size & PAGE_MASK) != 0) {
+        dev_err(this->sys_dev, "%s() size is not page allignment\n", __func__);
+        retval = -EINVAL;
+        goto failed;
+    }
+
+    if ((offset + size) > this->size) {
+        dev_err(this->sys_dev, "%s() offset + size is over buffer size\n", __func__);
+        retval = -EINVAL;
+        goto failed;
+    }
+
+    entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+    if (IS_ERR_OR_NULL(entry)) {
+        retval = PTR_ERR(entry);
+        entry  = NULL;
+        dev_err(this->sys_dev, "%s() kzalloc() failed. return=%d\n", __func__, retval);
+        goto failed;
+    }
+    entry->object = this;
+    entry->offset = offset;
+    entry->size   = size;
+
+    entry->object_data.sys_dev         = this->sys_dev;
+    entry->object_data.dma_dev         = this->dma_dev;
+    entry->object_data.phys_addr       = this->phys_addr + offset;
+    entry->object_data.virt_addr       = this->virt_addr + offset;
+    entry->object_data.size            = size;
+    entry->object_data.alloc_size      = size;
+    entry->object_data.sync_mode       = this->sync_mode;
+    entry->object_data.sync_offset     = 0;
+    entry->object_data.sync_size       = size;
+    entry->object_data.sync_direction  = 0;
+#if (USE_QUIRK_MMAP == 1)
+    entry->object_data.quirk_mmap_mode = this->quirk_mmap_mode;
+#if (USE_QUIRK_MMAP_PAGE == 1)
+    if (this->pages != NULL) {
+        entry->object_data.pagecount   = size >> PAGE_SHIFT;
+        entry->object_data.pages       = &this->pages[offset>>PAGE_SHIFT];
+    }
+#endif    
+#endif
+#if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
+    entry->object_data.debug_vma       = this->debug_vma;
+#endif
+#if ((UDMABUF_DEBUG == 1) && (USE_DMA_BUF_EXPORT == 1))
+    entry->object_data.debug_export    = this->debug_export;
+#endif
+
+    export_info.ops   = &udmabuf_export_ops;
+    export_info.size  = size;
+    export_info.priv  = (void*)entry;
+    export_info.flags = O_RDWR;
+    entry->dma_buf    = dma_buf_export(&export_info);
+    if (IS_ERR(entry->dma_buf)) {
+        retval = PTR_ERR(entry->dma_buf);
+        entry->dma_buf = NULL;
+        dev_err(this->sys_dev, "%s(): dma_buf_export() failed. return=%d\n", __func__, retval);
+        goto failed;
+    }
+
+    if (cloexec == true)
+        flags |= O_CLOEXEC;
+    entry->fd = dma_buf_fd(entry->dma_buf, flags);
+    if (entry->fd < 0) {
+        retval = entry->fd;
+        entry->fd = 0;
+        dev_err(this->sys_dev, "%s(): dma_buf_fd() failed. return=%d\n", __func__, retval);
+        goto failed;
+    }
+
+    mutex_lock(&this->export_dma_buf_list_sem);
+    list_add_tail(&entry->list, &this->export_dma_buf_list);
+    mutex_unlock(&this->export_dma_buf_list_sem);
+
+    if (UDMABUF_EXPORT_DEBUG(this)) {
+        dev_info(this->sys_dev, "export_fd=%d\n", entry->fd);
+        dev_info(this->sys_dev, "%s() done.\n", __func__);
+    }
+
+    return entry;
+
+ failed:
+    if (entry != NULL) {
+        if (entry->dma_buf != NULL) {
+            dma_buf_put(entry->dma_buf);
+        }
+        kfree(entry);
+    }
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->sys_dev, "%s() failed. return=%d\n", __func__, retval);
+    return ERR_PTR(retval);
+}
+#endif /* #if (USE_DMA_BUF_EXPORT == 1) */
+
+/**
  * DOC: Udmabuf Device File Operations.
  *
  * This section defines the operation of the udmabuf device file.
@@ -1092,16 +1448,27 @@ enum {
     U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE = 3
 };
 
+typedef struct {
+    uint64_t flags;
+    uint64_t size;
+    uint64_t offset;
+    uint64_t addr;
+    int      fd;
+} u_dma_buf_ioctl_export_args;
+
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(EXPORT_CLOEXEC, u_dma_buf_ioctl_export_args,  0,  0)
+
 #define U_DMA_BUF_IOCTL_MAGIC               'U'
-#define U_DMA_BUF_IOCTL_GET_DRV_INFO        _IOR(U_DMA_BUF_IOCTL_MAGIC, 1, u_dma_buf_ioctl_drv_info)
-#define U_DMA_BUF_IOCTL_GET_SIZE            _IOR(U_DMA_BUF_IOCTL_MAGIC, 2, uint64_t)
-#define U_DMA_BUF_IOCTL_GET_DMA_ADDR        _IOR(U_DMA_BUF_IOCTL_MAGIC, 3, uint64_t)
-#define U_DMA_BUF_IOCTL_GET_SYNC_OWNER      _IOR(U_DMA_BUF_IOCTL_MAGIC, 4, uint32_t)
-#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU    _IOW(U_DMA_BUF_IOCTL_MAGIC, 5, uint64_t)
-#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE _IOW(U_DMA_BUF_IOCTL_MAGIC, 6, uint64_t)
-#define U_DMA_BUF_IOCTL_GET_DEV_INFO        _IOR(U_DMA_BUF_IOCTL_MAGIC, 7, u_dma_buf_ioctl_dev_info)
-#define U_DMA_BUF_IOCTL_GET_SYNC            _IOR(U_DMA_BUF_IOCTL_MAGIC, 8, u_dma_buf_ioctl_sync_args)
-#define U_DMA_BUF_IOCTL_SET_SYNC            _IOW(U_DMA_BUF_IOCTL_MAGIC, 9, u_dma_buf_ioctl_sync_args)
+#define U_DMA_BUF_IOCTL_GET_DRV_INFO        _IOR (U_DMA_BUF_IOCTL_MAGIC, 1, u_dma_buf_ioctl_drv_info)
+#define U_DMA_BUF_IOCTL_GET_SIZE            _IOR (U_DMA_BUF_IOCTL_MAGIC, 2, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_DMA_ADDR        _IOR (U_DMA_BUF_IOCTL_MAGIC, 3, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_SYNC_OWNER      _IOR (U_DMA_BUF_IOCTL_MAGIC, 4, uint32_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU    _IOW (U_DMA_BUF_IOCTL_MAGIC, 5, uint64_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE _IOW (U_DMA_BUF_IOCTL_MAGIC, 6, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_DEV_INFO        _IOR (U_DMA_BUF_IOCTL_MAGIC, 7, u_dma_buf_ioctl_dev_info)
+#define U_DMA_BUF_IOCTL_GET_SYNC            _IOR (U_DMA_BUF_IOCTL_MAGIC, 8, u_dma_buf_ioctl_sync_args)
+#define U_DMA_BUF_IOCTL_SET_SYNC            _IOW (U_DMA_BUF_IOCTL_MAGIC, 9, u_dma_buf_ioctl_sync_args)
+#define U_DMA_BUF_IOCTL_EXPORT              _IOWR(U_DMA_BUF_IOCTL_MAGIC,10, u_dma_buf_ioctl_export_args)
 #endif /* #ifndef U_DMA_BUF_IOCTL_H */
 #endif /* #if (IOCTL_VERSION > 0) */
 
@@ -1253,6 +1620,34 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             }
             break;
         }
+#if (USE_DMA_BUF_EXPORT == 1) && (IOCTL_VERSION >= 2)
+        case U_DMA_BUF_IOCTL_EXPORT: {
+            u_dma_buf_ioctl_export_args  export_args;
+            struct udmabuf_export_entry* export_entry = ERR_PTR(-EINVAL);
+            if (copy_from_user(&export_args, argp, sizeof(export_args)) != 0) {
+                result = -EINVAL;
+                goto export_failed;
+            } else {
+                u64    offset  = (u64)(export_args.offset);
+                size_t size    = (size_t)(export_args.size);
+                bool   cloexec = GET_U_DMA_BUF_IOCTL_FLAGS_EXPORT_CLOEXEC(&export_args);
+                export_entry   = udmabuf_export_create_entry(this, offset, size, cloexec);
+            }
+            if (IS_ERR_OR_NULL(export_entry)) {
+                result = PTR_ERR(export_entry);
+                export_entry = NULL;
+                goto export_failed;
+            }
+            export_args.fd   = export_entry->fd;
+            export_args.addr = export_entry->object_data.phys_addr;
+            if (copy_to_user(argp, &export_args, sizeof(export_args)) != 0)
+                result = -EINVAL;
+            else 
+                result = 0;
+          export_failed:
+            break;
+        }
+#endif            
         default:
             result = -EINVAL;
     }
@@ -1276,308 +1671,6 @@ static const struct file_operations udmabuf_device_file_ops = {
     .unlocked_ioctl = udmabuf_device_file_ioctl,
 #endif
 };
-
-/**
- * DOC: Udmabuf dma-buf subsystem Operations.
- */
-#if (USE_DMA_BUF_EXPORT == 1)
-/**
- * udmabuf_export_dma_buf_map() -  dma-buf map operation.
- * @attachment: Pointer to dma-buf attachment structure.
- * @direction:  length of range for cpu access.
- * Return:      handle to scatter gather table(>=0) or error status(<0).
- */
-static struct sg_table *udmabuf_export_dma_buf_map(struct dma_buf_attachment* attachment,
-                                           enum   dma_data_direction  direction)
-{
-    struct dma_buf*        dma_buf = attachment->dmabuf;
-    struct udmabuf_object* this    = dma_buf->priv;
-    unsigned int           done    = 0;
-    const unsigned int     DONE_ALLOC_SG_TABLE = (1 << 0);
-    const unsigned int     DONE_GET_SG_TABLE   = (1 << 1);
-    const unsigned int     DONE_MAP_SG_TABLE   = (1 << 2);
-    struct sg_table*       sg_table;
-    int                    retval;
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
-
-    sg_table = kzalloc(sizeof(*sg_table), GFP_KERNEL);
-    if (IS_ERR_OR_NULL(sg_table)) {
-        retval   = PTR_ERR(sg_table);
-        dev_err(this->sys_dev, "%s(): kzalloc() failed. return=%d\n", __func__, retval);
-        goto failed;
-    }
-    done |= DONE_ALLOC_SG_TABLE;
-    
-    retval = dma_get_sgtable(this->dma_dev, sg_table, this->virt_addr, this->phys_addr, this->alloc_size);
-    if (retval) {
-        dev_err(this->sys_dev, "%s(): dma_get_sgtable() failed. return=%d\n", __func__, retval);
-        goto failed;
-    }
-    done |= DONE_GET_SG_TABLE;
-
-    retval = dma_map_sgtable(attachment->dev, sg_table, direction, 0);
-    if (retval) {
-        dev_err(this->sys_dev, "%s(): dma_map_sgtable() failed. return=%d\n", __func__, retval);
-        goto failed;
-    }
-    done |= DONE_MAP_SG_TABLE;
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
-
-    return sg_table;
-
- failed:
-    if (done & DONE_MAP_SG_TABLE  ) {dma_unmap_sgtable(attachment->dev, sg_table, direction, 0);}
-    if (done & DONE_GET_SG_TABLE  ) {sg_free_table(sg_table);};
-    if (done & DONE_ALLOC_SG_TABLE) {kfree(sg_table);}
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() failed. return=%d\n", __func__, retval);
-    return ERR_PTR(retval);
-}
-
-/**
- * udmabuf_export_dma_buf_unmap() -  dma-buf unmap operation.
- * @attachment: Pointer to dma-buf attachment structure.
- * @sg_table:   scatter gather table.
- * @direction:  length of range for cpu access.
- */
-static void udmabuf_export_dma_buf_unmap(struct dma_buf_attachment* attachment,
-			         struct sg_table*           sg_table,
-			         enum   dma_data_direction  direction)
-{
-    struct dma_buf*        dma_buf = attachment->dmabuf;
-    struct udmabuf_object* this    = dma_buf->priv;
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
-
-    if (sg_table == NULL)
-        goto done;
-    
-    dma_unmap_sgtable(attachment->dev, sg_table, direction, 0);
-    sg_free_table(sg_table);
-    kfree(sg_table);
- done:
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
-}
-
-/**
- * udmabuf_export_release() -  dma-buf release operation.
- * @dma_buf:	Pointer to dma-buf structure.
- */
-static void udmabuf_export_release(struct dma_buf *dma_buf)
-{
-    struct udmabuf_object* this = dma_buf->priv;
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
-
-    this->export         = 0;
-    this->export_fd      = 0;
-    this->export_dma_buf = NULL;
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
-}
-
-/**
- * udmabuf_export_mmap() -  dma-buf memory map operation.
- * @dma_buf:	Pointer to dma-buf structure.
- * @vma:        Pointer to the vm area structure.
- * Return:      Success(=0) or error status(<0).
- */
-static int udmabuf_export_mmap(struct dma_buf* dma_buf, struct vm_area_struct* vma)
-{
-    struct udmabuf_object* this = dma_buf->priv;
-    bool force_sync = false;
-    int retval = 0;
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
-
-    retval = udmabuf_object_mmap(this, vma, force_sync);
-    if (retval) {
-        dev_err(this->sys_dev, "%s(): udmabuf_object_mmap() failed return=%d\n", __func__, retval);
-        goto failed;
-    }
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
-    return 0;
-
- failed:
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() failed. return=%d\n", __func__, retval);
-    return retval;
-}
-
-/**
- * udmabuf_export_begin_cpu() - This is called from dma_buf_begin_cpu_access()
- * @dma_buf:	Pointer to dma-buf structure.
- * @direction:  length of range for cpu access.
- * Return:      Success(=0) or error status(<0).
- */
-static int udmabuf_export_begin_cpu(struct dma_buf* dma_buf, enum dma_data_direction direction)
-{
-    struct udmabuf_object* this = dma_buf->priv;
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
-
-    dma_sync_single_for_cpu(this->dma_dev, this->phys_addr, this->size, direction);
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
-
-    return 0;
-}
-
-/**
- * udmabuf_export_end_cpu() -  This is called from dma_buf_end_cpu_access()
- * @dma_buf:	Pointer to dma-buf structure.
- * @direction:  length of range for cpu access.
- * Return:      Success(=0) or error status(<0).
- */
-static int udmabuf_export_end_cpu(struct dma_buf* dma_buf, enum dma_data_direction direction)
-{
-    struct udmabuf_object* this = dma_buf->priv;
-    
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
-
-    dma_sync_single_for_device(this->dma_dev, this->phys_addr, this->size, direction);
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
-
-    return 0;
-}
-
-/**
- * udmabuf export dma-buf operation table.
- */
-static const struct dma_buf_ops udmabuf_export_ops = {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
-    .cache_sgt_mapping = true,
-#endif
-    .map_dma_buf       = udmabuf_export_dma_buf_map,
-    .unmap_dma_buf     = udmabuf_export_dma_buf_unmap,
-    .release           = udmabuf_export_release,
-    .mmap              = udmabuf_export_mmap,
-    .begin_cpu_access  = udmabuf_export_begin_cpu,
-    .end_cpu_access    = udmabuf_export_end_cpu,
-};
-
-/**
- * put_dma_buf() -  Put the dma-buf. use synchronous analog of fput();
- * @dma_buf:	Pointer to dma-buf structure.
- */
-static inline void put_dma_buf(struct dma_buf* dma_buf)
-{
-    if (WARN_ON(!dma_buf || !dma_buf->file))
-        return;
-    __fput_sync(dma_buf->file);
-}
-
-/**
- * udmabuf_export_dma_buf_put() -  Put the udmabuf export dma-buf.
- * @cloexec     close-on-exec flag.
- * Return:      Success(=0) or error status(<0).
- */
-static int udmabuf_export_dma_buf_put(struct udmabuf_object* this)
-{
-    int retval = 0;
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
-
-    if (this->export_dma_buf != NULL) {
-        if (UDMABUF_EXPORT_DEBUG(this)) {
-            dev_info(this->sys_dev, "%s(): dma_buf_put() start.\n", __func__);
-            dev_info(this->sys_dev, "file_count(export_dma_buf->file)=%ld\n", file_count(this->export_dma_buf->file));
-        }
-        dma_buf_put(this->export_dma_buf);
-        if (UDMABUF_EXPORT_DEBUG(this)) {
-            dev_info(this->sys_dev, "%s(): dma_buf_put() done.\n", __func__);
-            dev_info(this->sys_dev, "file_count(export_dma_buf->file)=%ld\n", file_count(this->export_dma_buf->file));
-        }
-    }
-    
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
-
-    return retval;
-}
-/**
- * udmabuf_export_dma_buf_get() -  Get udmabuf export dma-buf.
- * @this:       Pointer to the udmabuf object.
- * @cloexec     close-on-exec flag.
- * Return:      Success(=0) or error status(<0).
- */
-static int udmabuf_export_dma_buf_get(struct udmabuf_object* this, bool cloexec)
-{
-    DEFINE_DMA_BUF_EXPORT_INFO(export_info);
-    struct dma_buf* export_dma_buf = NULL;
-    int             export_fd      = 0;
-    int             retval         = 0;
-    u32             flags          = 0;
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
-
-    if (this->export_fd != 0) {
-        dev_err(this->sys_dev, "%s(): export_fd already exists.\n", __func__);
-        retval = -EINVAL;
-        goto failed;
-    }
-
-    export_info.ops   = &udmabuf_export_ops;
-    export_info.size  = this->alloc_size;
-    export_info.priv  = (void*)this;
-    export_info.flags = O_RDWR;
-    export_dma_buf    = dma_buf_export(&export_info);
-    if (IS_ERR(export_dma_buf)) {
-        retval = PTR_ERR(export_dma_buf);
-        export_dma_buf = NULL;
-        dev_err(this->sys_dev, "%s(): dma_buf_export() failed. return=%d\n", __func__, retval);
-        goto failed;
-    }
-
-    if (cloexec == true)
-        flags |= O_CLOEXEC;
-    export_fd = dma_buf_fd(export_dma_buf, flags);
-    if (export_fd < 0) {
-        retval = export_fd;
-        export_fd = 0;
-        dev_err(this->sys_dev, "%s(): dma_buf_fd() failed. return=%d\n", __func__, retval);
-        goto failed;
-    }
-
-    get_dma_buf(export_dma_buf);
-    this->export_dma_buf = export_dma_buf;
-    this->export_fd      = export_fd;
-
-    if (UDMABUF_EXPORT_DEBUG(this)) {
-        dev_info(this->sys_dev, "export_fd=%d\n", this->export_fd);
-        dev_info(this->sys_dev, "file_count(export_dma_buf->file)=%ld\n", file_count(this->export_dma_buf->file));
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
-    }
-
-    return 0;
-
- failed:
-    if (export_dma_buf != NULL) {
-        put_dma_buf(export_dma_buf);
-    }
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() failed. return=%d\n", __func__, retval);
-    return retval;
-}
-#endif /* #if (USE_DMA_BUF_EXPORT == 1) */
 
 /**
  * DOC: Udmabuf Object Operations.
@@ -1745,8 +1838,8 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
 #endif
 #if (USE_DMA_BUF_EXPORT == 1)
     {
-        this->export          = 0;
-        this->export_fd       = 0;
+        INIT_LIST_HEAD(&this->export_dma_buf_list);
+        mutex_init(&this->export_dma_buf_list_sem);
     }
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
@@ -1920,9 +2013,15 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
         return -ENODEV;
 
 #if (USE_DMA_BUF_EXPORT == 1)
-    if (this->export_dma_buf != NULL) {
-        dev_err(this->sys_dev, "exported dma-buf is currently busy.\n");
-        return -EBUSY;
+    {
+        bool empty;
+        mutex_lock(&this->export_dma_buf_list_sem);
+        empty = list_empty(&this->export_dma_buf_list);
+        mutex_unlock(&this->export_dma_buf_list_sem);
+        if (empty == false) {
+            dev_err(this->sys_dev, "exported dma-buf is currently busy.\n");
+            return -EBUSY;
+        }
     }
 #endif
     
@@ -2742,18 +2841,6 @@ static int udmabuf_platform_device_probe(struct device *dev)
         dev_err(dev, "object setup failed. return=%d\n", retval);
         goto failed_with_unlock;
     }
-
-#if (USE_DMA_BUF_EXPORT == 1)
-    /*
-     * export property
-     */
-    if (of_property_read_bool(dev->of_node, "export")) {
-        retval = udmabuf_export_dma_buf_get(obj, false);
-        if (retval) 
-            dev_err(dev, "export setup failed. return=%d\n", retval);
-        retval = 0;
-    }
-#endif
 
     mutex_unlock(&obj->sem);
 
