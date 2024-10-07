@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.8.0-RC2"
+#define DRIVER_VERSION     "4.8.0-RC3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1088,13 +1088,13 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s() start.\n", __func__);
 
-    if ((offset & PAGE_MASK) != 0) {
+    if ((offset & (PAGE_SIZE-1)) != 0) {
         dev_err(this->sys_dev, "%s() offset is not page allignment\n", __func__);
         retval = -EINVAL;
         goto failed;
     }
 
-    if ((size & PAGE_MASK) != 0) {
+    if ((size & (PAGE_SIZE-1)) != 0) {
         dev_err(this->sys_dev, "%s() size is not page allignment\n", __func__);
         retval = -EINVAL;
         goto failed;
