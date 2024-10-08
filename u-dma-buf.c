@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.8.0-RC4"
+#define DRIVER_VERSION     "4.8.0-RC5"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -236,7 +236,7 @@ struct udmabuf_object {
     bool                 of_reserved_mem;
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
-    bool                 debug_vma;
+    int                  debug_vma;
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_DMA_BUF_EXPORT == 1))
     bool                 debug_export;
@@ -244,9 +244,9 @@ struct udmabuf_object {
 };
 
 #if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
-#define UDMABUF_VMA_DEBUG(this) (this->debug_vma)
+#define UDMABUF_VMA_DEBUG(this,bit) ((this->debug_vma & (1<<bit)) != 0)
 #else
-#define UDMABUF_VMA_DEBUG(this) (0)
+#define UDMABUF_VMA_DEBUG(this,bit) (0)
 #endif
 
 #if ((UDMABUF_DEBUG == 1) && (USE_DMA_BUF_EXPORT == 1))
@@ -441,7 +441,7 @@ DEF_ATTR_SHOW(dma_coherent   , "%d\n"    , IS_DMA_COHERENT(this->dma_dev)       
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
 DEF_ATTR_SHOW(debug_vma      , "%d\n"    , this->debug_vma                                );
-DEF_ATTR_SET( debug_vma                  , 0, 1,        NO_ACTION, NO_ACTION              );
+DEF_ATTR_SET( debug_vma                  , 0, 3,        NO_ACTION, NO_ACTION              );
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_DMA_BUF_EXPORT == 1))
 DEF_ATTR_SHOW(debug_export   , "%d\n"    , this->debug_export                             );
@@ -535,8 +535,8 @@ static inline void udmabuf_sys_class_set_attributes(void)
 static void udmabuf_mmap_vma_open(struct vm_area_struct* vma)
 {
     struct udmabuf_object* this = vma->vm_private_data;
-    if (UDMABUF_VMA_DEBUG(this))
-        dev_info(this->dma_dev, "vma_open(virt_addr=0x%lx, offset=0x%lx)\n", vma->vm_start, vma->vm_pgoff<<PAGE_SHIFT);
+    if (UDMABUF_VMA_DEBUG(this,0))
+        dev_info(this->dma_dev, "%s(virt_addr=0x%lx, offset=0x%lx, flags=0x%lx)\n", __func__, vma->vm_start, vma->vm_pgoff<<PAGE_SHIFT, vma->vm_flags);
 }
 
 /**
@@ -547,8 +547,8 @@ static void udmabuf_mmap_vma_open(struct vm_area_struct* vma)
 static void udmabuf_mmap_vma_close(struct vm_area_struct* vma)
 {
     struct udmabuf_object* this = vma->vm_private_data;
-    if (UDMABUF_VMA_DEBUG(this))
-        dev_info(this->dma_dev, "vma_close()\n");
+    if (UDMABUF_VMA_DEBUG(this,0))
+        dev_info(this->dma_dev, "%s()\n", __func__);
 }
 
 /**
@@ -572,7 +572,7 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
     unsigned long offset         = vmf->pgoff << PAGE_SHIFT;
     unsigned long phys_addr      = this->phys_addr + offset;
     unsigned long page_frame_num = phys_addr  >> PAGE_SHIFT;
-    unsigned long request_size   = 1          << PAGE_SHIFT;
+    unsigned long request_size   = 1UL        << PAGE_SHIFT;
     unsigned long available_size = this->alloc_size -offset;
     unsigned long virt_addr;
 
@@ -582,7 +582,7 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
     virt_addr = (unsigned long)vmf->virtual_address;
 #endif
 
-    if (UDMABUF_VMA_DEBUG(this))
+    if (UDMABUF_VMA_DEBUG(this,1))
         dev_info(this->dma_dev,
                  "vma_fault(virt_addr=%pad, phys_addr=%pad)\n", &virt_addr, &phys_addr
         );
@@ -1492,7 +1492,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             SET_U_DMA_BUF_IOCTL_FLAGS_USE_OF_RESERVED_MEM(&drv_info, USE_OF_RESERVED_MEM);
             SET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP     (&drv_info, USE_QUIRK_MMAP);
             SET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP_PAGE(&drv_info, USE_QUIRK_MMAP_PAGE);
-	    strlcpy(&drv_info.version[0], DRIVER_VERSION, sizeof(drv_info.version));
+            strlcpy(&drv_info.version[0], DRIVER_VERSION, sizeof(drv_info.version));
             if (copy_to_user(argp, &drv_info, sizeof(drv_info)) != 0)
                 result = -EINVAL;
             else 
@@ -1527,7 +1527,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             u_dma_buf_ioctl_dev_info dev_info;
             u64    dma_mask = *this->dma_dev->dma_mask;
             int    dma_mask_size = 0;
-	    u64    dma_mask_bit  = (1 << dma_mask_size);
+            u64    dma_mask_bit  = (1UL << dma_mask_size);
             while (dma_mask_size < 64) {
                 if ((dma_mask & dma_mask_bit) == 0)
                     break;
@@ -1874,7 +1874,7 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
     /*
      * setup buffer size and allocation size
      */
-    this->alloc_size = ((this->size + ((1 << PAGE_SHIFT) - 1)) >> PAGE_SHIFT) << PAGE_SHIFT;
+    this->alloc_size = ((this->size + ((1UL << PAGE_SHIFT) - 1)) >> PAGE_SHIFT) << PAGE_SHIFT;
     /*
      * dma buffer allocation 
      */
@@ -2222,7 +2222,7 @@ static int  udmabuf_get_option_property(struct device *dev, u64* value, bool loc
 #define DEFINE_UDMABUF_OPTION(name,type,lo,hi)             \
 static inline type udmabuf_get_option_ ## name(u64 option) \
 {                                                          \
-    const u64 mask = ((1 << ((hi)-(lo)+1))-1);             \
+    const u64 mask = ((1UL << ((hi)-(lo)+1))-1);           \
     return (type)((option >> (lo)) & mask);                \
 }
 DEFINE_UDMABUF_OPTION(dma_mask_size   ,u64, 0, 7)
