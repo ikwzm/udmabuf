@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.8.0-RC3"
+#define DRIVER_VERSION     "4.8.0-RC4"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1078,12 +1078,11 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
      struct udmabuf_object*  this     ,
      u64                     offset   ,
      size_t                  size     ,
-     bool                    cloexec  )
+     unsigned long           fd_flags )
 {
     DEFINE_DMA_BUF_EXPORT_INFO(export_info);
     struct udmabuf_export_entry* entry  = NULL;
     int                          retval = 0;
-    u32                          flags  = 0;
 
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s() start.\n", __func__);
@@ -1146,7 +1145,7 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     export_info.ops   = &udmabuf_export_ops;
     export_info.size  = size;
     export_info.priv  = (void*)entry;
-    export_info.flags = O_RDWR;
+    export_info.flags = fd_flags;
     entry->dma_buf    = dma_buf_export(&export_info);
     if (IS_ERR(entry->dma_buf)) {
         retval = PTR_ERR(entry->dma_buf);
@@ -1155,9 +1154,7 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
         goto failed;
     }
 
-    if (cloexec == true)
-        flags |= O_CLOEXEC;
-    entry->fd = dma_buf_fd(entry->dma_buf, flags);
+    entry->fd = dma_buf_fd(entry->dma_buf, fd_flags);
     if (entry->fd < 0) {
         retval = entry->fd;
         entry->fd = 0;
@@ -1395,7 +1392,7 @@ static loff_t udmabuf_device_file_llseek(struct file* file, loff_t offset, int w
 
 #define DEFINE_U_DMA_BUF_IOCTL_FLAGS(name,type,lo,hi)                     \
 static const  int      U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT = (lo);   \
-static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  = ((1 << ((hi)-(lo)+1))-1); \
+static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  = ((1UL << ((hi)-(lo)+1))-1); \
 static inline void SET_U_DMA_BUF_IOCTL_FLAGS_ ## name(type *p, int value) \
 {                                                                         \
     const int      shift = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT;      \
@@ -1456,7 +1453,7 @@ typedef struct {
     int      fd;
 } u_dma_buf_ioctl_export_args;
 
-DEFINE_U_DMA_BUF_IOCTL_FLAGS(EXPORT_CLOEXEC, u_dma_buf_ioctl_export_args,  0,  0)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(EXPORT_FD_FLAGS, u_dma_buf_ioctl_export_args,  0, 31)
 
 #define U_DMA_BUF_IOCTL_MAGIC               'U'
 #define U_DMA_BUF_IOCTL_GET_DRV_INFO        _IOR (U_DMA_BUF_IOCTL_MAGIC, 1, u_dma_buf_ioctl_drv_info)
@@ -1628,10 +1625,10 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
                 result = -EINVAL;
                 goto export_failed;
             } else {
-                u64    offset  = (u64)(export_args.offset);
-                size_t size    = (size_t)(export_args.size);
-                bool   cloexec = GET_U_DMA_BUF_IOCTL_FLAGS_EXPORT_CLOEXEC(&export_args);
-                export_entry   = udmabuf_export_create_entry(this, offset, size, cloexec);
+                u64    offset   = (u64)(export_args.offset);
+                size_t size     = (size_t)(export_args.size);
+                u32    fd_flags = GET_U_DMA_BUF_IOCTL_FLAGS_EXPORT_FD_FLAGS(&export_args);
+                export_entry    = udmabuf_export_create_entry(this, offset, size, fd_flags);
             }
             if (IS_ERR_OR_NULL(export_entry)) {
                 result = PTR_ERR(export_entry);
