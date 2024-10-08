@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.8.0-RC5"
+#define DRIVER_VERSION     "4.8.0-RC6"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1392,7 +1392,7 @@ static loff_t udmabuf_device_file_llseek(struct file* file, loff_t offset, int w
 
 #define DEFINE_U_DMA_BUF_IOCTL_FLAGS(name,type,lo,hi)                     \
 static const  int      U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT = (lo);   \
-static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  = ((1UL << ((hi)-(lo)+1))-1); \
+static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  = (((uint64_t)1UL << ((hi)-(lo)+1))-1); \
 static inline void SET_U_DMA_BUF_IOCTL_FLAGS_ ## name(type *p, int value) \
 {                                                                         \
     const int      shift = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT;      \
@@ -1527,7 +1527,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             u_dma_buf_ioctl_dev_info dev_info;
             u64    dma_mask = *this->dma_dev->dma_mask;
             int    dma_mask_size = 0;
-            u64    dma_mask_bit  = (1UL << dma_mask_size);
+            u64    dma_mask_bit  = ((u64)1UL << dma_mask_size);
             while (dma_mask_size < 64) {
                 if ((dma_mask & dma_mask_bit) == 0)
                     break;
@@ -1874,7 +1874,7 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
     /*
      * setup buffer size and allocation size
      */
-    this->alloc_size = ((this->size + ((1UL << PAGE_SHIFT) - 1)) >> PAGE_SHIFT) << PAGE_SHIFT;
+    this->alloc_size = ((this->size + (((size_t)1 << PAGE_SHIFT) - 1)) >> PAGE_SHIFT) << PAGE_SHIFT;
     /*
      * dma buffer allocation 
      */
