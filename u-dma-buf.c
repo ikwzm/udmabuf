@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.8.0-RC6"
+#define DRIVER_VERSION     "4.8.0-RC7"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1105,6 +1105,12 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
         goto failed;
     }
 
+    if ((fd_flags & (O_CLOEXEC | O_ACCMODE)) != 0) {
+        dev_err(this->sys_dev, "%s() invalid fd_flags\n", __func__);
+        retval = -EINVAL;
+        goto failed;
+    }
+
     entry = kzalloc(sizeof(*entry), GFP_KERNEL);
     if (IS_ERR_OR_NULL(entry)) {
         retval = PTR_ERR(entry);
@@ -1142,11 +1148,13 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     entry->object_data.debug_export    = this->debug_export;
 #endif
 
-    export_info.ops   = &udmabuf_export_ops;
-    export_info.size  = size;
-    export_info.priv  = (void*)entry;
-    export_info.flags = fd_flags;
-    entry->dma_buf    = dma_buf_export(&export_info);
+    export_info.ops      = &udmabuf_export_ops;
+    export_info.size     = size;
+    export_info.priv     = (void*)entry;
+    export_info.flags    = fd_flags;
+    export_info.exp_name = dev_name(this->sys_dev);
+
+    entry->dma_buf = dma_buf_export(&export_info);
     if (IS_ERR(entry->dma_buf)) {
         retval = PTR_ERR(entry->dma_buf);
         entry->dma_buf = NULL;
@@ -1494,7 +1502,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             SET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP_PAGE(&drv_info, USE_QUIRK_MMAP_PAGE);
             strlcpy(&drv_info.version[0], DRIVER_VERSION, sizeof(drv_info.version));
             if (copy_to_user(argp, &drv_info, sizeof(drv_info)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else 
                 result = 0;
             break;
@@ -1502,7 +1510,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         case U_DMA_BUF_IOCTL_GET_SIZE: {
             uint64_t size = (uint64_t)this->size;
             if (copy_to_user(argp, &size, sizeof(size)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else 
                 result = 0;
             break;
@@ -1510,7 +1518,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         case U_DMA_BUF_IOCTL_GET_DMA_ADDR: {
             uint64_t dma_addr = (uint64_t)this->phys_addr;
             if (copy_to_user(argp, &dma_addr, sizeof(dma_addr)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else 
                 result = 0;
             break;
@@ -1518,7 +1526,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         case U_DMA_BUF_IOCTL_GET_SYNC_OWNER: {
             uint32_t sync_owner = (uint32_t)this->sync_owner;
             if (copy_to_user(argp, &sync_owner, sizeof(sync_owner)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else 
                 result = 0;
             break;
@@ -1544,7 +1552,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             dev_info.size = (uint64_t)(this->size);
             dev_info.addr = (uint64_t)(this->phys_addr);
             if (copy_to_user(argp, &dev_info, sizeof(dev_info)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else 
                 result = 0;
             break;
@@ -1557,7 +1565,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             sync_args.size   = (uint64_t)this->sync_size;
             sync_args.offset = (uint64_t)this->sync_offset;
             if (copy_to_user(argp, &sync_args, sizeof(sync_args)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else 
                 result = 0;
             break;
@@ -1565,7 +1573,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         case U_DMA_BUF_IOCTL_SET_SYNC: {
             u_dma_buf_ioctl_sync_args sync_args;
             if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else {
                 int    sync_command   = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD (&sync_args);
                 int    sync_direction = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR (&sync_args);
@@ -1600,7 +1608,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         case U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU: {
             u64 sync_args;
             if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else {
                 this->sync_for_cpu = sync_args;
                 result = udmabuf_sync_for_cpu(this);
@@ -1610,7 +1618,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         case U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE: {
             u64 sync_args;
             if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else {
                 this->sync_for_device = sync_args;
                 result = udmabuf_sync_for_device(this);
@@ -1622,7 +1630,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             u_dma_buf_ioctl_export_args  export_args;
             struct udmabuf_export_entry* export_entry = ERR_PTR(-EINVAL);
             if (copy_from_user(&export_args, argp, sizeof(export_args)) != 0) {
-                result = -EINVAL;
+                result = -EFAULT;
                 goto export_failed;
             } else {
                 u64    offset   = (u64)(export_args.offset);
@@ -1638,7 +1646,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             export_args.fd   = export_entry->fd;
             export_args.addr = export_entry->object_data.phys_addr;
             if (copy_to_user(argp, &export_args, sizeof(export_args)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else 
                 result = 0;
           export_failed:
@@ -1646,7 +1654,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         }
 #endif            
         default:
-            result = -EINVAL;
+            result = -ENOTTY;
     }
     return (long)result;
 }
