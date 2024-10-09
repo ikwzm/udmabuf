@@ -879,7 +879,7 @@ The following header file is required to use ioctl.
 
 #define DEFINE_U_DMA_BUF_IOCTL_FLAGS(name,type,lo,hi)                     \
 static const  int      U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT = (lo);   \
-static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  = ((1 << ((hi)-(lo)+1))-1); \
+static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  = (((uint64_t)1UL << ((hi)-(lo)+1))-1); \
 static inline void SET_U_DMA_BUF_IOCTL_FLAGS_ ## name(type *p, int value) \
 {                                                                         \
     const int      shift = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT;      \
