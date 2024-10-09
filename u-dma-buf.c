@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.7.2"
+#define DRIVER_VERSION     "4.7.3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1071,7 +1071,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             SET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP_PAGE(&drv_info, USE_QUIRK_MMAP_PAGE);
             strlcpy(&drv_info.version[0], DRIVER_VERSION, sizeof(drv_info.version));
             if (copy_to_user(argp, &drv_info, sizeof(drv_info)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else 
                 result = 0;
             break;
@@ -1079,7 +1079,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         case U_DMA_BUF_IOCTL_GET_SIZE: {
             uint64_t size = (uint64_t)this->size;
             if (copy_to_user(argp, &size, sizeof(size)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else 
                 result = 0;
             break;
@@ -1087,7 +1087,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         case U_DMA_BUF_IOCTL_GET_DMA_ADDR: {
             uint64_t dma_addr = (uint64_t)this->phys_addr;
             if (copy_to_user(argp, &dma_addr, sizeof(dma_addr)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else 
                 result = 0;
             break;
@@ -1095,7 +1095,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         case U_DMA_BUF_IOCTL_GET_SYNC_OWNER: {
             uint32_t sync_owner = (uint32_t)this->sync_owner;
             if (copy_to_user(argp, &sync_owner, sizeof(sync_owner)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else 
                 result = 0;
             break;
@@ -1121,7 +1121,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             dev_info.size = (uint64_t)(this->size);
             dev_info.addr = (uint64_t)(this->phys_addr);
             if (copy_to_user(argp, &dev_info, sizeof(dev_info)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else 
                 result = 0;
             break;
@@ -1134,7 +1134,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             sync_args.size   = (uint64_t)this->sync_size;
             sync_args.offset = (uint64_t)this->sync_offset;
             if (copy_to_user(argp, &sync_args, sizeof(sync_args)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else 
                 result = 0;
             break;
@@ -1142,7 +1142,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         case U_DMA_BUF_IOCTL_SET_SYNC: {
             u_dma_buf_ioctl_sync_args sync_args;
             if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else {
                 int    sync_command   = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD (&sync_args);
                 int    sync_direction = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR (&sync_args);
@@ -1177,7 +1177,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         case U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU: {
             u64 sync_args;
             if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else {
                 this->sync_for_cpu = sync_args;
                 result = udmabuf_sync_for_cpu(this);
@@ -1187,7 +1187,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
         case U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE: {
             u64 sync_args;
             if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
-                result = -EINVAL;
+                result = -EFAULT;
             else {
                 this->sync_for_device = sync_args;
                 result = udmabuf_sync_for_device(this);
