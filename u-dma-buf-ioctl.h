@@ -87,14 +87,25 @@ enum {
     U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE = 3
 };
 
+typedef struct {
+    uint64_t flags;
+    uint64_t size;
+    uint64_t offset;
+    uint64_t addr;
+    int      fd;
+} u_dma_buf_ioctl_export_args;
+
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(EXPORT_FD_FLAGS, u_dma_buf_ioctl_export_args,  0, 31)
+
 #define U_DMA_BUF_IOCTL_MAGIC               'U'
-#define U_DMA_BUF_IOCTL_GET_DRV_INFO        _IOR(U_DMA_BUF_IOCTL_MAGIC, 1, u_dma_buf_ioctl_drv_info)
-#define U_DMA_BUF_IOCTL_GET_SIZE            _IOR(U_DMA_BUF_IOCTL_MAGIC, 2, uint64_t)
-#define U_DMA_BUF_IOCTL_GET_DMA_ADDR        _IOR(U_DMA_BUF_IOCTL_MAGIC, 3, uint64_t)
-#define U_DMA_BUF_IOCTL_GET_SYNC_OWNER      _IOR(U_DMA_BUF_IOCTL_MAGIC, 4, uint32_t)
-#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU    _IOW(U_DMA_BUF_IOCTL_MAGIC, 5, uint64_t)
-#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE _IOW(U_DMA_BUF_IOCTL_MAGIC, 6, uint64_t)
-#define U_DMA_BUF_IOCTL_GET_DEV_INFO        _IOR(U_DMA_BUF_IOCTL_MAGIC, 7, u_dma_buf_ioctl_dev_info)
-#define U_DMA_BUF_IOCTL_GET_SYNC            _IOR(U_DMA_BUF_IOCTL_MAGIC, 8, u_dma_buf_ioctl_sync_args)
-#define U_DMA_BUF_IOCTL_SET_SYNC            _IOW(U_DMA_BUF_IOCTL_MAGIC, 9, u_dma_buf_ioctl_sync_args)
+#define U_DMA_BUF_IOCTL_GET_DRV_INFO        _IOR (U_DMA_BUF_IOCTL_MAGIC, 1, u_dma_buf_ioctl_drv_info)
+#define U_DMA_BUF_IOCTL_GET_SIZE            _IOR (U_DMA_BUF_IOCTL_MAGIC, 2, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_DMA_ADDR        _IOR (U_DMA_BUF_IOCTL_MAGIC, 3, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_SYNC_OWNER      _IOR (U_DMA_BUF_IOCTL_MAGIC, 4, uint32_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU    _IOW (U_DMA_BUF_IOCTL_MAGIC, 5, uint64_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE _IOW (U_DMA_BUF_IOCTL_MAGIC, 6, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_DEV_INFO        _IOR (U_DMA_BUF_IOCTL_MAGIC, 7, u_dma_buf_ioctl_dev_info)
+#define U_DMA_BUF_IOCTL_GET_SYNC            _IOR (U_DMA_BUF_IOCTL_MAGIC, 8, u_dma_buf_ioctl_sync_args)
+#define U_DMA_BUF_IOCTL_SET_SYNC            _IOW (U_DMA_BUF_IOCTL_MAGIC, 9, u_dma_buf_ioctl_sync_args)
+#define U_DMA_BUF_IOCTL_EXPORT              _IOWR(U_DMA_BUF_IOCTL_MAGIC,10, u_dma_buf_ioctl_export_args)
 #endif /* #ifndef U_DMA_BUF_IOCTL_H */
