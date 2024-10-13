@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.8.0-RC8"
+#define DRIVER_VERSION     "4.8.0-RC9"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -819,6 +819,7 @@ struct udmabuf_export_entry {
     struct udmabuf_object  object_data;
     struct dma_buf*        dma_buf;
     int                    fd;
+    bool                   force_sync;  
     u64                    offset;
     size_t                 size;
     struct list_head       list;
@@ -852,32 +853,32 @@ static struct sg_table *udmabuf_export_dma_buf_map(struct dma_buf_attachment* at
     this = &entry->object_data;
 
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
+        dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
     sg_table = kzalloc(sizeof(*sg_table), GFP_KERNEL);
     if (IS_ERR_OR_NULL(sg_table)) {
         retval   = PTR_ERR(sg_table);
-        dev_err(this->sys_dev, "%s(): kzalloc() failed. return=%d\n", __func__, retval);
+        dev_err( this->sys_dev, "%s(fd=%d): kzalloc() failed. return=%d\n", __func__, entry->fd, retval);
         goto failed;
     }
     done |= DONE_ALLOC_SG_TABLE;
 
     retval = dma_get_sgtable(this->dma_dev, sg_table, this->virt_addr, this->phys_addr, this->alloc_size);
     if (retval) {
-        dev_err(this->sys_dev, "%s(): dma_get_sgtable() failed. return=%d\n", __func__, retval);
+        dev_err( this->sys_dev, "%s(fd=%d): dma_get_sgtable() failed. return=%d\n", __func__, entry->fd, retval);
         goto failed;
     }
     done |= DONE_GET_SG_TABLE;
 
     retval = dma_map_sgtable(attachment->dev, sg_table, direction, 0);
     if (retval) {
-        dev_err(this->sys_dev, "%s(): dma_map_sgtable() failed. return=%d\n", __func__, retval);
+        dev_err( this->sys_dev, "%s(fd=%d): dma_map_sgtable() failed. return=%d\n", __func__, entry->fd, retval);
         goto failed;
     }
     done |= DONE_MAP_SG_TABLE;
 
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
+        dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
 
     return sg_table;
 
@@ -886,7 +887,7 @@ static struct sg_table *udmabuf_export_dma_buf_map(struct dma_buf_attachment* at
     if (done & DONE_GET_SG_TABLE  ) {sg_free_table(sg_table);};
     if (done & DONE_ALLOC_SG_TABLE) {kfree(sg_table);}
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() failed. return=%d\n", __func__, retval);
+        dev_info(this->sys_dev, "%s(fd=%d) failed. return=%d\n", __func__, entry->fd, retval);
     return ERR_PTR(retval);
 }
 
@@ -913,7 +914,7 @@ static void udmabuf_export_dma_buf_unmap(struct dma_buf_attachment* attachment,
     this = &entry->object_data;
 
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
+        dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
     if (sg_table == NULL)
         goto done;
@@ -923,7 +924,7 @@ static void udmabuf_export_dma_buf_unmap(struct dma_buf_attachment* attachment,
     kfree(sg_table);
  done:
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
+        dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
 }
 
 /**
@@ -942,7 +943,7 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
         return;
     
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
+        dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
     mutex_lock(&this->export_dma_buf_list_sem);
     list_del(&entry->list);
@@ -950,7 +951,7 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
     kfree(entry);
 
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
+        dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
 }
 
 /**
@@ -963,7 +964,6 @@ static int udmabuf_export_mmap(struct dma_buf* dma_buf, struct vm_area_struct* v
 {
     struct udmabuf_export_entry* entry = dma_buf->priv; 
     struct udmabuf_object*       this;
-    bool                         force_sync = false;
     int                          retval = 0;
 
     if (entry == NULL)
@@ -972,21 +972,21 @@ static int udmabuf_export_mmap(struct dma_buf* dma_buf, struct vm_area_struct* v
     this = &entry->object_data;
     
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
+        dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
-    retval = udmabuf_object_mmap(this, vma, force_sync);
+    retval = udmabuf_object_mmap(this, vma, entry->force_sync);
     if (retval) {
-        dev_err(this->sys_dev, "%s(): udmabuf_object_mmap() failed return=%d\n", __func__, retval);
+        dev_err( this->sys_dev, "%s(fd=%d): udmabuf_object_mmap() failed return=%d\n", __func__, entry->fd, retval);
         goto failed;
     }
 
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
+        dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
     return 0;
 
  failed:
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() failed. return=%d\n", __func__, retval);
+        dev_info(this->sys_dev, "%s(fd=%d) failed. return=%d\n", __func__, entry->fd, retval);
     return retval;
 }
 
@@ -1008,7 +1008,7 @@ static int udmabuf_export_begin_cpu(struct dma_buf* dma_buf, enum dma_data_direc
     this = &entry->object_data;
     
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
+        dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
     this->sync_for_cpu    = 1;
     this->sync_offset     = 0;
@@ -1017,7 +1017,7 @@ static int udmabuf_export_begin_cpu(struct dma_buf* dma_buf, enum dma_data_direc
     udmabuf_sync_for_cpu(this);
 
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
+        dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
 
     return 0;
 }
@@ -1040,7 +1040,7 @@ static int udmabuf_export_end_cpu(struct dma_buf* dma_buf, enum dma_data_directi
     this = &entry->object_data;
     
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
+        dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
     this->sync_for_device = 1;
     this->sync_offset     = 0;
@@ -1049,7 +1049,7 @@ static int udmabuf_export_end_cpu(struct dma_buf* dma_buf, enum dma_data_directi
     udmabuf_sync_for_device(this);
 
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
+        dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
 
     return 0;
 }
@@ -1083,9 +1083,16 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     DEFINE_DMA_BUF_EXPORT_INFO(export_info);
     struct udmabuf_export_entry* entry  = NULL;
     int                          retval = 0;
+    bool                         force_sync;
+    unsigned long                export_fd_flags;
+    unsigned long                dmabuf_fd_flags;
 
-    if (UDMABUF_EXPORT_DEBUG(this))
+    if (UDMABUF_EXPORT_DEBUG(this)) {
         dev_info(this->sys_dev, "%s() start.\n", __func__);
+        dev_info(this->sys_dev, "offset         = 0x%llx\n" , offset);
+        dev_info(this->sys_dev, "size           = %zu\n"    , size);
+        dev_info(this->sys_dev, "fd_flags       = 0x%08lx\n", fd_flags);
+    }
 
     if ((offset & (PAGE_SIZE-1)) != 0) {
         dev_err(this->sys_dev, "%s() offset is not page allignment\n", __func__);
@@ -1105,11 +1112,14 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
         goto failed;
     }
 
-    if ((fd_flags & ~(O_CLOEXEC | O_ACCMODE)) != 0) {
+    if ((fd_flags & ~(O_CLOEXEC | O_SYNC | O_ACCMODE)) != 0) {
         dev_err(this->sys_dev, "%s() invalid fd_flags\n", __func__);
         retval = -EINVAL;
         goto failed;
     }
+    force_sync      = ((fd_flags &  O_SYNC) != 0);
+    export_fd_flags = ((fd_flags & ~O_SYNC));
+    dmabuf_fd_flags = ((fd_flags & ~O_SYNC));
 
     entry = kzalloc(sizeof(*entry), GFP_KERNEL);
     if (IS_ERR_OR_NULL(entry)) {
@@ -1132,6 +1142,7 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     entry->object_data.sync_offset     = 0;
     entry->object_data.sync_size       = size;
     entry->object_data.sync_direction  = 0;
+    entry->force_sync                  = force_sync;
 #if (USE_QUIRK_MMAP == 1)
     entry->object_data.quirk_mmap_mode = this->quirk_mmap_mode;
 #if (USE_QUIRK_MMAP_PAGE == 1)
@@ -1151,7 +1162,7 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     export_info.ops      = &udmabuf_export_ops;
     export_info.size     = size;
     export_info.priv     = (void*)entry;
-    export_info.flags    = fd_flags;
+    export_info.flags    = export_fd_flags;
     export_info.exp_name = dev_name(this->sys_dev);
 
     entry->dma_buf = dma_buf_export(&export_info);
@@ -1162,7 +1173,7 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
         goto failed;
     }
 
-    entry->fd = dma_buf_fd(entry->dma_buf, fd_flags);
+    entry->fd = dma_buf_fd(entry->dma_buf, dmabuf_fd_flags);
     if (entry->fd < 0) {
         retval = entry->fd;
         entry->fd = 0;
@@ -1175,7 +1186,8 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     mutex_unlock(&this->export_dma_buf_list_sem);
 
     if (UDMABUF_EXPORT_DEBUG(this)) {
-        dev_info(this->sys_dev, "export_fd=%d\n", entry->fd);
+        dev_info(this->sys_dev, "force_sync     = %d\n", entry->force_sync);
+        dev_info(this->sys_dev, "export_fd      = %d\n", entry->fd);
         dev_info(this->sys_dev, "%s() done.\n", __func__);
     }
 
