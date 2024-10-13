@@ -156,7 +156,7 @@ The maximum number of DMA buffers that can be allocated using `insmod` is 8 (udm
 
 ```console
 zynq$ insmod u-dma-buf.ko udmabuf0=1048576
-u-dma-buf udmabuf0: driver version = 4.6.1
+u-dma-buf udmabuf0: driver version = 4.8.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -241,7 +241,7 @@ For example, to designate "0000:00:15.0" under the pci bus as the parent device,
 
 ```console
 shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 bind="pci/0000:00:15.0" 
-[13422.022482] u-dma-buf udmabuf0: driver version = 4.6.1
+[13422.022482] u-dma-buf udmabuf0: driver version = 4.8.0
 [13422.022483] u-dma-buf udmabuf0: major number   = 238
 [13422.022483] u-dma-buf udmabuf0: minor number   = 0
 [13422.022484] u-dma-buf udmabuf0: phys address   = 0x0000000070950000
@@ -287,7 +287,7 @@ allocate buffers and create device drivers when loaded by `insmod`.
 
 ```console
 zynq$ insmod u-dma-buf.ko
-u-dma-buf udmabuf0: driver version = 4.6.1
+u-dma-buf udmabuf0: driver version = 4.8.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -867,6 +867,7 @@ The ioctl can do the following
  * `U_DMA_BUF_IOCTL_GET_DEV_INFO`
  * `U_DMA_BUF_IOCTL_GET_SYNC`
  * `U_DMA_BUF_IOCTL_SET_SYNC`
+ * `U_DMA_BUF_IOCTL_EXPORT`
 
 ### u-dma-buf-ioctl.h
 
@@ -879,7 +880,7 @@ The following header file is required to use ioctl.
 
 #define DEFINE_U_DMA_BUF_IOCTL_FLAGS(name,type,lo,hi)                     \
 static const  int      U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT = (lo);   \
-static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  = ((1 << ((hi)-(lo)+1))-1); \
+static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  = (((uint64_t)1UL << ((hi)-(lo)+1))-1); \
 static inline void SET_U_DMA_BUF_IOCTL_FLAGS_ ## name(type *p, int value) \
 {                                                                         \
     const int      shift = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT;      \
@@ -932,16 +933,27 @@ enum {
     U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE = 3
 };
 
+typedef struct {
+    uint64_t flags;
+    uint64_t size;
+    uint64_t offset;
+    uint64_t addr;
+    int      fd;
+} u_dma_buf_ioctl_export_args;
+
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(EXPORT_FD_FLAGS, u_dma_buf_ioctl_export_args,  0, 31)
+
 #define U_DMA_BUF_IOCTL_MAGIC               'U'
-#define U_DMA_BUF_IOCTL_GET_DRV_INFO        _IOR(U_DMA_BUF_IOCTL_MAGIC, 1, u_dma_buf_ioctl_drv_info)
-#define U_DMA_BUF_IOCTL_GET_SIZE            _IOR(U_DMA_BUF_IOCTL_MAGIC, 2, uint64_t)
-#define U_DMA_BUF_IOCTL_GET_DMA_ADDR        _IOR(U_DMA_BUF_IOCTL_MAGIC, 3, uint64_t)
-#define U_DMA_BUF_IOCTL_GET_SYNC_OWNER      _IOR(U_DMA_BUF_IOCTL_MAGIC, 4, uint32_t)
-#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU    _IOW(U_DMA_BUF_IOCTL_MAGIC, 5, uint64_t)
-#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE _IOW(U_DMA_BUF_IOCTL_MAGIC, 6, uint64_t)
-#define U_DMA_BUF_IOCTL_GET_DEV_INFO        _IOR(U_DMA_BUF_IOCTL_MAGIC, 7, u_dma_buf_ioctl_dev_info)
-#define U_DMA_BUF_IOCTL_GET_SYNC            _IOR(U_DMA_BUF_IOCTL_MAGIC, 8, u_dma_buf_ioctl_sync_args)
-#define U_DMA_BUF_IOCTL_SET_SYNC            _IOW(U_DMA_BUF_IOCTL_MAGIC, 9, u_dma_buf_ioctl_sync_args)
+#define U_DMA_BUF_IOCTL_GET_DRV_INFO        _IOR (U_DMA_BUF_IOCTL_MAGIC, 1, u_dma_buf_ioctl_drv_info)
+#define U_DMA_BUF_IOCTL_GET_SIZE            _IOR (U_DMA_BUF_IOCTL_MAGIC, 2, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_DMA_ADDR        _IOR (U_DMA_BUF_IOCTL_MAGIC, 3, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_SYNC_OWNER      _IOR (U_DMA_BUF_IOCTL_MAGIC, 4, uint32_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU    _IOW (U_DMA_BUF_IOCTL_MAGIC, 5, uint64_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE _IOW (U_DMA_BUF_IOCTL_MAGIC, 6, uint64_t)
+#define U_DMA_BUF_IOCTL_GET_DEV_INFO        _IOR (U_DMA_BUF_IOCTL_MAGIC, 7, u_dma_buf_ioctl_dev_info)
+#define U_DMA_BUF_IOCTL_GET_SYNC            _IOR (U_DMA_BUF_IOCTL_MAGIC, 8, u_dma_buf_ioctl_sync_args)
+#define U_DMA_BUF_IOCTL_SET_SYNC            _IOW (U_DMA_BUF_IOCTL_MAGIC, 9, u_dma_buf_ioctl_sync_args)
+#define U_DMA_BUF_IOCTL_EXPORT              _IOWR(U_DMA_BUF_IOCTL_MAGIC,10, u_dma_buf_ioctl_export_args)
 #endif /* #ifndef U_DMA_BUF_IOCTL_H */
 ```
 
@@ -1155,6 +1167,42 @@ Also, by specifying a sync command in flags of the sync_args of this ioctl, sync
 ```
 
 Details of manual cache management is described in the next section.
+
+### `U_DMA_BUF_IOCTL_EXPORT`
+
+This ioctl is currently under development. Please use with caution.
+
+This ioctl exports the specified range of u-dma-buf as PRIME DMA-BUFs.
+PRIME DMA-BUFs here is an abbreviation for the Linux kernel's internal DMA buffer sharing API.
+It provides a general mechanism for sharing DMA buffers between multiple devices managed by different types of device drivers.
+
+The offset   field of u_dma_buf_ioctl_args specifies the offset of the area.
+The size     field of u_dma_buf_ioctl_args specifies the size of the area.
+The fd_flags field of u_dma_buf_ioctl_args specifies O_CLOEXEC, O_SYNC, O_RDWR, O_RDONLY, O_WRONLY.
+Then execute ioctl U_DMA_BUF_IOCTL_EXPORT.
+If successful, the fd field of u_dma_buf_ioctl_export_args contains a file descriptor indicating PRIME DMA-BUFs.
+The resulting file descriptors indicating PRIME DMA-BUFs can be used to access the buffers using mmap().
+In some cases, it is necessary to synchronize with the CPU cache before and after accessing buffers.
+In such a case, execute ioctl DMA_BUF_IOCTL_SYNC with file descriptors indicating PRIME DMA-BUFs.
+
+An example is shown below.
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        u_dma_buf_ioctl_export_args export_args;
+	export_args.offset = 0x00000000;
+	export_args.size   = buf_size;
+	SET_U_DMA_BUF_IOCTL_FLAGS_EXPORT_FD_FLAGS(&export_args, O_CLOEXEC | O_RDWR);
+        status = ioctl(fd, U_DMA_BUF_IOCTL_EXPORT, &export_args);
+        buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, export_args.fd, 0);
+	struct dma_buf_sync sync_start = {.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW};
+	status = ioctl(export_args.fd, DMA_BUF_IOCTL_SYNC, &sync_start);
+        /* Do some read/write access to buf */
+	struct dma_buf_sync sync_end   = {.flags = DMA_BUF_SYNC_END   | DMA_BUF_SYNC_RW};
+	status = ioctl(export_args.fd, DMA_BUF_IOCTL_SYNC, &sync_end  );
+        close(fd);
+    }
+```
 
 # Coherency of data on DMA buffer and CPU cache
 
@@ -1691,7 +1739,7 @@ Install u-dma-buf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
 
 ```console
 zynq# insmod u-dma-buf.ko udmabuf0=8388608
-[ 1183.911189] u-dma-buf udmabuf0: driver version = 4.6.1
+[ 1183.911189] u-dma-buf udmabuf0: driver version = 4.8.0
 [ 1183.921238] u-dma-buf udmabuf0: major number   = 240
 [ 1183.931275] u-dma-buf udmabuf0: minor number   = 0
 [ 1183.936063] u-dma-buf udmabuf0: phys address   = 0x0000000041600000
