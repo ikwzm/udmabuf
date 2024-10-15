@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.8.0"
+#define DRIVER_VERSION     "4.8.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -123,7 +123,9 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 #if     (USE_DMA_BUF_EXPORT == 1)
 #include <linux/dma-buf.h>
+#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16 ,0))
 MODULE_IMPORT_NS(DMA_BUF);
+#endif
 #endif
 
 #ifndef U64_MAX
@@ -825,6 +827,22 @@ struct udmabuf_export_entry {
     struct list_head       list;
 };
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 8 ,0))
+static inline int dma_map_sgtable(struct device* dev, struct sg_table* sgt, enum dma_data_direction direction, unsigned long attrs)
+{
+    int nents;
+    nents = dma_map_sg_attrs(dev, sgt->sgl, sgt->orig_nents, direction, attrs);
+    if (nents <= 0)
+        return -EINVAL;
+    sgt->nents = nents;
+    return 0;
+}
+static inline void dma_unmap_sgtable(struct device* dev, struct sg_table* sgt, enum dma_data_direction direction, unsigned long attrs)
+{
+    dma_unmap_sg_attrs(dev, sgt->sgl, sgt->orig_nents, direction, attrs);
+}
+#endif
+
 /**
  * udmabuf_export_dma_buf_map() -  udmabuf export dma-buf map operation.
  * @attachment: Pointer to dma-buf attachment structure.
@@ -1055,11 +1073,26 @@ static int udmabuf_export_end_cpu(struct dma_buf* dma_buf, enum dma_data_directi
 }
 
 /**
+ * udmabuf_export_kmap() - udmabuf export dma-buf end_cpu operation.
+ *                         This is dummy for linux kernel 4.19 and earlier.
+ * Return:      NULL
+ */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 20, 0))
+static void* udmabuf_export_kmap(struct dma_buf* dma_buf, unsigned long page)
+{
+    return NULL;
+}
+#endif
+
+/**
  * udmabuf export dma-buf operation table.
  */
 static const struct dma_buf_ops udmabuf_export_ops = {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
     .cache_sgt_mapping = true,
+#endif
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 20, 0))
+    .map               = udmabuf_export_kmap,
 #endif
     .map_dma_buf       = udmabuf_export_dma_buf_map,
     .unmap_dma_buf     = udmabuf_export_dma_buf_unmap,
@@ -1505,7 +1538,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
 
     switch(cmd) {
         case U_DMA_BUF_IOCTL_GET_DRV_INFO: {
-            u_dma_buf_ioctl_drv_info drv_info;
+            u_dma_buf_ioctl_drv_info drv_info = {0};
             SET_U_DMA_BUF_IOCTL_FLAGS_IOCTL_VERSION      (&drv_info, IOCTL_VERSION);
             SET_U_DMA_BUF_IOCTL_FLAGS_IN_KERNEL_FUNCTIONS(&drv_info, IN_KERNEL_FUNCTIONS);
             SET_U_DMA_BUF_IOCTL_FLAGS_USE_OF_DMA_CONFIG  (&drv_info, USE_OF_DMA_CONFIG);
@@ -1544,7 +1577,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             break;
         }
         case U_DMA_BUF_IOCTL_GET_DEV_INFO: {
-            u_dma_buf_ioctl_dev_info dev_info;
+            u_dma_buf_ioctl_dev_info dev_info = {0};
             u64    dma_mask = *this->dma_dev->dma_mask;
             int    dma_mask_size = 0;
             u64    dma_mask_bit  = ((u64)1UL << dma_mask_size);
@@ -1570,7 +1603,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             break;
         }
         case U_DMA_BUF_IOCTL_GET_SYNC: {
-            u_dma_buf_ioctl_sync_args sync_args;
+            u_dma_buf_ioctl_sync_args sync_args = {0};
             SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR  (&sync_args, this->sync_direction);
             SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE (&sync_args, this->sync_mode);
             SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_OWNER(&sync_args, this->sync_owner);
