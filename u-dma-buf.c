@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.8.1"
+#define DRIVER_VERSION     "4.8.2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -74,7 +74,13 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define USE_QUIRK_MMAP      1
 #define IN_KERNEL_FUNCTIONS 1
 #define IOCTL_VERSION       2
+
+#ifndef CONFIG_DMA_SHARED_BUFFER
+#pragma message("Warning: NO USE DMA-BUF EXPORT because CONFIG_DMA_SHARED_BUFFER is not set")
+#define USE_DMA_BUF_EXPORT  0
+#else
 #define USE_DMA_BUF_EXPORT  1
+#endif
 
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
 #include <linux/dma-map-ops.h>
