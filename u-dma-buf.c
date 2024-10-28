@@ -66,20 +66,49 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.8.2"
+#define DRIVER_VERSION     "4.9.0-RC1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
-#define UDMABUF_DEBUG       1
-#define USE_QUIRK_MMAP      1
-#define IN_KERNEL_FUNCTIONS 1
-#define IOCTL_VERSION       2
 
+#if     (defined(CONFIG_U_DMA_BUF_DEBUG) || defined(U_DMA_BUF_DEBUG))
+#define UDMABUF_DEBUG       1
+#else
+#define UDMABUF_DEBUG       0
+#endif
+
+#if     (defined(CONFIG_U_DMA_BUF_QUIRK_MMAP) || defined(U_DMA_BUF_QUIRK_MMAP))
+#define USE_QUIRK_MMAP      1
+#else
+#define USE_QUIRK_MMAP      0
+#endif
+
+#if     (defined(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS) || defined(U_DMA_BUF_IN_KERNEL_FUNCTIONS))
+#define IN_KERNEL_FUNCTIONS 1
+#else
+#define IN_KERNEL_FUNCTIONS 0
+#endif
+
+#if     (defined(CONFIG_U_DMA_BUF_IOCTL) || defined(U_DMA_BUF_IOCTL))
+#define IOCTL_VERSION       2
+#else
+#define IOCTL_VERSION       0
+#endif
+
+#if     (defined(CONFIG_U_DMA_BUF_EXPORT) || defined(U_DMA_BUF_EXPORT))
+#if     (defined(CONFIG_DMA_SHARED_BUFFER) && (IOCTL_VERSION >= 2))
+#define USE_DMA_BUF_EXPORT  1
+#else
+#define USE_DMA_BUF_EXPORT  0
 #ifndef CONFIG_DMA_SHARED_BUFFER
 #pragma message("Warning: NO USE DMA-BUF EXPORT because CONFIG_DMA_SHARED_BUFFER is not set")
-#define USE_DMA_BUF_EXPORT  0
+#endif
+#if     (IOCTL_VERSION < 2)
+#pragma message("Warning: NO USE DMA-BUF EXPORT because CONFIG_U_DMA_BUF_IOCTL is not set")
+#endif
+#endif
 #else
-#define USE_DMA_BUF_EXPORT  1
+#define USE_DMA_BUF_EXPORT  0
 #endif
 
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
