@@ -20,27 +20,31 @@
 #include <linux/types.h>
 #include <linux/ioctl.h>
 
-
+/*
+ * Definitions for using IOCTL commands to get the buffer details
+ */
 #define U_DMA_BUF_IOCTL_MAGIC               'U'
-//#define U_DMA_BUF_IOCTL_GET_DRV_INFO        _IOR (U_DMA_BUF_IOCTL_MAGIC, 1, u_dma_buf_ioctl_drv_info)
 #define U_DMA_BUF_IOCTL_GET_SIZE            _IOR (U_DMA_BUF_IOCTL_MAGIC, 2, uint64_t)
 #define U_DMA_BUF_IOCTL_GET_DMA_ADDR        _IOR (U_DMA_BUF_IOCTL_MAGIC, 3, uint64_t)
+
+/*
+ * Structure to hold the device buffer details.
+ * Only the start physical address and the size of the buffer is used for now.
+ */
 
 typedef struct devbuf_details_t{
 	uint64_t  start_phys_addr;
 	size_t    size;
 }devbuf_details;
 
-static void fatal(const char *x, ...)
-{
-	va_list ap;
-
-	va_start(ap, x);
-	vfprintf(stderr, x, ap);
-	va_end(ap);
-	exit(EXIT_FAILURE);
-}
-
+/*
+ * Open a file and check for errors.
+ * 
+ * @param pathname: Path to the file to open
+ * @param flags: Flags to open the file with
+ * 
+ * @return: File descriptor on success 
+ */
 static int checked_open(const char *pathname, int flags)
 {
 	int fd = open(pathname, flags);
@@ -52,6 +56,16 @@ static int checked_open(const char *pathname, int flags)
 
 	return fd;
 }
+
+/*  
+ * Get the buffer details for a device buffer.
+ * Uses IOCTL commands to get the buffer size and the physical address of the buffer.
+ * 
+ * @param fd: File descriptor of the device buffer
+ * @param devbuf: Pointer to the devbuf_details structure to store the buffer details
+ * 
+ * @return: 0 on success, -1 on failure
+ */
 
 static int get_device_buffer_details_filedes(int fd, devbuf_details *devbuf)
 {
@@ -81,6 +95,15 @@ static int get_device_buffer_details_filedes(int fd, devbuf_details *devbuf)
     return 0;
 }
 
+/*
+* Get the buffer details for a device buffer.
+* 
+* @param buf_num: Number of the device buffer
+* @param devbuf: Pointer to the devbuf_details structure to store the buffer details
+* 
+* @return: 0 on success, -1 on failure    
+
+*/
 static int get_device_buffer_details(int buf_num, devbuf_details *devbuf)
 {
     char dev_path[BUFSIZ];
@@ -100,6 +123,20 @@ static int get_device_buffer_details(int buf_num, devbuf_details *devbuf)
     return 0;
 }
 
+/*
+* Convert a virtual address to a physical address.
+*
+* IN: buf_num, virt_addr, map_start_virt_addr, dev_map_offset
+* @param buf_num: Number of the device buffer
+* @param virt_addr: Virtual address to convert
+* @param map_start_virt_addr: Starting virtual address of the mapped buffer
+* @param dev_map_offset: Offset of the mapped buffer in the device
+*
+* OUT: phys_addr
+* @param phys_addr: Pointer to store the physical address
+* 
+* @return: 0 on success, -1 on failure
+*/
 static int devbuf_virt_to_phys(int       buf_num, 
                                void     *virt_addr, 
                                void     *map_start_virt_addr,
@@ -138,6 +175,19 @@ static int devbuf_virt_to_phys(int       buf_num,
     return 0;
 }
 
+
+/*
+* Map a device buffer to user space.
+*
+* IN: buf_num, size   
+* @param buf_num: Number of the device buffer
+* @param size: Size of the buffer to map
+*
+* OUT: map_addr, devbuf
+* @param map_addr: Pointer to store the mapped address
+* @param devbuf: Pointer to the devbuf_details structure to store the buffer details
+*   
+*/
 int map_device_buffer(unsigned int buf_num, size_t size, void **map_addr, devbuf_details *devbuf)
 {
     char dev_path[BUFSIZ];
@@ -164,11 +214,8 @@ int main(int argc, char **argv)
 {
     char buffer[BUFSIZ];
     int maps_fd;
-    //int offset = 0;
 	void *map_addr;
 	size_t buf_size;
-    //int page_size;
-    //pid_t pid;
     devbuf_details devbuf;
     uint64_t phys_addr;
 
@@ -179,8 +226,6 @@ int main(int argc, char **argv)
     }
     buf_size = strtoull(argv[1], NULL, 0);
 	buf_size = buf_size << 20;
-	//page_size = getpagesize();
-
 
 	map_device_buffer(0, buf_size, &map_addr, &devbuf);
 	printf("map_addr: %p\n", map_addr);
