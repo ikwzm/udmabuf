@@ -24,6 +24,7 @@ Cross compiling (For FPGA setup):
 
 [Needs the cross compilation related env setup and the target kernel source.]
 
+----
 [cross compilation env variables]
 
 (cd to top folder)
@@ -35,7 +36,7 @@ export PATH=/proj/local/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu/bin:$
 export ARCH=arm64
 export CROSS_COMPILE=aarch64-none-linux-gnu-
 set -e
-
+----
 
 [Target kernel source:
 Out of tree module compilation requires the Module.symvers file in the 
@@ -43,6 +44,7 @@ target kernel directory. So it is necessary to execute a 'make modules'
 command as part of Linux kernel compilation/build steps.]
  
 (cd to top folder)
+
 
 cd $TOP_FOLDER
 if [ -e linux-socfpga ]
@@ -55,9 +57,9 @@ cd $TOP_FOLDER
 else
 echo "linux-socfpga does not exist"
 fi
+----
 
-
-[module compilation]
+[module compilation, paths need to be changed based on directory structure]
 
 if [ -e contig_mem ]
 then
@@ -262,6 +264,7 @@ TODO Items:
   ioremap step which is causing the issue of zero pfn.
 - Investigate the usage of device tree and reserved memory and configuring 
   those to be available for DMA apis and the udmabuf module/driver. We are
-  already using reserved memory in the FPGA setup using device tree.
-- In tree compilation of the module as opposed to out-of-tree compilation
-  if needed.
+  already using reserved memory in the FPGA setup using device tree 
+  specifications. (if needed)
+- In tree compilation of the module as opposed to out-of-tree compilation.
+  (if needed) 
