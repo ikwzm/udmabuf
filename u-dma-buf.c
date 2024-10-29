@@ -66,45 +66,57 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.9.0-RC2"
+#define DRIVER_VERSION     "4.9.0-RC3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
 
-#if     defined(U_DMA_BUF_DEBUG)
-#define UDMABUF_DEBUG       ((U_DMA_BUF_DEBUG != 0) ? 1 : 0)
+#if     defined(U_DMA_BUF_DEBUG) && (U_DMA_BUF_DEBUG != 0)
+#define UDMABUF_DEBUG       1
+#elif   defined(U_DMA_BUF_DEBUG) && (U_DMA_BUF_DEBUG == 0)
+#define UDMABUF_DEBUG       0
 #elif   defined(CONFIG_U_DMA_BUF_DEBUG)
 #define UDMABUF_DEBUG       1
 #else
 #define UDMABUF_DEBUG       0
 #endif
 
-#if     defined(U_DMA_BUF_QUIRK_MMAP)
-#define USE_QUIRK_MMAP      ((U_DMA_BUF_QUIRK_MMAP != 0)? 1 : 0)
+#if     defined(U_DMA_BUF_QUIRK_MMAP) && (U_DMA_BUF_QUIRK_MMAP != 0)
+#define USE_QUIRK_MMAP      1
+#elif   defined(U_DMA_BUF_QUIRK_MMAP) && (U_DMA_BUF_QUIRK_MMAP == 0)
+#define USE_QUIRK_MMAP      0
 #elif   defined(CONFIG_U_DMA_BUF_QUIRK_MMAP)
 #define USE_QUIRK_MMAP      1
 #else
 #define USE_QUIRK_MMAP      0
 #endif
 
-#if     defined(U_DMA_BUF_IN_KERNEL_FUNCTIONS)
-#define IN_KERNEL_FUNCTIONS ((U_DMA_BUF_IN_KERNEL_FUNCTIONS != 0) ? 1 : 0)
+#if     defined(U_DMA_BUF_IN_KERNEL_FUNCTIONS) && (U_DMA_BUF_IN_KERNEL_FUNCTIONS != 0)
+#define IN_KERNEL_FUNCTIONS 1
+#elif   defined(U_DMA_BUF_IN_KERNEL_FUNCTIONS) && (U_DMA_BUF_IN_KERNEL_FUNCTIONS == 0)
+#define IN_KERNEL_FUNCTIONS 0
 #elif   defined(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS)
 #define IN_KERNEL_FUNCTIONS 1
 #else
 #define IN_KERNEL_FUNCTIONS 0
 #endif
 
-#if     defined(U_DMA_BUF_IOCTL)
-#define IOCTL_VERSION       U_DMA_BUF_IOCTL
+#if     defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL >= 2)
+#define IOCTL_VERSION       2
+#elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL == 1)
+#define IOCTL_VERSION       1
+#elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL == 0)
+#define IOCTL_VERSION       0
 #elif   defined(CONFIG_U_DMA_BUF_IOCTL)
 #define IOCTL_VERSION       2
 #else
 #define IOCTL_VERSION       0
 #endif
 
-#if     defined(U_DMA_BUF_EXPORT)
-#define USE_DMA_BUF_EXPORT  ((U_DMA_BUF_EXPORT != 0) ? 1 : 0)
+#if     defined(U_DMA_BUF_EXPORT) && (U_DMA_BUF_EXPORT != 0)
+#define USE_DMA_BUF_EXPORT  1
+#elif   defined(U_DMA_BUF_EXPORT) && (U_DMA_BUF_EXPORT == 0)
+#define USE_DMA_BUF_EXPORT  0
 #elif   defined(CONFIG_U_DMA_BUF_EXPORT)
 #define USE_DMA_BUF_EXPORT  1
 #else
