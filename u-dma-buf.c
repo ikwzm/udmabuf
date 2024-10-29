@@ -66,49 +66,66 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.9.0-RC1"
+#define DRIVER_VERSION     "4.9.0-RC2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
 
-#if     (defined(CONFIG_U_DMA_BUF_DEBUG) || defined(U_DMA_BUF_DEBUG))
+#if     defined(U_DMA_BUF_DEBUG)
+#define UDMABUF_DEBUG       ((U_DMA_BUF_DEBUG != 0) ? 1 : 0)
+#elif   defined(CONFIG_U_DMA_BUF_DEBUG)
 #define UDMABUF_DEBUG       1
 #else
 #define UDMABUF_DEBUG       0
 #endif
 
-#if     (defined(CONFIG_U_DMA_BUF_QUIRK_MMAP) || defined(U_DMA_BUF_QUIRK_MMAP))
+#if     defined(U_DMA_BUF_QUIRK_MMAP)
+#define USE_QUIRK_MMAP      ((U_DMA_BUF_QUIRK_MMAP != 0)? 1 : 0)
+#elif   defined(CONFIG_U_DMA_BUF_QUIRK_MMAP)
 #define USE_QUIRK_MMAP      1
 #else
 #define USE_QUIRK_MMAP      0
 #endif
 
-#if     (defined(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS) || defined(U_DMA_BUF_IN_KERNEL_FUNCTIONS))
+#if     defined(U_DMA_BUF_IN_KERNEL_FUNCTIONS)
+#define IN_KERNEL_FUNCTIONS ((U_DMA_BUF_IN_KERNEL_FUNCTIONS != 0) ? 1 : 0)
+#elif   defined(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS)
 #define IN_KERNEL_FUNCTIONS 1
 #else
 #define IN_KERNEL_FUNCTIONS 0
 #endif
 
-#if     (defined(CONFIG_U_DMA_BUF_IOCTL) || defined(U_DMA_BUF_IOCTL))
+#if     defined(U_DMA_BUF_IOCTL)
+#define IOCTL_VERSION       U_DMA_BUF_IOCTL
+#elif   defined(CONFIG_U_DMA_BUF_IOCTL)
 #define IOCTL_VERSION       2
 #else
 #define IOCTL_VERSION       0
 #endif
 
-#if     (defined(CONFIG_U_DMA_BUF_EXPORT) || defined(U_DMA_BUF_EXPORT))
-#if     (defined(CONFIG_DMA_SHARED_BUFFER) && (IOCTL_VERSION >= 2))
+#if     defined(U_DMA_BUF_EXPORT)
+#define USE_DMA_BUF_EXPORT  ((U_DMA_BUF_EXPORT != 0) ? 1 : 0)
+#elif   defined(CONFIG_U_DMA_BUF_EXPORT)
 #define USE_DMA_BUF_EXPORT  1
 #else
 #define USE_DMA_BUF_EXPORT  0
+#endif
+
+#if     (USE_DMA_BUF_EXPORT == 1)
 #ifndef CONFIG_DMA_SHARED_BUFFER
 #pragma message("Warning: NO USE DMA-BUF EXPORT because CONFIG_DMA_SHARED_BUFFER is not set")
+#undef  USE_DMA_BUF_EXPORT
+#define USE_DMA_BUF_EXPORT  0
 #endif
 #if     (IOCTL_VERSION < 2)
+#if     (defined(U_DMA_BUF_IOCTL))
+#pragma message("Warning: NO USE DMA-BUF EXPORT because U_DMA_BUF_IOCTL is less than 2")
+#else
 #pragma message("Warning: NO USE DMA-BUF EXPORT because CONFIG_U_DMA_BUF_IOCTL is not set")
 #endif
-#endif
-#else
+#undef  USE_DMA_BUF_EXPORT
 #define USE_DMA_BUF_EXPORT  0
+#endif
 #endif
 
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
@@ -2277,6 +2294,7 @@ static int  udmabuf_get_minor_number_property(struct device *dev, u32* value, bo
  * @lock:       use mutex_lock()/mutex_unlock()
  * Return:      Success(=0) or error status(<0).
  */
+#if (USE_QUIRK_MMAP == 1)
 static int  udmabuf_get_option_property(struct device *dev, u64* value, bool lock)
 {
 #if (USE_DEV_PROPERTY == 0)
@@ -2299,6 +2317,7 @@ static int  udmabuf_get_option_property(struct device *dev, u64* value, bool loc
     return device_property_read_u64(dev, "option", value);
 #endif
 }
+#endif
 
 /**
  * udmabuf_get_option_dma_mask_size()   - Get dma mask size   from option.

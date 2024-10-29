@@ -4,13 +4,22 @@
 #
 # For in kernel tree variables
 # 
-obj-$(CONFIG_U_DMA_BUF)                         += u-dma-buf.o
-
-ccflags-$(CONFIG_U_DMA_BUF_DEBUG)               += -DU_DMA_BUF_DEBUG
-ccflags-$(CONFIG_U_DMA_BUF_QUIRK_MMAP)          += -DU_DMA_BUF_QUIRK_MMAP
-ccflags-$(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS) += -DU_DMA_BUF_IN_KERNEL_FUNCTIONS
-ccflags-$(CONFIG_U_DMA_BUF_IOCTL)               += -DU_DMA_BUF_IOCTL
-ccflags-$(CONFIG_U_DMA_BUF_EXPORT)              += -DU_DMA_BUF_EXPORT
+obj-$(CONFIG_U_DMA_BUF)  += u-dma-buf.o
+ifdef U_DMA_BUF_DEBUG
+ccflags-y                += -DU_DMA_BUF_DEBUG=$(U_DMA_BUF_DEBUG)
+endif
+ifdef U_DMA_BUF_QUIRK_MMAP
+ccflags-y                += -DU_DMA_BUF_QUIRK_MMAP=$(U_DMA_BUF_QUIRK_MMAP)
+endif
+ifdef U_DMA_BUF_IN_KERNEL_FUNCTIONS
+ccflags-y                += -DU_DMA_BUF_IN_KERNEL_FUNCTIONS=$(U_DMA_BUF_IN_KERNEL_FUNCTIONS)
+endif
+ifdef U_DMA_BUF_IOCTL
+ccflags-y                += -DU_DMA_BUF_IOCTL=$(U_DMA_BUF_IOCTL)
+endif
+ifdef U_DMA_BUF_EXPORT
+ccflags-y                += -DU_DMA_BUF_EXPORT=$(U_DMA_BUF_EXPORT)
+endif
 
 #
 # For out of kernel tree variables
@@ -23,11 +32,31 @@ CONFIG_U_DMA_BUF_IOCTL               ?= y
 CONFIG_U_DMA_BUF_EXPORT              ?= y
 
 CONFIG_OPTIONS := CONFIG_U_DMA_BUF=$(CONFIG_U_DMA_BUF)
-CONFIG_OPTIONS += CONFIG_U_DMA_BUF_DEBUG=$(CONFIG_U_DMA_BUF_DEBUG)
-CONFIG_OPTIONS += CONFIG_U_DMA_BUF_QUIRK_MMAP=$(CONFIG_U_DMA_BUF_QUIRK_MMAP)
-CONFIG_OPTIONS += CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS=$(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS)
-CONFIG_OPTIONS += CONFIG_U_DMA_BUF_IOCTL=$(CONFIG_U_DMA_BUF_IOCTL)
-CONFIG_OPTIONS += CONFIG_U_DMA_BUF_EXPORT=$(CONFIG_U_DMA_BUF_EXPORT)
+ifeq ($(CONFIG_U_DMA_BUF_DEBUG), y)
+CONFIG_OPTIONS += U_DMA_BUF_DEBUG=1
+else
+CONFIG_OPTIONS += U_DMA_BUF_DEBUG=0
+endif
+ifeq ($(CONFIG_U_DMA_BUF_QUIRK_MMAP), y)
+CONFIG_OPTIONS += U_DMA_BUF_QUIRK_MMAP=1
+else
+CONFIG_OPTIONS += U_DMA_BUF_QUIRK_MMAP=0
+endif
+ifeq ($(CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS), y)
+CONFIG_OPTIONS += U_DMA_BUF_IN_KERNEL_FUNCTIONS=1
+else
+CONFIG_OPTIONS += U_DMA_BUF_IN_KERNEL_FUNCTIONS=0
+endif
+ifeq ($(CONFIG_U_DMA_BUF_IOCTL), y)
+CONFIG_OPTIONS += U_DMA_BUF_IOCTL=2
+else
+CONFIG_OPTIONS += U_DMA_BUF_IOCTL=0
+endif
+ifeq ($(CONFIG_U_DMA_BUF_EXPORT), y)
+CONFIG_OPTIONS += U_DMA_BUF_EXPORT=1
+else
+CONFIG_OPTIONS += U_DMA_BUF_EXPORT=0
+endif
 
 HOST_ARCH ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
 ARCH      ?= $(shell uname -m | sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/)
