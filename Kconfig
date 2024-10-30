@@ -13,16 +13,29 @@ menuconfig U_DMA_BUF
 
 	  If you don't know what to do here, say N.
 
+config U_DMA_BUF_CONFIG
+	bool "Configure u-dma-buf by Kconfig"
+	depends on U_DMA_BUF
+	default n
+	help
+	  If y, allows u-dma-buf configuration by Kconfig.
+	  If n, build with
+	    U_DMA_BUF_DEBUG=y
+	    U_DMA_BUF_QUIRK_MMAP=y
+	    U_DMA_BUF_IN_KERNEL_FUNCTIONS=y
+	    U_DMA_BUF_IOCTL=y
+	    U_DMA_BUF_EXPORT=y
+	  
 config U_DMA_BUF_DEBUG
 	bool "u-dma-buf enable debug report"
-	depends on U_DMA_BUF
+	depends on U_DMA_BUF_CONFIG
 	default y
 	help
 	  Enable debug report.
 
 config U_DMA_BUF_QUIRK_MMAP
 	bool "u-dma-buf enable quirk mmap"
-	depends on U_DMA_BUF
+	depends on U_DMA_BUF_CONFIG
 	default y
 	help
 	  Enable quirk mmap.
@@ -36,7 +49,7 @@ config U_DMA_BUF_QUIRK_MMAP
 
 config U_DMA_BUF_IN_KERNEL_FUNCTIONS
 	bool "u-dma-buf enable in-kernel functions"
-	depends on U_DMA_BUF
+	depends on U_DMA_BUF_CONFIG
 	default y
 	help
 	  Enable u-dma-buf in-kernel functions.
@@ -45,14 +58,14 @@ config U_DMA_BUF_IN_KERNEL_FUNCTIONS
 
 config U_DMA_BUF_IOCTL
 	bool "u-dma-buf enable ioctl"
-	depends on U_DMA_BUF
+	depends on U_DMA_BUF_CONFIG
 	default y if U_DMA_BUF_EXPORT
 	help
 	  Enable ioctl.
 
 config U_DMA_BUF_EXPORT
 	bool "u-dma-buf enable prime dma-buf export"
-	depends on U_DMA_BUF
+	depends on U_DMA_BUF_CONFIG
 	select CONFIG_DMA_SHARED_BUFFER
 	default y
 	help

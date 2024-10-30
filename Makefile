@@ -5,6 +5,9 @@
 # For in kernel tree variables
 # 
 obj-$(CONFIG_U_DMA_BUF)  += u-dma-buf.o
+ifdef U_DMA_BUF_CONFIG
+ccflags-y                += -DU_DMA_BUF_CONFIG=$(U_DMA_BUF_CONFIG)
+endif
 ifdef U_DMA_BUF_DEBUG
 ccflags-y                += -DU_DMA_BUF_DEBUG=$(U_DMA_BUF_DEBUG)
 endif
@@ -32,6 +35,7 @@ CONFIG_U_DMA_BUF_IOCTL               ?= y
 CONFIG_U_DMA_BUF_EXPORT              ?= y
 
 CONFIG_OPTIONS := CONFIG_U_DMA_BUF=$(CONFIG_U_DMA_BUF)
+CONFIG_OPTIONS += U_DMA_BUF_CONFIG=1
 ifeq ($(CONFIG_U_DMA_BUF_DEBUG), y)
 CONFIG_OPTIONS += U_DMA_BUF_DEBUG=1
 else

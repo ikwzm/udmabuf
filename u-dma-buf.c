@@ -66,12 +66,24 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "4.9.0"
+#define DRIVER_VERSION     "5.0.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
 
-#if     defined(U_DMA_BUF_DEBUG) && (U_DMA_BUF_DEBUG != 0)
+#if     defined(U_DMA_BUF_CONFIG) && (U_DMA_BUF_CONFIG != 0)
+#define UDMABUF_CONFIG      1
+#elif   defined(U_DMA_BUF_CONFIG) && (U_DMA_BUF_CONFIG == 0)
+#define UDMABUF_CONFIG      0
+#elif   defined(CONFIG_U_DMA_BUF_CONFIG)
+#define UDMABUF_CONFIG      1
+#else   
+#define UDMABUF_CONFIG      0
+#endif
+
+#if     (UDMABUF_CONFIG == 0)
+#define UDMABUF_DEBUG       1
+#elif   defined(U_DMA_BUF_DEBUG) && (U_DMA_BUF_DEBUG != 0)
 #define UDMABUF_DEBUG       1
 #elif   defined(U_DMA_BUF_DEBUG) && (U_DMA_BUF_DEBUG == 0)
 #define UDMABUF_DEBUG       0
@@ -81,7 +93,9 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define UDMABUF_DEBUG       0
 #endif
 
-#if     defined(U_DMA_BUF_QUIRK_MMAP) && (U_DMA_BUF_QUIRK_MMAP != 0)
+#if     (UDMABUF_CONFIG == 0)
+#define USE_QUIRK_MMAP      1
+#elif   defined(U_DMA_BUF_QUIRK_MMAP) && (U_DMA_BUF_QUIRK_MMAP != 0)
 #define USE_QUIRK_MMAP      1
 #elif   defined(U_DMA_BUF_QUIRK_MMAP) && (U_DMA_BUF_QUIRK_MMAP == 0)
 #define USE_QUIRK_MMAP      0
@@ -91,7 +105,9 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define USE_QUIRK_MMAP      0
 #endif
 
-#if     defined(U_DMA_BUF_IN_KERNEL_FUNCTIONS) && (U_DMA_BUF_IN_KERNEL_FUNCTIONS != 0)
+#if     (UDMABUF_CONFIG == 0)
+#define IN_KERNEL_FUNCTIONS 1
+#elif   defined(U_DMA_BUF_IN_KERNEL_FUNCTIONS) && (U_DMA_BUF_IN_KERNEL_FUNCTIONS != 0)
 #define IN_KERNEL_FUNCTIONS 1
 #elif   defined(U_DMA_BUF_IN_KERNEL_FUNCTIONS) && (U_DMA_BUF_IN_KERNEL_FUNCTIONS == 0)
 #define IN_KERNEL_FUNCTIONS 0
@@ -101,7 +117,9 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define IN_KERNEL_FUNCTIONS 0
 #endif
 
-#if     defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL >= 2)
+#if     (UDMABUF_CONFIG == 0)
+#define IOCTL_VERSION       2
+#elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL >= 2)
 #define IOCTL_VERSION       2
 #elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL == 1)
 #define IOCTL_VERSION       1
@@ -113,7 +131,9 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define IOCTL_VERSION       0
 #endif
 
-#if     defined(U_DMA_BUF_EXPORT) && (U_DMA_BUF_EXPORT != 0)
+#if     (UDMABUF_CONFIG == 0)
+#define USE_DMA_BUF_EXPORT  1
+#elif   defined(U_DMA_BUF_EXPORT) && (U_DMA_BUF_EXPORT != 0)
 #define USE_DMA_BUF_EXPORT  1
 #elif   defined(U_DMA_BUF_EXPORT) && (U_DMA_BUF_EXPORT == 0)
 #define USE_DMA_BUF_EXPORT  0
@@ -3607,6 +3627,7 @@ static int __init u_dma_buf_init(void)
         #define NUM_TO_STR(x) TO_STR(x)
         pr_info(DRIVER_NAME ": "
                 "DEVICE_MAX_NUM="      NUM_TO_STR(DEVICE_MAX_NUM)      ","
+                "UDMABUF_CONFIG="      NUM_TO_STR(UDMABUF_CONFIG)      ","
                 "UDMABUF_DEBUG="       NUM_TO_STR(UDMABUF_DEBUG)       ","
                 "USE_QUIRK_MMAP="      NUM_TO_STR(USE_QUIRK_MMAP)      ","
                 "USE_QUIRK_MMAP_PAGE=" NUM_TO_STR(USE_QUIRK_MMAP_PAGE) ","
