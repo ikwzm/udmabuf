@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.0.0"
+#define DRIVER_VERSION     "5.0.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -911,7 +911,7 @@ struct udmabuf_export_entry {
     struct list_head       list;
 };
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 8 ,0))
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(5, 8 ,0)) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 5 ,0)) || (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4 ,233))
 static inline int dma_map_sgtable(struct device* dev, struct sg_table* sgt, enum dma_data_direction direction, unsigned long attrs)
 {
     int nents;
