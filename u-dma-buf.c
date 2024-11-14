@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.0.1"
+#define DRIVER_VERSION     "5.0.2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1629,8 +1629,9 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             SET_U_DMA_BUF_IOCTL_FLAGS_USE_OF_RESERVED_MEM(&drv_info, USE_OF_RESERVED_MEM);
             SET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP     (&drv_info, USE_QUIRK_MMAP);
             SET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP_PAGE(&drv_info, USE_QUIRK_MMAP_PAGE);
-            strlcpy(&drv_info.version[0], DRIVER_VERSION, sizeof(drv_info.version));
-            if (copy_to_user(argp, &drv_info, sizeof(drv_info)) != 0)
+            if (strscpy(&drv_info.version[0], DRIVER_VERSION, sizeof(drv_info.version)) < 0)
+                result = -EFAULT;
+            else if (copy_to_user(argp, &drv_info, sizeof(drv_info)) != 0)
                 result = -EFAULT;
             else 
                 result = 0;
