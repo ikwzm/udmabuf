@@ -3355,13 +3355,13 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     return retval;
 }
 /**
- * udmabuf_platform_driver_remove_status() -  Remove call for the device.
+ * _udmabuf_platform_driver_remove() -  Remove call for the device.
  * @pdev:       Handle to the platform device structure.
  * Return:      Success(=0) or error status(<0).
  *
  * Unregister the device after releasing the resources.
  */
-static int udmabuf_platform_driver_remove_status(struct platform_device *pdev)
+static inline int _udmabuf_platform_driver_remove(struct platform_device *pdev)
 {
     struct udmabuf_object* this   = dev_get_drvdata(&pdev->dev);
     int                    retval = 0;
@@ -3388,7 +3388,7 @@ static int udmabuf_platform_driver_remove_status(struct platform_device *pdev)
  */
 static int udmabuf_platform_driver_remove(struct platform_device *pdev)
 {
-    return udmabuf_platform_driver_remove_status(pdev);
+    return _udmabuf_platform_driver_remove(pdev);
 }
 #else
 /**
@@ -3400,7 +3400,7 @@ static int udmabuf_platform_driver_remove(struct platform_device *pdev)
  */
 static void udmabuf_platform_driver_remove(struct platform_device *pdev)
 {
-    udmabuf_platform_driver_remove_status(pdev);
+    _udmabuf_platform_driver_remove(pdev);
 }
 #endif
 
