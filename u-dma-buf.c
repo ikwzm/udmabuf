@@ -1511,7 +1511,7 @@ static loff_t udmabuf_device_file_llseek(struct file* file, loff_t offset, int w
 }
 
 /**
- * u_dma_buf_ioctl.h - u-dma-buf ioctl header file
+ * u-dma-buf-ioctl.h - u-dma-buf ioctl header file
  *
  * This source code(u-dma-buf.c) has built-in header file(u-dma-buf-ioctl.h) 
  * so that it can be built with only one source code.
@@ -3437,6 +3437,29 @@ static struct platform_driver udmabuf_platform_driver = {
  * * u_dma_buf_find_available_bus_type() - Find available bus_type by name.
  * * u_dma_buf_available_bus_type_list[] - List of bus_type available by u-dma-buf.
  */
+/**
+ * u-dma-buf-funcs.h - u-dma-buf in-kernel functions header file
+ *
+ * This source code(u-dma-buf.c) has built-in header file(u-dma-buf-funcs.h) 
+ * so that it can be built with only one source code.
+ * To generate a header file (u-dma-buf-funcs.h) from this source code (u-dma-buf.c), 
+ * do the following
+ * 
+ * sed -n '/^\/\*\*\*\*\*\*\*\*\*\*\**$/,/\**\*\*\*\*\*\*\*\*\*\*\/$/p' u-dma-buf.c >  u-dma-buf-funcs.h
+ * sed -n '/^#ifndef.*U_DMA_BUF_FUNCS_H/,/^#endif.*U_DMA_BUF_FUNCS_H/p' u-dma-buf.c >> u-dma-buf-funcs.h
+ * 
+ */
+#if (IN_KERNEL_FUNCTIONS == 1)
+#ifndef  U_DMA_BUF_FUNCS_H
+#define  U_DMA_BUF_FUNCS_H
+struct device*   u_dma_buf_device_search(const char* name, int id);
+struct device*   u_dma_buf_device_create(const char* name, int id, size_t size, u64 option, struct device* parent);
+int              u_dma_buf_device_remove(struct device *dev);
+int              u_dma_buf_device_getmap(struct device *dev, size_t* size, void** virt_addr, dma_addr_t* phys_addr);
+int              u_dma_buf_device_sync(struct device *dev, int command, int direction, u64 offset, ssize_t size);
+struct bus_type* u_dma_buf_find_available_bus_type(char* name, int name_len);
+#endif /* #ifndef U_DMA_BUF_FUNCS_H */
+#endif /* #if (IN_KERNEL_FUNCTIONS == 1) */
 /**
  * u_dma_buf_device_search() - Search u-dma-buf device by name or id.
  * @name:       device name or NULL.
