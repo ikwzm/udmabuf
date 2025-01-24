@@ -1,6 +1,6 @@
 /*********************************************************************************
  *
- *       Copyright (C) 2015-2024 Ichiro Kawazome
+ *       Copyright (C) 2015-2025 Ichiro Kawazome
  *       All rights reserved.
  * 
  *       Redistribution and use in source and binary forms, with or without
@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.0.3"
+#define DRIVER_VERSION     "5.1.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1511,7 +1511,7 @@ static loff_t udmabuf_device_file_llseek(struct file* file, loff_t offset, int w
 }
 
 /**
- * u_dma_buf_ioctl.h - u-dma-buf ioctl header file
+ * u-dma-buf-ioctl.h - u-dma-buf ioctl header file
  *
  * This source code(u-dma-buf.c) has built-in header file(u-dma-buf-ioctl.h) 
  * so that it can be built with only one source code.
@@ -3355,13 +3355,13 @@ static int udmabuf_platform_driver_probe(struct platform_device *pdev)
     return retval;
 }
 /**
- * udmabuf_platform_driver_remove() -  Remove call for the device.
+ * _udmabuf_platform_driver_remove() -  Remove call for the device.
  * @pdev:       Handle to the platform device structure.
  * Return:      Success(=0) or error status(<0).
  *
  * Unregister the device after releasing the resources.
  */
-static int udmabuf_platform_driver_remove(struct platform_device *pdev)
+static inline int _udmabuf_platform_driver_remove(struct platform_device *pdev)
 {
     struct udmabuf_object* this   = dev_get_drvdata(&pdev->dev);
     int                    retval = 0;
@@ -3377,6 +3377,32 @@ static int udmabuf_platform_driver_remove(struct platform_device *pdev)
     }
     return retval;
 }
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
+/**
+ * udmabuf_platform_driver_remove() -  Remove call for the device.
+ * @pdev:       Handle to the platform device structure.
+ * Return:      Success(=0) or error status(<0).
+ *
+ * Unregister the device after releasing the resources.
+ */
+static int udmabuf_platform_driver_remove(struct platform_device *pdev)
+{
+    return _udmabuf_platform_driver_remove(pdev);
+}
+#else
+/**
+ * udmabuf_platform_driver_remove() -  Remove call for the device.
+ * @pdev:       Handle to the platform device structure.
+ * Return:      void
+ *
+ * Unregister the device after releasing the resources.
+ */
+static void udmabuf_platform_driver_remove(struct platform_device *pdev)
+{
+    _udmabuf_platform_driver_remove(pdev);
+}
+#endif
 
 /**
  * Open Firmware Device Identifier Matching Table
@@ -3411,6 +3437,29 @@ static struct platform_driver udmabuf_platform_driver = {
  * * u_dma_buf_find_available_bus_type() - Find available bus_type by name.
  * * u_dma_buf_available_bus_type_list[] - List of bus_type available by u-dma-buf.
  */
+/**
+ * u-dma-buf-funcs.h - u-dma-buf in-kernel functions header file
+ *
+ * This source code(u-dma-buf.c) has built-in header file(u-dma-buf-funcs.h) 
+ * so that it can be built with only one source code.
+ * To generate a header file (u-dma-buf-funcs.h) from this source code (u-dma-buf.c), 
+ * do the following
+ * 
+ * sed -n '/^\/\*\*\*\*\*\*\*\*\*\*\**$/,/\**\*\*\*\*\*\*\*\*\*\*\/$/p' u-dma-buf.c >  u-dma-buf-funcs.h
+ * sed -n '/^#ifndef.*U_DMA_BUF_FUNCS_H/,/^#endif.*U_DMA_BUF_FUNCS_H/p' u-dma-buf.c >> u-dma-buf-funcs.h
+ * 
+ */
+#if (IN_KERNEL_FUNCTIONS == 1)
+#ifndef  U_DMA_BUF_FUNCS_H
+#define  U_DMA_BUF_FUNCS_H
+struct device*   u_dma_buf_device_search(const char* name, int id);
+struct device*   u_dma_buf_device_create(const char* name, int id, size_t size, u64 option, struct device* parent);
+int              u_dma_buf_device_remove(struct device *dev);
+int              u_dma_buf_device_getmap(struct device *dev, size_t* size, void** virt_addr, dma_addr_t* phys_addr);
+int              u_dma_buf_device_sync(struct device *dev, int command, int direction, u64 offset, ssize_t size);
+struct bus_type* u_dma_buf_find_available_bus_type(char* name, int name_len);
+#endif /* #ifndef U_DMA_BUF_FUNCS_H */
+#endif /* #if (IN_KERNEL_FUNCTIONS == 1) */
 /**
  * u_dma_buf_device_search() - Search u-dma-buf device by name or id.
  * @name:       device name or NULL.
