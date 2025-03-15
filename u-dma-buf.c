@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.1.0"
+#define DRIVER_VERSION     "5.2.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -207,7 +207,9 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 #if     (USE_DMA_BUF_EXPORT == 1)
 #include <linux/dma-buf.h>
-#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16 ,0))
+#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13 ,0))
+MODULE_IMPORT_NS("DMA_BUF");
+#elif   (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16 ,0))
 MODULE_IMPORT_NS(DMA_BUF);
 #endif
 #endif
