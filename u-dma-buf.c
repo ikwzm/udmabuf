@@ -208,7 +208,11 @@ MODULE_LICENSE("Dual BSD/GPL");
 #if     (USE_DMA_BUF_EXPORT == 1)
 #include <linux/dma-buf.h>
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16 ,0))
+#if     (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13 ,0))
+MODULE_IMPORT_NS("DMA_BUF");
+#else
 MODULE_IMPORT_NS(DMA_BUF);
+#endif
 #endif
 #endif
 
