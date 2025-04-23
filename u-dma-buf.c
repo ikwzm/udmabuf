@@ -3235,17 +3235,18 @@ static struct device* udmabuf_static_parent_device = NULL;
  * @size:       buffer size.
  * Return:      Success(=0) or error status(<0).
  */
-static void udmabuf_static_device_create(const char* name, int id, unsigned int size)
+static void udmabuf_static_device_create(const char* name, int id, unsigned int size, char *bind_per_id)
 {
-    if ((bind != NULL) && (udmabuf_static_parent_device == NULL)) {
+    if ((bind != NULL && udmabuf_static_parent_device == NULL) || (bind_per_id != NULL)) {
         struct device*   parent      = NULL;
         struct bus_type* bus_type    = NULL;
         char*            device_name = NULL;
-        int              retval;
-        retval = udmabuf_static_parse_bind(bind, &bus_type, &device_name);
+	int              retval;
+	char *bindp = bind_per_id ? bind_per_id : bind;
+        retval = udmabuf_static_parse_bind(bindp, &bus_type, &device_name);
         if (retval) {
             udmabuf_static_parent_device = ERR_PTR(-EINVAL);
-            pr_err(DRIVER_NAME ": bind error: %s is not support bus\n", bind);
+            pr_err(DRIVER_NAME ": bind error: %s is not support bus\n", bindp);
             return;
         }
         parent = bus_find_device_by_name(bus_type, NULL, device_name);
@@ -3275,7 +3276,8 @@ static void udmabuf_static_device_create(const char* name, int id, unsigned int 
 #define CALL_UDMABUF_STATIC_DEVICE_CREATE(__num)                         \
     if (udmabuf ## __num != 0) {                                         \
         ida_simple_remove(&udmabuf_device_ida, __num);                   \
-        udmabuf_static_device_create(NULL, __num, udmabuf ## __num);     \
+        udmabuf_static_device_create(NULL, __num, udmabuf ## __num,      \
+                                     udmabuf_bind ## __num);             \
     }
 
 #define CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(__num)           \
@@ -3292,6 +3294,20 @@ DEFINE_UDMABUF_STATIC_DEVICE_PARAM(5);
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(6);
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(7);
 
+#define DEFINE_UDMABUF_STATIC_DEVICE_BIND(__num)                          \
+    static char *    udmabuf_bind ## __num = NULL;                        \
+    module_param(    udmabuf_bind ## __num, charp, S_IRUGO);              \
+    MODULE_PARM_DESC(udmabuf_bind ## __num, DRIVER_NAME #__num            \
+        " bind device name. exp pci/0000:00:20:0");
+
+DEFINE_UDMABUF_STATIC_DEVICE_BIND(0);
+DEFINE_UDMABUF_STATIC_DEVICE_BIND(1);
+DEFINE_UDMABUF_STATIC_DEVICE_BIND(2);
+DEFINE_UDMABUF_STATIC_DEVICE_BIND(3);
+DEFINE_UDMABUF_STATIC_DEVICE_BIND(4);
+DEFINE_UDMABUF_STATIC_DEVICE_BIND(5);
+DEFINE_UDMABUF_STATIC_DEVICE_BIND(6);
+DEFINE_UDMABUF_STATIC_DEVICE_BIND(7);
 /**
  * udmabuf_static_device_reserve_minor_number_all() - Reserve udmabuf static device's minor-number.
  */
