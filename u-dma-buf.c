@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.3.0-RC3"
+#define DRIVER_VERSION     "5.3.0-RC4"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -3139,6 +3139,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
  * * udmabuf_static_device             - Structure udmabuf static device.
  * * udmabuf_static_device_list[]      - List of udmabuf static device structure.
  * * udmabuf_static_device_create()    - Create udmabuf static device and add to list.
+ * * udmabuf_static_device_delete()    - Delete udmabuf static device.
  */
 /**
  * * udmabuf_available_bus_type_list[] - List of bus_type available for udmabuf static device.
@@ -3284,6 +3285,19 @@ static int udmabuf_static_device_create(udmabuf_static_device* sdev)
     return 0;
 }
 
+/**
+ * udmabuf_static_device_delete() - Delete udmabuf static device.
+ * @sdev:        Pointer to udmabuf static device structure.
+ * Return:       void
+ */
+static void udmabuf_static_device_delete(udmabuf_static_device* sdev)
+{
+    if (sdev->parent_device != NULL) {
+        put_device(sdev->parent_device);
+        sdev->parent_device = NULL;
+    }
+}
+
 #define DEFINE_UDMABUF_STATIC_DEVICE_PARAM(__num)                          \
     static ulong     udmabuf ## __num = 0;                                 \
     module_param(    udmabuf ## __num, ulong, S_IRUGO);                    \
@@ -3351,6 +3365,17 @@ static int udmabuf_static_device_create_all(void)
     CALL_UDMABUF_STATIC_DEVICE_CREATE(6);
     CALL_UDMABUF_STATIC_DEVICE_CREATE(7);
     return status;
+}
+
+/**
+ * udmabuf_static_device_delete_all() - Delete all udmabuf static devices.
+ */
+static void udmabuf_static_device_delete_all(void)
+{
+    int num;
+    for (num = 0; num < STATIC_DEVICE_MAX_NUM; num++) {
+        udmabuf_static_device_delete(&udmabuf_static_device_list[num]);
+    }
 }
 
 /**
@@ -3691,6 +3716,7 @@ static bool udmabuf_platform_driver_registerd = false;
 static void u_dma_buf_cleanup(void)
 {
     udmabuf_device_list_cleanup();
+    udmabuf_static_device_delete_all();
     if (udmabuf_platform_driver_registerd){platform_driver_unregister(&udmabuf_platform_driver);}
     if (udmabuf_sys_class     != NULL    ){class_destroy(udmabuf_sys_class);}
     if (udmabuf_device_number != 0       ){unregister_chrdev_region(udmabuf_device_number, 0);}
