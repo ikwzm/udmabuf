@@ -201,9 +201,9 @@ The u-dma-buf kernel module has the following module parameters:
 | Parameter Name    | Type  | Default | Description                         |
 |:------------------|:------|---------|:------------------------------------|
 | udmabuf[0-7]      | ulong |    0    | u-dma-buf[0-7] buffer size          |
-| udmabuf[0-7]_bind | charp |   ""    | u-dma-buf[0-7] bind device name     |
 | info_enable       | int   |    1    | install/uninstall infomation enable |
 | dma_mask_bit      | int   |   32    | dma mask bit size                   |
+| udmabuf[0-7]_bind | charp |   ""    | u-dma-buf[0-7] bind device name     |
 | bind              | charp |   ""    | bind device name                    |
 | quirk_mmap_mode   | int   | 2 or 3  | quirk mmap mode(1:off,2:on,3:auto,4:page) |
 
@@ -214,12 +214,6 @@ The number of u-dma-buf that can be created with this parameter is 8.
 The device name will be udmabuf[0-7].
 If this parameter is 0, the u-dma-buf is not created.
 
-### `udmabuf[0-7]_bind`
-
-This parameter specifies the parent device of the u-dma-buf[x](x is number from 0-7).
-If this parameter is an empty string (default value), u-dma-buf[x] is created as a new platform device.
-If a parent device name is specified for this parameter, u-dma-buf[x] is created as its child device.
-
 ### `info_enable`
 
 This parameter specifies whether or not detailed information about when the u-dma-buf was created should be displayed.
@@ -229,11 +223,12 @@ This parameter specifies whether or not detailed information about when the u-dm
 ** Note: The value of dma-mask is system dependent.
 Make sure you are familiar with the meaning of dma-mask before setting. **
 
-### `bind`
+### `udmabuf[0-7]_bind`
 
-This parameter specifies the parent device of the u-dma-buf.
-If this parameter is an empty string (default value), u-dma-buf is created as a new platform device.
-If a parent device name is specified for this parameter, u-dma-buf is created as its child device.
+This parameter specifies the parent device of u-dma-buf[x] (x is a number from 0 to 7).
+If this parameter is an empty string (default value) and the bind parameter described below is an empty string (default value), u-dma-buf[x] is created as a new platform device.
+If this parameter is an empty string (default value) and the bind parameter described below is not an empty string, u-dma-buf[x] is created as a child device of the device indicated by the bind parameter.
+If this parameter is not an empty string, u-dma-buf[x] is created as a child device of the device indicated by this parameter.
 
 The format of the string specified in this parameter is `"<bus>/<device-name>"`.
 
@@ -243,10 +238,10 @@ If omitted, it will be the platform bus.
 
 The `<device-name>` specifies the name of the device under bus management.
 
-For example, to designate "0000:00:15.0" under the pci bus as the parent device, do the following
+For example, to designate "0000:00:15.0" under the pci bus as the parent device of udmabuf0, do the following
 
 ```console
-shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 bind="pci/0000:00:15.0" 
+shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 udmabuf0_bind="pci/0000:00:15.0" 
 [13422.022482] u-dma-buf udmabuf0: driver version = 5.3.0
 [13422.022483] u-dma-buf udmabuf0: major number   = 238
 [13422.022483] u-dma-buf udmabuf0: minor number   = 0
@@ -261,6 +256,20 @@ shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 bind="pci/0000:00
 [13422.022487] u-dma-buf udmabuf0: mmap           = dma_mmap_coherent
 [13422.022488] u-dma-buf: udmabuf0 installed.
 ```
+
+### `bind`
+
+This parameter specifies the parent device of u-dma-buf[0-7].
+If the preceding udmabuf[x]_bind is an empty string (default value) and this parameter is an empty string (default value), u-dma-buf[x] is created as a new platform device.
+If the preceding udmabuf[x]_bind is an empty string (default value) and this parameter is an not empty string, u-dma-buf[x] is created as a child device of the device indicated by this bind parameter.
+
+The format of the string specified in this parameter is `"<bus>/<device-name>"`.
+
+The `<bus>` is the bus name, currently pci is supported.
+The bus name can be omitted.
+If omitted, it will be the platform bus.
+
+The `<device-name>` specifies the name of the device under bus management.
 
 ### `quirk_mmap_mode`
 
