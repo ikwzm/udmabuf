@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.2.0"
+#define DRIVER_VERSION     "5.3.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -2210,6 +2210,7 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
  */
 struct udmabuf_device_entry {
     struct device*       dev;
+    struct device*       parent;
     void                 (*prep_remove)(struct device* dev);
     void                 (*post_remove)(struct device* dev);
 #if (USE_DEV_PROPERTY == 0)
@@ -2438,6 +2439,8 @@ static struct udmabuf_device_entry* udmabuf_device_list_search(struct device *de
 /**
  * udmabuf_device_list_create_entry() - Create udmabuf device entry and add to list.
  * @dev:        handle to the device structure.
+ * @parent:     handle to the parent device structure
+ *              If the entry is successfully created, it is get_device(parent)
  * @name:       device name or NULL.
  * @id:         device id or negative integer.
  * @size:       buffer size.
@@ -2446,7 +2449,7 @@ static struct udmabuf_device_entry* udmabuf_device_list_search(struct device *de
  * @post_remove post function when remove entry from udmabuf device list or NULL.
  * Return:      pointer to the udmabuf device entry or NULL.
  */
-static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct device *dev, const char* name, int id, unsigned int size, u64 option, void (*prep_remove)(struct device*), void (*post_remove)(struct device*))
+static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct device *dev, struct device *parent, const char* name, int id, unsigned int size, u64 option, void (*prep_remove)(struct device*), void (*post_remove)(struct device*))
 {                              
     struct udmabuf_device_entry* exist_entry;
     struct udmabuf_device_entry* entry  = NULL;
@@ -2516,6 +2519,7 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
 #endif
 
     entry->dev = dev;
+    entry->parent = get_device(parent);
     entry->prep_remove = prep_remove;
     entry->post_remove = post_remove;
     
@@ -2558,7 +2562,8 @@ static void udmabuf_device_list_delete_entry(struct udmabuf_device_entry* entry)
  */
 static void udmabuf_device_list_remove_entry(struct udmabuf_device_entry* entry)
 {
-    struct device* dev = entry->dev;
+    struct device* dev    = entry->dev;
+    struct device* parent = entry->parent;
     void (*prep_remove)(struct device* dev) = entry->prep_remove;
     void (*post_remove)(struct device* dev) = entry->post_remove;
     if (prep_remove)
@@ -2566,6 +2571,8 @@ static void udmabuf_device_list_remove_entry(struct udmabuf_device_entry* entry)
     udmabuf_device_list_delete_entry(entry);
     if (post_remove)
         post_remove(dev);
+    if (parent)
+        put_device(parent);
 }
 
 /**
@@ -2651,6 +2658,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
     }
 
     entry = udmabuf_device_list_create_entry(&pdev->dev,
+                                             NULL,
                                              name,
                                              id,
                                              size,
@@ -3084,6 +3092,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
      * create entry
      */
     entry = udmabuf_device_list_create_entry(obj->sys_dev,
+                                             parent,
                                              name,
                                              id,
                                              size,
@@ -3125,6 +3134,9 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
     if (obj   != NULL) {
         udmabuf_object_destroy(obj);
     }
+    if (entry != NULL) {
+        put_device(parent);
+    }
     return retval;
 }
 
@@ -3136,7 +3148,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
  *
  * * udmabuf_available_bus_type_list[] - List of bus_type available for udmabuf static device.
  * * udmabuf_find_available_bus_type() - Find available bus_type by name.
- * * udmabuf_static_parent_device      - Parent device of udmabuf static device or NULL or ERR_PTR.
+ * * udmabuf_static_device_param       - Structure udmabuf static device parameter.
  * * udmabuf_static_device_create()    - Create udmabuf static device and add to list.
  */
 /**
@@ -3224,58 +3236,77 @@ static int udmabuf_static_parse_bind(char* bind, struct bus_type** bus_type, cha
 }
 
 /**
- * udmabuf_static_parent_device - Parent device of udmabuf static device or NULL or ERR_PTR.
+ * udmabuf_static_device_param - Structure udmabuf static device parameter.
  */
-static struct device* udmabuf_static_parent_device = NULL;
+typedef struct{
+    char*          name;
+    int            id;
+    unsigned int   size;
+    char*          bind_id;
+} udmabuf_static_device_param;
 
 /**
  * udmabuf_static_device_create() - Create udmabuf static device and add to list.
- * @name:       device name or NULL.
- * @id:         device id or negative integer.
- * @size:       buffer size.
+ * @param:      Pointer to udmabuf static device parameter.
  * Return:      Success(=0) or error status(<0).
  */
-static void udmabuf_static_device_create(const char* name, int id, unsigned int size)
+static int udmabuf_static_device_create(udmabuf_static_device_param* param)
 {
-    if ((bind != NULL) && (udmabuf_static_parent_device == NULL)) {
-        struct device*   parent      = NULL;
+    int            retval;
+    char*          name    = param->name;
+    int            id      = param->id;
+    unsigned int   size    = param->size;
+    char*          bind_id = (param->bind_id) ? param->bind_id : bind;
+    u64            option  = 0;
+    struct device* parent  = NULL;
+    
+    if (bind_id != NULL) {
         struct bus_type* bus_type    = NULL;
         char*            device_name = NULL;
-        int              retval;
-        retval = udmabuf_static_parse_bind(bind, &bus_type, &device_name);
+        retval = udmabuf_static_parse_bind(bind_id, &bus_type, &device_name);
         if (retval) {
-            udmabuf_static_parent_device = ERR_PTR(-EINVAL);
-            pr_err(DRIVER_NAME ": bind error: %s is not support bus\n", bind);
-            return;
+            pr_err(DRIVER_NAME ": bind error: %s is not support bus\n", bind_id);
+            return retval;
         }
         parent = bus_find_device_by_name(bus_type, NULL, device_name);
         if (IS_ERR_OR_NULL(parent)) {
-            udmabuf_static_parent_device = (parent == NULL)? ERR_PTR(-EINVAL) : parent;
+            retval = (parent == NULL)? -EINVAL : PTR_ERR(parent);
             pr_err(DRIVER_NAME ": bind error: device(%s) not found in bus(%s)\n", device_name, bus_type->name);
-            return;
-        } else {
-            udmabuf_static_parent_device = parent;
+            return retval;
         }
+    }        
+
+    if (parent) {
+        retval = udmabuf_child_device_create(name, id, size, option, parent);
+        put_device(parent);
+    } else {
+        retval = udmabuf_platform_device_create(name, id, size, option);
     }
 
-    if (IS_ERR(udmabuf_static_parent_device))
-        return;
-
-    if (udmabuf_static_parent_device)
-        udmabuf_child_device_create(name, id, size, 0, udmabuf_static_parent_device);
-    else
-        udmabuf_platform_device_create(name, id, size, 0);
+    return 0;
 }
 
-#define DEFINE_UDMABUF_STATIC_DEVICE_PARAM(__num)                        \
-    static ulong     udmabuf ## __num = 0;                               \
-    module_param(    udmabuf ## __num, ulong, S_IRUGO);                  \
-    MODULE_PARM_DESC(udmabuf ## __num, DRIVER_NAME #__num " buffer size");
+#define DEFINE_UDMABUF_STATIC_DEVICE_PARAM(__num)                          \
+    static ulong     udmabuf ## __num = 0;                                 \
+    module_param(    udmabuf ## __num, ulong, S_IRUGO);                    \
+    MODULE_PARM_DESC(udmabuf ## __num, DRIVER_NAME #__num " buffer size"); \
+    static char *    udmabuf ## __num ## _bind = NULL;                     \
+    module_param(    udmabuf ## __num ## _bind, charp, S_IRUGO);           \
+    MODULE_PARM_DESC(udmabuf ## __num ## _bind, DRIVER_NAME #__num         \
+        " bind device name. exp pci/0000:00:20:0");                        
 
 #define CALL_UDMABUF_STATIC_DEVICE_CREATE(__num)                         \
     if (udmabuf ## __num != 0) {                                         \
+        int    retval;                                                   \
+        udmabuf_static_device_param param;                               \
         ida_simple_remove(&udmabuf_device_ida, __num);                   \
-        udmabuf_static_device_create(NULL, __num, udmabuf ## __num);     \
+        param.name    = NULL;                                            \
+        param.id      = __num;                                           \
+        param.size    = udmabuf ## __num;                                \
+        param.bind_id = udmabuf ## __num ## _bind;                       \
+        retval = udmabuf_static_device_create(&param);                   \
+        if (retval)                                                      \
+            status = retval;                                             \
     }
 
 #define CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(__num)           \
@@ -3312,6 +3343,7 @@ static void udmabuf_static_device_reserve_minor_number_all(void)
  */
 static int udmabuf_static_device_create_all(void)
 {
+    int  status = 0;
     CALL_UDMABUF_STATIC_DEVICE_CREATE(0);
     CALL_UDMABUF_STATIC_DEVICE_CREATE(1);
     CALL_UDMABUF_STATIC_DEVICE_CREATE(2);
@@ -3320,7 +3352,7 @@ static int udmabuf_static_device_create_all(void)
     CALL_UDMABUF_STATIC_DEVICE_CREATE(5);
     CALL_UDMABUF_STATIC_DEVICE_CREATE(6);
     CALL_UDMABUF_STATIC_DEVICE_CREATE(7);
-    return (IS_ERR(udmabuf_static_parent_device))? PTR_ERR(udmabuf_static_parent_device) : 0;
+    return status;
 }
 
 /**
