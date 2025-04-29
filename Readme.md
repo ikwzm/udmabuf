@@ -35,9 +35,10 @@ Figure 1. Architecture
 
 ## Supported platforms
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.0 - 5.10, 6.1 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.4, 5.10, 6.1).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.0 - 5.10, 6.1 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.4, 5.10, 6.1, 6.6).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
+* CPU: RISC-V (Microchip Polarfire SoC FPGA)
 * CPU: x86(64bit) However, verification is not enough. I hope the results from everyone.
   In addition, there is a limit to the following feature at the moment.
   - Can not control of the CPU cache by O_SYNC flag . Always CPU cache is valid.
@@ -161,7 +162,7 @@ The maximum number of DMA buffers that can be allocated using `insmod` is 8 (udm
 
 ```console
 zynq$ insmod u-dma-buf.ko udmabuf0=1048576
-u-dma-buf udmabuf0: driver version = 5.2.0
+u-dma-buf udmabuf0: driver version = 5.3.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -197,20 +198,14 @@ For details, refer to the following URL.
 
 The u-dma-buf kernel module has the following module parameters:
 
-| Parameter Name  | Type  | Default | Description                         |
-|:----------------|:------|---------|:------------------------------------|
-| udmabuf0        | ulong |    0    | u-dma-buf0 buffer size              |
-| udmabuf1        | ulong |    0    | u-dma-buf1 buffer size              |
-| udmabuf2        | ulong |    0    | u-dma-buf2 buffer size              |
-| udmabuf3        | ulong |    0    | u-dma-buf3 buffer size              |
-| udmabuf4        | ulong |    0    | u-dma-buf4 buffer size              |
-| udmabuf5        | ulong |    0    | u-dma-buf5 buffer size              |
-| udmabuf6        | ulong |    0    | u-dma-buf6 buffer size              |
-| udmabuf7        | ulong |    0    | u-dma-buf7 buffer size              |
-| info_enable     | int   |    1    | install/uninstall infomation enable |
-| dma_mask_bit    | int   |   32    | dma mask bit size                   |
-| bind            | charp |   ""    | bind device name                    |
-| quirk_mmap_mode | int   | 2 or 3  | quirk mmap mode(1:off,2:on,3:auto,4:page) |
+| Parameter Name    | Type  | Default | Description                         |
+|:------------------|:------|---------|:------------------------------------|
+| udmabuf[0-7]      | ulong |    0    | u-dma-buf[0-7] buffer size          |
+| udmabuf[0-7]_bind | charp |   ""    | u-dma-buf[0-7] bind device name     |
+| info_enable       | int   |    1    | install/uninstall infomation enable |
+| dma_mask_bit      | int   |   32    | dma mask bit size                   |
+| bind              | charp |   ""    | bind device name                    |
+| quirk_mmap_mode   | int   | 2 or 3  | quirk mmap mode(1:off,2:on,3:auto,4:page) |
 
 ### `udmabuf[0-7]`
 
@@ -218,6 +213,12 @@ This parameter specifies the capacity of the u-dma-buf to be created in bytes.
 The number of u-dma-buf that can be created with this parameter is 8.
 The device name will be udmabuf[0-7].
 If this parameter is 0, the u-dma-buf is not created.
+
+### `udmabuf[0-7]_bind`
+
+This parameter specifies the parent device of the u-dma-buf[x](x is number from 0-7).
+If this parameter is an empty string (default value), u-dma-buf[x] is created as a new platform device.
+If a parent device name is specified for this parameter, u-dma-buf[x] is created as its child device.
 
 ### `info_enable`
 
@@ -246,7 +247,7 @@ For example, to designate "0000:00:15.0" under the pci bus as the parent device,
 
 ```console
 shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 bind="pci/0000:00:15.0" 
-[13422.022482] u-dma-buf udmabuf0: driver version = 5.2.0
+[13422.022482] u-dma-buf udmabuf0: driver version = 5.3.0
 [13422.022483] u-dma-buf udmabuf0: major number   = 238
 [13422.022483] u-dma-buf udmabuf0: minor number   = 0
 [13422.022484] u-dma-buf udmabuf0: phys address   = 0x0000000070950000
@@ -292,7 +293,7 @@ allocate buffers and create device drivers when loaded by `insmod`.
 
 ```console
 zynq$ insmod u-dma-buf.ko
-u-dma-buf udmabuf0: driver version = 5.2.0
+u-dma-buf udmabuf0: driver version = 5.3.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -1744,7 +1745,7 @@ Install u-dma-buf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
 
 ```console
 zynq# insmod u-dma-buf.ko udmabuf0=8388608
-[ 1183.911189] u-dma-buf udmabuf0: driver version = 5.2.0
+[ 1183.911189] u-dma-buf udmabuf0: driver version = 5.3.0
 [ 1183.921238] u-dma-buf udmabuf0: major number   = 240
 [ 1183.931275] u-dma-buf udmabuf0: minor number   = 0
 [ 1183.936063] u-dma-buf udmabuf0: phys address   = 0x0000000041600000
