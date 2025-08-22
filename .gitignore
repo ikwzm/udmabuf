@@ -1,0 +1,9 @@
+# Build artifacts
+/*.cmd
+Module.symvers
+modules.order
+u-dma-buf.o
+u-dma-buf.ko
+u-dma-buf.mod
+u-dma-buf.mod.c
+u-dma-buf.mod.o
