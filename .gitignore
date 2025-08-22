@@ -1,0 +1,17 @@
+# Kernel module build artifacts
+*.o
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+*.symvers
+*.order
+*.cmd
+*.tmp
+*.markers
+
+# Kernel build directory files
+Module.symvers
+modules.order
+modules.builtin
+modules.builtin.modinfo
