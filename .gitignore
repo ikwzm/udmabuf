@@ -1,9 +1,17 @@
-# Build artifacts
-/*.cmd
+# Kernel module build artifacts
+*.o
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+*.symvers
+*.order
+*.cmd
+*.tmp
+*.markers
+
+# Kernel build directory files
 Module.symvers
 modules.order
-u-dma-buf.o
-u-dma-buf.ko
-u-dma-buf.mod
-u-dma-buf.mod.c
-u-dma-buf.mod.o
+modules.builtin
+modules.builtin.modinfo
