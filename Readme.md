@@ -998,7 +998,7 @@ The driver information obtained by this ioctl includes the driver support and ve
         int use_of_reserved_mem = GET_U_DMA_BUF_IOCTL_FLAGS_USE_OF_RESERVED_MEM(&drv_info);
         int use_quirk_mmap      = GET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP(&drv_info);
         int use_quirk_mmap_page = GET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP_PAGE(&drv_info);
-	char* drv_version       = strdup(&drv_info.version[0]);
+        char* drv_version       = strdup(&drv_info.version[0]);
         close(fd);
     }
 ```
@@ -1063,9 +1063,9 @@ The value written to sync_for_cpu can include sync_offset, sync_size, and sync_d
         unsigned long sync_size       = 0x10000;
         unsigned int  sync_direction  = 0;
         uint64_t      sync_for_cpu    = ((uint64_t)(sync_offset    & 0xFFFFFFFF) << 32) |
-	                                ((uint64_t)(sync_size      & 0xFFFFFFF0) <<  0) |
-					((uint64_t)(sync_direction & 0x00000003) <<  2) |
-					0x00000001;
+                                        ((uint64_t)(sync_size      & 0xFFFFFFF0) <<  0) |
+                                        ((uint64_t)(sync_direction & 0x00000003) <<  2) |
+                                        0x00000001;
         status = ioctl(fd, U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU, &sync_for_cpu);
         close(fd);
     }
@@ -1099,9 +1099,9 @@ The value written to sync_for_cpu can include sync_offset, sync_size, and sync_d
         unsigned long sync_size       = 0x10000;
         unsigned int  sync_direction  = 0;
         uint64_t      sync_for_device = ((uint64_t)(sync_offset    & 0xFFFFFFFF) << 32) |
-	                                ((uint64_t)(sync_size      & 0xFFFFFFF0) <<  0) |
-					((uint64_t)(sync_direction & 0x00000003) <<  2) |
-					0x00000001;
+                                        ((uint64_t)(sync_size      & 0xFFFFFFF0) <<  0) |
+                                        ((uint64_t)(sync_direction & 0x00000003) <<  2) |
+                                        0x00000001;
         status = ioctl(fd, U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE, &sync_for_device);
         close(fd);
     }
@@ -1121,8 +1121,8 @@ The device information obtained by this ioctl includes physical address and size
         u_dma_buf_ioctl_dev_info dev_info = {0};
         status = ioctl(fd, U_DMA_BUF_IOCTL_GET_DEV_INFO, &dev_info);
         int      dma_mask     = GET_U_DMA_BUF_IOCTL_FLAGS_DMA_MASK(&dev_info);
-	int      dma_coherent = GET_U_DMA_BUF_IOCTL_FLAGS_DMA_COHERENT(&dev_info);
-	int      mmap_mode    = GET_U_DMA_BUF_IOCTL_FLAGS_MMAP_MODE(&dev_info);
+        int      dma_coherent = GET_U_DMA_BUF_IOCTL_FLAGS_DMA_COHERENT(&dev_info);
+        int      mmap_mode    = GET_U_DMA_BUF_IOCTL_FLAGS_MMAP_MODE(&dev_info);
         uint64_t phys_addr    = dev_info.addr;
         uint64_t buf_size     = dev_info.size;
         close(fd);
@@ -1137,11 +1137,11 @@ This ioctl is for get sync_offset/sync_size/sync_direction/sync_owner/sync_mode.
     if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
         u_dma_buf_ioctl_sync_args sync_args = {0};
         status = ioctl(fd, U_DMA_BUF_IOCTL_GET_SYNC, &sync_args);
-	uint64_t sync_offset    = sync_args.offset;
-	uint64_t sync_size      = sync_args.size;
-	int      sync_direction = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR(&sync_args);
-	int      sync_owner     = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_OWNER(&sync_args);
-	int      sync_mode      = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE(&sync_args);
+        uint64_t sync_offset    = sync_args.offset;
+        uint64_t sync_size      = sync_args.size;
+        int      sync_direction = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR(&sync_args);
+        int      sync_owner     = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_OWNER(&sync_args);
+        int      sync_mode      = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE(&sync_args);
         close(fd);
     }
 ```
@@ -1156,9 +1156,9 @@ This ioctl is for set sync_offset/sync_size/sync_direction/sync_mode.
         uint64_t sync_offset    = 0;
         uint64_t sync_size      = 0x10000;
         int      sync_direction = 0;
-	sync_args.offset = sync_offset;
-	sync_args.size   = sync_size;
-	SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR(&sync_args, sync_direction);
+        sync_args.offset = sync_offset;
+        sync_args.size   = sync_size;
+        SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR(&sync_args, sync_direction);
         status = ioctl(fd, U_DMA_BUF_IOCTL_SET_SYNC, &sync_args);
         close(fd);
     }
@@ -1172,10 +1172,10 @@ Also, by specifying a sync command in flags of the sync_args of this ioctl, sync
         uint64_t sync_offset    = 0;
         uint64_t sync_size      = 0x10000;
         int      sync_direction = 0;
-	sync_args.offset = sync_offset;
-	sync_args.size   = sync_size;
-	SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR(&sync_args, sync_direction);
-	SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD(&sync_args, U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU);
+        sync_args.offset = sync_offset;
+        sync_args.size   = sync_size;
+        SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR(&sync_args, sync_direction);
+        SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD(&sync_args, U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU);
         status = ioctl(fd, U_DMA_BUF_IOCTL_SET_SYNC, &sync_args);
         close(fd);
     }
@@ -1205,16 +1205,16 @@ An example is shown below.
 ```C:u-dma-buf-ioctl-test.c
     if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
         u_dma_buf_ioctl_export_args export_args;
-	export_args.offset = 0x00000000;
-	export_args.size   = buf_size;
-	SET_U_DMA_BUF_IOCTL_FLAGS_EXPORT_FD_FLAGS(&export_args, O_CLOEXEC | O_RDWR);
+        export_args.offset = 0x00000000;
+        export_args.size   = buf_size;
+        SET_U_DMA_BUF_IOCTL_FLAGS_EXPORT_FD_FLAGS(&export_args, O_CLOEXEC | O_RDWR);
         status = ioctl(fd, U_DMA_BUF_IOCTL_EXPORT, &export_args);
         buf = mmap(NULL, buf_size, PROT_READ|PROT_WRITE, MAP_SHARED, export_args.fd, 0);
-	struct dma_buf_sync sync_start = {.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW};
-	status = ioctl(export_args.fd, DMA_BUF_IOCTL_SYNC, &sync_start);
+        struct dma_buf_sync sync_start = {.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW};
+        status = ioctl(export_args.fd, DMA_BUF_IOCTL_SYNC, &sync_start);
         /* Do some read/write access to buf */
-	struct dma_buf_sync sync_end   = {.flags = DMA_BUF_SYNC_END   | DMA_BUF_SYNC_RW};
-	status = ioctl(export_args.fd, DMA_BUF_IOCTL_SYNC, &sync_end  );
+        struct dma_buf_sync sync_end   = {.flags = DMA_BUF_SYNC_END   | DMA_BUF_SYNC_RW};
+        status = ioctl(export_args.fd, DMA_BUF_IOCTL_SYNC, &sync_end  );
         close(fd);
     }
 ```
