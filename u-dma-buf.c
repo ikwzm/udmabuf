@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.4.0-RC1"
+#define DRIVER_VERSION     "5.4.0-RC2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -2048,7 +2048,11 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
             goto quirk_mmap_page_done;
         }
         for (pg = 0; pg < this->pagecount; pg++) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+            this->pages[pg] = &phys_pages[pg];
+#else
             this->pages[pg] = nth_page(phys_pages, pg);
+#endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0))
             page_kasan_tag_reset(this->pages[pg]);
 #endif
