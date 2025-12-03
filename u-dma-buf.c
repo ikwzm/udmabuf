@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.4.0-RC2"
+#define DRIVER_VERSION     "5.4.0-RC3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1823,6 +1823,10 @@ static const struct file_operations udmabuf_device_file_ops = {
  */
 static DEFINE_IDA(udmabuf_device_ida);
 static dev_t      udmabuf_device_number = 0;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+#define ida_simple_get(ida, start, end, gfp) ida_alloc_range(ida, start, (end) - 1, gfp)
+#define ida_simple_remove(ida, id)           ida_free(ida, id)
+#endif
 
 /**
  * udmabuf_object_create() -  Create udmabuf object.
