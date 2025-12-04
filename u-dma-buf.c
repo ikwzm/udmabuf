@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.3.0"
+#define DRIVER_VERSION     "5.3.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1174,7 +1174,7 @@ static void* udmabuf_export_kmap(struct dma_buf* dma_buf, unsigned long page)
  * udmabuf export dma-buf operation table.
  */
 static const struct dma_buf_ops udmabuf_export_ops = {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 16, 0)) && (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0))
     .cache_sgt_mapping = true,
 #endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 20, 0))
@@ -1823,6 +1823,10 @@ static const struct file_operations udmabuf_device_file_ops = {
  */
 static DEFINE_IDA(udmabuf_device_ida);
 static dev_t      udmabuf_device_number = 0;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+#define ida_simple_get(ida, start, end, gfp) ida_alloc_range(ida, start, (end) - 1, gfp)
+#define ida_simple_remove(ida, id)           ida_free(ida, id)
+#endif
 
 /**
  * udmabuf_object_create() -  Create udmabuf object.
@@ -2048,7 +2052,11 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
             goto quirk_mmap_page_done;
         }
         for (pg = 0; pg < this->pagecount; pg++) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+            this->pages[pg] = &phys_pages[pg];
+#else
             this->pages[pg] = nth_page(phys_pages, pg);
+#endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0))
             page_kasan_tag_reset(this->pages[pg]);
 #endif
@@ -3154,26 +3162,31 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
 /**
  * * udmabuf_available_bus_type_list[] - List of bus_type available for udmabuf static device.
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
+#define BUS_TYPE_T const struct bus_type
+#else
+#define BUS_TYPE_T struct bus_type
+#endif
 #if defined(CONFIG_ARM_AMBA) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))
-extern struct bus_type      amba_bustype;
+extern BUS_TYPE_T           amba_bustype;
 #define AMBA_BUS_TYPE      &amba_bustype,
 #else
 #define AMBA_BUS_TYPE
 #endif
 #if defined(CONFIG_PCI)
-extern struct bus_type      pci_bus_type;
+extern BUS_TYPE_T           pci_bus_type;
 #define PCI_BUS_TYPE       &pci_bus_type,
 #else
 #define PCI_BUS_TYPE
 #endif
 #if defined(CONFIG_PCIEPORTBUS) && (LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0))
-extern struct bus_type      pcie_port_bus_type;
+extern BUS_TYPE_T           pcie_port_bus_type;
 #define PCIE_PORT_BUS_TYPE &pcie_port_bus_type,
 #else
 #define PCIE_PORT_BUS_TYPE 
 #endif
 
-static struct bus_type* udmabuf_available_bus_type_list[] = {
+static BUS_TYPE_T* udmabuf_available_bus_type_list[] = {
     AMBA_BUS_TYPE
     PCI_BUS_TYPE
     PCIE_PORT_BUS_TYPE
@@ -3186,7 +3199,7 @@ static struct bus_type* udmabuf_available_bus_type_list[] = {
  * @name_len:   length of @name.
  * Return:      pointer to the bus_type or NULL.
  */
-static struct bus_type* udmabuf_find_available_bus_type(char* name, int name_len)
+static BUS_TYPE_T* udmabuf_find_available_bus_type(char* name, int name_len)
 {
     int i;
     if ((name == NULL) || (name_len == 0))
@@ -3211,7 +3224,7 @@ static struct bus_type* udmabuf_find_available_bus_type(char* name, int name_len
  * @device_name: pointer to store device_name found.
  * Return:       Success(=0) or error status(<0).
  */
-static int udmabuf_static_parse_bind(char* bind, struct bus_type** bus_type, char** device_name)
+static int udmabuf_static_parse_bind(char* bind, BUS_TYPE_T** bus_type, char** device_name)
 {
     int   retval   = 0;
     char* next_ptr = strchr(bind, '/');
@@ -3223,7 +3236,7 @@ static int udmabuf_static_parse_bind(char* bind, struct bus_type** bus_type, cha
     } else {
         char*            name           = bind;
         int              name_len       = next_ptr - bind;
-        struct bus_type* found_bus_type = udmabuf_find_available_bus_type(name, name_len);
+        BUS_TYPE_T*      found_bus_type = udmabuf_find_available_bus_type(name, name_len);
         if (found_bus_type == NULL) {
             retval       = -EINVAL;
         } else {
@@ -3261,7 +3274,7 @@ static int udmabuf_static_device_create(udmabuf_static_device_param* param)
     struct device* parent  = NULL;
     
     if (bind_id != NULL) {
-        struct bus_type* bus_type    = NULL;
+        BUS_TYPE_T*      bus_type    = NULL;
         char*            device_name = NULL;
         retval = udmabuf_static_parse_bind(bind_id, &bus_type, &device_name);
         if (retval) {
@@ -3664,7 +3677,7 @@ EXPORT_SYMBOL(u_dma_buf_device_sync);
 #if (IN_KERNEL_FUNCTIONS == 1)
 struct bus_type* u_dma_buf_find_available_bus_type(char* name, int name_len)
 {
-    return udmabuf_find_available_bus_type(name, name_len);
+    return (struct bus_type*)udmabuf_find_available_bus_type(name, name_len);
 }
 EXPORT_SYMBOL(u_dma_buf_find_available_bus_type);
 #endif
@@ -3673,7 +3686,7 @@ EXPORT_SYMBOL(u_dma_buf_find_available_bus_type);
  * u_dma_buf_available_bus_type_list[] - List of bus_type available by u-dma-buf.
  */
 #if (IN_KERNEL_FUNCTIONS == 1)
-struct bus_type** u_dma_buf_available_bus_type_list = &udmabuf_available_bus_type_list[0];
+BUS_TYPE_T** u_dma_buf_available_bus_type_list = &udmabuf_available_bus_type_list[0];
 EXPORT_SYMBOL(u_dma_buf_available_bus_type_list);
 #endif
 
