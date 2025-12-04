@@ -35,7 +35,7 @@ Figure 1. Architecture
 
 ## Supported platforms
 
-* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.0 - 5.10, 6.1 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.4, 5.10, 6.1, 6.6).
+* OS : Linux Kernel Version 3.6 - 3.8, 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.0 - 5.10, 6.1, 6.6, 6.12, 6.18 (the author tested on 3.18, 4.4, 4.8, 4.12, 4.14, 4.19, 5.4, 5.10, 6.1, 6.6, 6.12, 6.18).
 * CPU: ARM Cortex-A9 (Xilinx ZYNQ / Altera CycloneV SoC)
 * CPU: ARM64 Cortex-A53 (Xilinx ZYNQ UltraScale+ MPSoC)
 * CPU: RISC-V (Microchip Polarfire SoC FPGA)
@@ -162,7 +162,7 @@ The maximum number of DMA buffers that can be allocated using `insmod` is 8 (udm
 
 ```console
 zynq$ insmod u-dma-buf.ko udmabuf0=1048576
-u-dma-buf udmabuf0: driver version = 5.3.0
+u-dma-buf udmabuf0: driver version = 5.3.1
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -242,7 +242,7 @@ For example, to designate "0000:00:15.0" under the pci bus as the parent device 
 
 ```console
 shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 udmabuf0_bind="pci/0000:00:15.0" 
-[13422.022482] u-dma-buf udmabuf0: driver version = 5.3.0
+[13422.022482] u-dma-buf udmabuf0: driver version = 5.3.1
 [13422.022483] u-dma-buf udmabuf0: major number   = 238
 [13422.022483] u-dma-buf udmabuf0: minor number   = 0
 [13422.022484] u-dma-buf udmabuf0: phys address   = 0x0000000070950000
@@ -302,7 +302,7 @@ allocate buffers and create device drivers when loaded by `insmod`.
 
 ```console
 zynq$ insmod u-dma-buf.ko
-u-dma-buf udmabuf0: driver version = 5.3.0
+u-dma-buf udmabuf0: driver version = 5.3.1
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -1754,7 +1754,7 @@ Install u-dma-buf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
 
 ```console
 zynq# insmod u-dma-buf.ko udmabuf0=8388608
-[ 1183.911189] u-dma-buf udmabuf0: driver version = 5.3.0
+[ 1183.911189] u-dma-buf udmabuf0: driver version = 5.3.1
 [ 1183.921238] u-dma-buf udmabuf0: major number   = 240
 [ 1183.931275] u-dma-buf udmabuf0: minor number   = 0
 [ 1183.936063] u-dma-buf udmabuf0: phys address   = 0x0000000041600000
