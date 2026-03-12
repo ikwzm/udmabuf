@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.4.2"
+#define DRIVER_VERSION     "5.5.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -846,21 +846,41 @@ static int udmabuf_object_mmap(struct udmabuf_object* this, struct vm_area_struc
     if ((force_sync == true) || ((this->sync_mode & SYNC_ALWAYS) != 0)) {
         switch (this->sync_mode & SYNC_MODE_MASK) {
             case SYNC_MODE_NONCACHED :
-                vm_flags_set(vma, VM_IO);
                 vma->vm_page_prot = _PGPROT_NONCACHED(vma->vm_page_prot);
                 break;
             case SYNC_MODE_WRITECOMBINE :
-                vm_flags_set(vma, VM_IO);
                 vma->vm_page_prot = _PGPROT_WRITECOMBINE(vma->vm_page_prot);
                 break;
             case SYNC_MODE_DMACOHERENT :
-                vm_flags_set(vma, VM_IO);
                 vma->vm_page_prot = _PGPROT_DMACOHERENT(vma->vm_page_prot);
                 break;
             default :
                 break;
         }
     }
+    /*
+     * Physically remapped pages are special. Tell the rest of the VM about it:
+     *   VM_IO:
+     *     This VMA maps device I/O or other special memory rather than normal
+     *     system RAM.
+     *   VM_PFNMAP:
+     *     This VMA maps raw PFNs that do not have "struct page" backing
+     *     (e.g., device or MMIO memory).
+     *     All pages in the VMA are assumed to be PFN-mapped and inserted with
+     *     remap_pfn_range() or vmf_insert_pfn().
+     *     Mutually exclusive with VM_MIXEDMAP.
+     *   VM_MIXEDMAP:
+     *     This VMA may contain a mix of "struct page" backed pages and raw PFNs
+     *     (e.g., normal RAM pages and device memory). 
+     *     Allows insertion of such pages via vmf_insert_page() or vmf_insert_pfn()
+     *     from the fault handler.
+     *     Mutually exclusive with VM_PFNMAP.
+     *   VM_DONTEXPAND:
+     *     Prevent the VMA from being expanded by mremap().
+     *   VM_DONTDUMP:
+     *     Exclude this VMA from core dumps.
+     */
+    vm_flags_set(vma, (VM_IO | VM_PFNMAP | VM_DONTEXPAND | VM_DONTDUMP));
 
 #if (USE_QUIRK_MMAP == 1)
     if (udmabuf_quirk_mmap_enable(this))
@@ -868,15 +888,18 @@ static int udmabuf_object_mmap(struct udmabuf_object* this, struct vm_area_struc
         unsigned long page_frame_num = (this->phys_addr >> PAGE_SHIFT) + vma->vm_pgoff;
 #if (USE_QUIRK_MMAP_PAGE == 1)
         if (this->pages != NULL) {
-            vm_flags_mod(vma, VM_MIXEDMAP, VM_PFNMAP);
+            /*
+             * Set VM_MIXEDMAP and clear VM_PFNMAP and clear VM_IO so that 
+             * get_user_pages() used during O_DIRECT transfers can succeed.
+             */
+            vm_flags_mod(vma, VM_MIXEDMAP, (VM_PFNMAP | VM_IO | VM_DONTEXPAND));
             vma->vm_ops          = &udmabuf_mmap_vm_ops;
             vma->vm_private_data = this;
             udmabuf_mmap_vma_open(vma);
             return 0;
         }
-#endif        
+#endif
         if (pfn_valid(page_frame_num)) {
-            vm_flags_mod(vma, VM_PFNMAP, VM_MIXEDMAP);
             vma->vm_ops          = &udmabuf_mmap_vm_ops;
             vma->vm_private_data = this;
             udmabuf_mmap_vma_open(vma);
