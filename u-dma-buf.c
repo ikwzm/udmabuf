@@ -1769,8 +1769,20 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
                 result = -EFAULT;
             else {
-                this->sync_for_cpu = sync_args;
-                result = udmabuf_sync_for_cpu(this);
+                /*
+                 * Sync the range this call was given, from locals. Routing it
+                 * through this->sync_for_cpu (per-device, and no lock is held
+                 * here) lets two concurrent callers race on the field: one
+                 * range is synced twice and the other is silently skipped.
+                 */
+                dma_addr_t              phys_addr;
+                size_t                  size;
+                enum dma_data_direction direction;
+                result = udmabuf_sync_command_argments(this, sync_args, &phys_addr, &size, &direction);
+                if (result == 0) {
+                    dma_sync_single_for_cpu(this->dma_dev, phys_addr, size, direction);
+                    this->sync_owner = 0;
+                }
             }
             break;
         }
@@ -1779,8 +1791,15 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
                 result = -EFAULT;
             else {
-                this->sync_for_device = sync_args;
-                result = udmabuf_sync_for_device(this);
+                /* Same as SET_SYNC_FOR_CPU above: sync from locals, not this->sync_for_device. */
+                dma_addr_t              phys_addr;
+                size_t                  size;
+                enum dma_data_direction direction;
+                result = udmabuf_sync_command_argments(this, sync_args, &phys_addr, &size, &direction);
+                if (result == 0) {
+                    dma_sync_single_for_device(this->dma_dev, phys_addr, size, direction);
+                    this->sync_owner = 1;
+                }
             }
             break;
         }
