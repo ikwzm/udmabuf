@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.5.0"
+#define DRIVER_VERSION     "5.5.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1683,11 +1683,16 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             break;
         }
         case U_DMA_BUF_IOCTL_GET_SYNC_OWNER: {
-            uint32_t sync_owner = (uint32_t)this->sync_owner;
-            if (copy_to_user(argp, &sync_owner, sizeof(sync_owner)) != 0)
-                result = -EFAULT;
-            else 
-                result = 0;
+            if (mutex_lock_interruptible(&this->sem) != 0)
+                result = -ERESTARTSYS;
+            else {
+                uint32_t sync_owner = (uint32_t)this->sync_owner;
+                mutex_unlock(&this->sem);
+                if (copy_to_user(argp, &sync_owner, sizeof(sync_owner)) != 0)
+                    result = -EFAULT;
+                else 
+                    result = 0;
+            }
             break;
         }
         case U_DMA_BUF_IOCTL_GET_DEV_INFO: {
@@ -1717,22 +1722,29 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             break;
         }
         case U_DMA_BUF_IOCTL_GET_SYNC: {
-            u_dma_buf_ioctl_sync_args sync_args = {0};
-            SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR  (&sync_args, this->sync_direction);
-            SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE (&sync_args, this->sync_mode);
-            SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_OWNER(&sync_args, this->sync_owner);
-            sync_args.size   = (uint64_t)this->sync_size;
-            sync_args.offset = (uint64_t)this->sync_offset;
-            if (copy_to_user(argp, &sync_args, sizeof(sync_args)) != 0)
-                result = -EFAULT;
-            else 
-                result = 0;
+            if (mutex_lock_interruptible(&this->sem) != 0)
+                result = -ERESTARTSYS;
+            else {
+                u_dma_buf_ioctl_sync_args sync_args = {0};
+                SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR  (&sync_args, this->sync_direction);
+                SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE (&sync_args, this->sync_mode);
+                SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_OWNER(&sync_args, this->sync_owner);
+                sync_args.size   = (uint64_t)this->sync_size;
+                sync_args.offset = (uint64_t)this->sync_offset;
+                mutex_unlock(&this->sem);
+                if (copy_to_user(argp, &sync_args, sizeof(sync_args)) != 0)
+                    result = -EFAULT;
+                else 
+                    result = 0;
+            }
             break;
         }
         case U_DMA_BUF_IOCTL_SET_SYNC: {
             u_dma_buf_ioctl_sync_args sync_args;
             if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
                 result = -EFAULT;
+            else if (mutex_lock_interruptible(&this->sem) != 0)
+                result = -ERESTARTSYS;
             else {
                 int    sync_command   = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD (&sync_args);
                 int    sync_direction = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR (&sync_args);
@@ -1761,6 +1773,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
                         result = 0;
                         break;
                 }
+                mutex_unlock(&this->sem);
             }
             break;
         }
@@ -1768,9 +1781,12 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             u64 sync_args;
             if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
                 result = -EFAULT;
+            else if (mutex_lock_interruptible(&this->sem) != 0)
+                result = -ERESTARTSYS;
             else {
                 this->sync_for_cpu = sync_args;
                 result = udmabuf_sync_for_cpu(this);
+                mutex_unlock(&this->sem);
             }
             break;
         }
@@ -1778,9 +1794,12 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             u64 sync_args;
             if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
                 result = -EFAULT;
+            else if (mutex_lock_interruptible(&this->sem) != 0)
+                result = -ERESTARTSYS;
             else {
                 this->sync_for_device = sync_args;
                 result = udmabuf_sync_for_device(this);
+                mutex_unlock(&this->sem);
             }
             break;
         }
