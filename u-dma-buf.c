@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.5.1"
+#define DRIVER_VERSION     "5.5.2-RC1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1137,11 +1137,7 @@ static int udmabuf_export_begin_cpu(struct dma_buf* dma_buf, enum dma_data_direc
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
-    this->sync_for_cpu    = 1;
-    this->sync_offset     = 0;
-    this->sync_size       = this->alloc_size;
-    this->sync_direction  = direction;
-    udmabuf_sync_for_cpu(this);
+    dma_sync_single_for_cpu(this->dma_dev, this->phys_addr, this->alloc_size, direction);
 
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
@@ -1169,11 +1165,7 @@ static int udmabuf_export_end_cpu(struct dma_buf* dma_buf, enum dma_data_directi
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
-    this->sync_for_device = 1;
-    this->sync_offset     = 0;
-    this->sync_size       = this->alloc_size;
-    this->sync_direction  = direction;
-    udmabuf_sync_for_device(this);
+    dma_sync_single_for_device(this->dma_dev, this->phys_addr, this->alloc_size, direction);
 
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
