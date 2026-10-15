@@ -162,7 +162,7 @@ The maximum number of DMA buffers that can be allocated using `insmod` is 8 (udm
 
 ```console
 zynq$ insmod u-dma-buf.ko udmabuf0=1048576
-u-dma-buf udmabuf0: driver version = 5.5.2
+u-dma-buf udmabuf0: driver version = 5.6.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -242,7 +242,7 @@ For example, to designate "0000:00:15.0" under the pci bus as the parent device 
 
 ```console
 shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 udmabuf0_bind="pci/0000:00:15.0" 
-[13422.022482] u-dma-buf udmabuf0: driver version = 5.5.2
+[13422.022482] u-dma-buf udmabuf0: driver version = 5.6.0
 [13422.022483] u-dma-buf udmabuf0: major number   = 238
 [13422.022483] u-dma-buf udmabuf0: minor number   = 0
 [13422.022484] u-dma-buf udmabuf0: phys address   = 0x0000000070950000
@@ -302,7 +302,7 @@ allocate buffers and create device drivers when loaded by `insmod`.
 
 ```console
 zynq$ insmod u-dma-buf.ko
-u-dma-buf udmabuf0: driver version = 5.5.2
+u-dma-buf udmabuf0: driver version = 5.6.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -940,6 +940,7 @@ typedef struct {
 
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_CMD    , u_dma_buf_ioctl_sync_args,  0,  1)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_DIR    , u_dma_buf_ioctl_sync_args,  2,  3)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_FAST   , u_dma_buf_ioctl_sync_args,  4,  4)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_MODE   , u_dma_buf_ioctl_sync_args,  8, 15)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_OWNER  , u_dma_buf_ioctl_sync_args, 16, 16)
 
@@ -1043,9 +1044,12 @@ If this value is 0, the buffer is owned by the cpu.
 
 ### `U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU`
 
-This ioctl writes a value to sync_for_cpu.
-If '1' is written to sync_for_cpu, if `sync_direction` is 2(=DMA_FROM_DEVICE) or 0(=DMA_BIDIRECTIONAL),
-the write to the device file invalidates a cache specified by `sync_offset` and `sync_size`.
+This ioctl requests DMA synchronization for CPU access.
+
+The ioctl writes a 64-bit value to `sync_for_cpu`.
+When the value is `1`, the driver invalidates the cache range specified by `sync_offset` and `sync_size` if `sync_direction` is `2` (`DMA_FROM_DEVICE`) or `0` (`DMA_BIDIRECTIONAL`).
+
+The mutex protects the synchronization state and operation against concurrent access through code paths that use the same mutex.
 
 ```C:u-dma-buf-ioctl-test.c
     if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
@@ -1055,7 +1059,7 @@ the write to the device file invalidates a cache specified by `sync_offset` and 
     }
 ```
 
-The value written to sync_for_cpu can include sync_offset, sync_size, and sync_direction. 
+The 64-bit value passed to this ioctl can also encode `sync_offset`, `sync_size`, and `sync_direction`.
 
 ```C:u-dma-buf_test.c
     if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
@@ -1071,17 +1075,18 @@ The value written to sync_for_cpu can include sync_offset, sync_size, and sync_d
     }
 ```
 
-The sync_offset/sync_size/sync_direction specified by ```sync_for_cpu``` is temporary and does not affect the ```sync_offset``` or ```sync_size``` or ```sync_direction``` device files.
+The `sync_offset`, `sync_size`, and `sync_direction` values encoded in `sync_for_cpu` apply only to this synchronization request. They do not modify the synchronization parameters maintained by the device file.
 
-Details of manual cache management is described in the next section.
-
+For details, see the next section on manual cache management.
 
 ### `U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE`
 
-This ioctl writes a value to sync_for_device.
-If '1' is written to sync_for_device, if `sync_direction` is 1(=DMA_TO_DEVICE) or 0(=DMA_BIDIRECTIONAL),
-the write to the device file flushes a cache specified by `sync_offset` and `sync_size` (i.e. the
-cached data, if any, will be updated with data on DDR memory).
+This ioctl requests DMA synchronization for CPU access.
+
+The ioctl writes a 64-bit value to `sync_for_device`.
+When the value is `1`, the driver invalidates the cache range specified by `sync_offset` and `sync_size` if `sync_direction` is `2` (`DMA_FROM_DEVICE`) or `0` (`DMA_BIDIRECTIONAL`).
+
+The mutex protects the synchronization state and operation against concurrent access through code paths that use the same mutex.
 
 ```C:u-dma-buf-ioctl-test.c
     if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
@@ -1091,7 +1096,7 @@ cached data, if any, will be updated with data on DDR memory).
     }
 ```
 
-The value written to sync_for_cpu can include sync_offset, sync_size, and sync_direction. 
+The 64-bit value passed to this ioctl can also encode `sync_offset`, `sync_size`, and `sync_direction`.
 
 ```C:u-dma-buf_test.c
     if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
@@ -1109,7 +1114,7 @@ The value written to sync_for_cpu can include sync_offset, sync_size, and sync_d
 
 The sync_offset/sync_size/sync_direction specified by ```sync_for_cpu``` is temporary and does not affect the ```sync_offset``` or ```sync_size``` or ```sync_direction``` device files.
 
-Details of manual cache management is described in the next section.
+For details, see the next section on manual cache management.
 
 ### `U_DMA_BUF_IOCTL_GET_DEV_INFO`
 
@@ -1181,7 +1186,58 @@ Also, by specifying a sync command in flags of the sync_args of this ioctl, sync
     }
 ```
 
-Details of manual cache management is described in the next section.
+For details, see the next section on manual cache management.
+
+#### Normal Synchronization
+
+When `SYNC_FAST` is not set, `U_DMA_BUF_IOCTL_SET_SYNC` uses the normal synchronization path.
+
+- The driver acquires a mutex before updating synchronization parameters and performing the synchronization operation.
+- The `sync_direction` value is updated when the specified direction is `0`, `1`, or `2`. Other values leave the current setting unchanged.
+- If the mode bits in the `flags` field of `u_dma_buf_ioctl_sync_args` are zero, `sync_mode` is not updated.
+- The `sync_offset` value is updated from the `offset` field of `u_dma_buf_ioctl_sync_args`.
+- If the `size` field of `u_dma_buf_ioctl_sync_args` is zero, `sync_size` is not updated.
+- Depending on the synchronization command, the driver performs synchronization for the CPU or for the device using the current synchronization parameters.
+
+The requested buffer range is validated before the synchronization operation. If the mutex cannot be acquired because the operation is interrupted, the ioctl returns `-ERESTARTSYS`.
+
+#### Fast Synchronization (`SYNC_FAST`)
+
+Starting with IOCTL version 3, the `SYNC_FAST` flag can be used with `U_DMA_BUF_IOCTL_SET_SYNC` to perform DMA cache synchronization with reduced overhead.
+
+When `SYNC_FAST` is set to a non-zero value, the driver:
+
+- Performs DMA cache synchronization directly using `dma_sync_single_for_cpu()` or `dma_sync_single_for_device()`.
+- Skips mutex locking.
+- Does not update the synchronization parameters or other synchronization state maintained by the driver.
+- Uses the `offset`, `size`, and `SYNC_DIR` fields supplied in the ioctl arguments for the synchronization operation.
+
+The driver validates the requested buffer range before performing synchronization.
+
+**Important considerations:**
+
+- `SYNC_FAST` is supported only when the driver reports IOCTL version 3 or later. On older IOCTL versions, requests with `SYNC_FAST` set are rejected with `-EINVAL`.
+- Since mutex locking and synchronization state updates are skipped, the caller is responsible for coordinating CPU and device access and ensuring that synchronization operations do not conflict with other operations on the same buffer.
+- The synchronization parameters supplied with each request must be valid for the target buffer.
+- When `SYNC_FAST` is not set, the driver uses the normal synchronization path, including mutex locking and synchronization parameter updates.
+
+Use `SYNC_FAST` when the application manages synchronization explicitly and needs to reduce ioctl synchronization overhead.
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        u_dma_buf_ioctl_sync_args sync_args = {0};
+        uint64_t sync_offset    = 0;
+        uint64_t sync_size      = 0x10000;
+        int      sync_direction = 0;
+        sync_args.offset = sync_offset;
+        sync_args.size   = sync_size;
+        SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR(&sync_args, sync_direction);
+        SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_FAST(&sync_args, 1);
+        SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD(&sync_args, U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU);
+        status = ioctl(fd, U_DMA_BUF_IOCTL_SET_SYNC, &sync_args);
+        close(fd);
+    }
+```
 
 ### `U_DMA_BUF_IOCTL_EXPORT`
 
@@ -1754,7 +1810,7 @@ Install u-dma-buf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
 
 ```console
 zynq# insmod u-dma-buf.ko udmabuf0=8388608
-[ 1183.911189] u-dma-buf udmabuf0: driver version = 5.5.2
+[ 1183.911189] u-dma-buf udmabuf0: driver version = 5.6.0
 [ 1183.921238] u-dma-buf udmabuf0: major number   = 240
 [ 1183.931275] u-dma-buf udmabuf0: minor number   = 0
 [ 1183.936063] u-dma-buf udmabuf0: phys address   = 0x0000000041600000
