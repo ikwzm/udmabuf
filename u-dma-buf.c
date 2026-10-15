@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.0-RC1"
+#define DRIVER_VERSION     "5.6.0-RC2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -344,6 +344,19 @@ struct udmabuf_object {
 #endif
 
 /**
+ * udmabuf_range_valid() - check whether the specified range is within the udmabuf
+ *                                  
+ * @this:       Pointer to the udmabuf object.
+ * @offset:     Offset from the beginning of the buffer
+ * @size:       Size of the range in bytes
+ * Return:      true if the range is valid, otherwise false.
+ */
+static inline bool udmabuf_range_valid(struct udmabuf_object* this, u64 offset, size_t size)
+{
+    return ((offset <= this->size) && (size <= this->size - offset));
+}
+
+/**
  * sync_mode(synchronous mode) value
  */
 #define SYNC_MODE_INVALID       (0x00)
@@ -415,7 +428,7 @@ static int udmabuf_sync_command_argments(
         sync_size      = this->sync_size;
         sync_direction = this->sync_direction;
     }
-    if (sync_offset + sync_size > this->size)
+    if (!udmabuf_range_valid(this, sync_offset, sync_size))
         return -EINVAL;
     switch(sync_direction) {
         case 1 : *direction = DMA_TO_DEVICE    ; break;
@@ -1240,7 +1253,7 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
         goto failed;
     }
 
-    if ((offset + size) > this->size) {
+    if (!udmabuf_range_valid(this, offset,  size)) {
         dev_err(this->sys_dev, "%s() offset + size is over buffer size\n", __func__);
         retval = -EINVAL;
         goto failed;
