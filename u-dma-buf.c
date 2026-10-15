@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.0-RC2"
+#define DRIVER_VERSION     "5.6.0-RC3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -398,18 +398,38 @@ static inline bool udmabuf_range_valid(struct udmabuf_object* this, u64 offset, 
 #define  SYNC_COMMAND_SIZE_SHIFT      (0)
 #define  SYNC_COMMAND_OFFSET_MASK     (0xFFFFFFFF00000000)
 #define  SYNC_COMMAND_OFFSET_SHIFT    (32)
-#define  SYNC_COMMAND_ARGMENT_MASK    (0xFFFFFFFFFFFFFFFE)
+#define  SYNC_COMMAND_ARGUMENT_MASK   (0xFFFFFFFFFFFFFFFE)
 /**
- * udmabuf_sync_command_argments() - get argment for dma_sync_single_for_cpu() or dma_sync_single_for_device()
+ * udmabuf_sync_command_get_arguments() - get sync arguments from a sync command
  *                                  
- * @this:       Pointer to the udmabuf object.
- * @command     sync command (this->sync_for_cpu or this->sync_for_device)
- * @phys_addr   Pointer to the phys_addr for dma_sync_single_for_...()
- * @size        Pointer to the size for dma_sync_single_for_...()
- * @direction   Pointer to the direction for dma_sync_single_for_...()
- * Return:      Success(=0) or error status(<0).
+ * @command:    Encoded sync command
+ * @offset:     Pointer to the sync range offset
+ * @size:       Pointer to the sync range size
+ * @direction:  Pointer to the sync direction
+ * Return:      true if the command contains sync arguments, otherwise false.
  */
-static int udmabuf_sync_command_argments(
+static bool udmabuf_sync_command_get_arguments(u64 command, u64* offset, size_t* size, int* direction)
+{
+    if ((command & SYNC_COMMAND_ARGUMENT_MASK) != 0) {
+        *offset    = (command & SYNC_COMMAND_OFFSET_MASK) >> SYNC_COMMAND_OFFSET_SHIFT;
+        *size      = (command & SYNC_COMMAND_SIZE_MASK  ) >> SYNC_COMMAND_SIZE_SHIFT  ;
+        *direction = (command & SYNC_COMMAND_DIR_MASK   ) >> SYNC_COMMAND_DIR_SHIFT   ;
+        return true;
+    } else {
+        return false;
+    }
+} 
+
+/**
+ * udmabuf_sync_arguments() - Prepare arguments for DMA synchronization
+ * @this:       Pointer to the udmabuf object
+ * @command:    Sync command (this->sync_for_cpu or this->sync_for_device)
+ * @phys_addr:  Pointer to the DMA address for synchronization
+ * @size:       Pointer to the synchronization size
+ * @direction:  Pointer to the DMA data direction
+ * Return: 0 on success, or a negative error code on failure.
+ */
+static int udmabuf_sync_arguments(
     struct udmabuf_object      *this     ,
     u64                         command  ,
     dma_addr_t                 *phys_addr,
@@ -419,11 +439,7 @@ static int udmabuf_sync_command_argments(
     u64    sync_offset   ;
     size_t sync_size     ;
     int    sync_direction;
-    if ((command & SYNC_COMMAND_ARGMENT_MASK) != 0) {
-        sync_offset    = (u64   )((command & SYNC_COMMAND_OFFSET_MASK) >> SYNC_COMMAND_OFFSET_SHIFT);
-        sync_size      = (size_t)((command & SYNC_COMMAND_SIZE_MASK  ) >> SYNC_COMMAND_SIZE_SHIFT  );
-        sync_direction = (int   )((command & SYNC_COMMAND_DIR_MASK   ) >> SYNC_COMMAND_DIR_SHIFT   );
-    } else {
+    if (!udmabuf_sync_command_get_arguments(command, &sync_offset, &sync_size, &sync_direction)) {
         sync_offset    = this->sync_offset;
         sync_size      = this->sync_size;
         sync_direction = this->sync_direction;
@@ -453,7 +469,7 @@ static int udmabuf_sync_for_cpu(struct udmabuf_object* this)
         dma_addr_t              phys_addr;
         size_t                  size;
         enum dma_data_direction direction;
-        status = udmabuf_sync_command_argments(this, this->sync_for_cpu, &phys_addr, &size, &direction);
+        status = udmabuf_sync_arguments(this, this->sync_for_cpu, &phys_addr, &size, &direction);
         if (status == 0) {
             dma_sync_single_for_cpu(this->dma_dev, phys_addr, size, direction);
             this->sync_for_cpu = 0;
@@ -476,7 +492,7 @@ static int udmabuf_sync_for_device(struct udmabuf_object* this)
         dma_addr_t              phys_addr;
         size_t                  size;
         enum dma_data_direction direction;
-        status = udmabuf_sync_command_argments(this, this->sync_for_device, &phys_addr, &size, &direction);
+        status = udmabuf_sync_arguments(this, this->sync_for_device, &phys_addr, &size, &direction);
         if (status == 0) {
             dma_sync_single_for_device(this->dma_dev, phys_addr, size, direction);
             this->sync_for_device = 0;
