@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.0-RC3"
+#define DRIVER_VERSION     "5.6.0-RC4"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -118,15 +118,17 @@ MODULE_LICENSE("Dual BSD/GPL");
 #endif
 
 #if     (UDMABUF_CONFIG == 0)
-#define IOCTL_VERSION       2
-#elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL >= 2)
+#define IOCTL_VERSION       3
+#elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL >= 3)
+#define IOCTL_VERSION       3
+#elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL == 2)
 #define IOCTL_VERSION       2
 #elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL == 1)
 #define IOCTL_VERSION       1
 #elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL == 0)
 #define IOCTL_VERSION       0
 #elif   defined(CONFIG_U_DMA_BUF_IOCTL)
-#define IOCTL_VERSION       2
+#define IOCTL_VERSION       3
 #else
 #define IOCTL_VERSION       0
 #endif
@@ -1269,7 +1271,7 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
         goto failed;
     }
 
-    if (!udmabuf_range_valid(this, offset,  size)) {
+    if (!udmabuf_range_valid(this, offset, size)) {
         dev_err(this->sys_dev, "%s() offset + size is over buffer size\n", __func__);
         retval = -EINVAL;
         goto failed;
@@ -1624,6 +1626,7 @@ typedef struct {
 
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_CMD    , u_dma_buf_ioctl_sync_args,  0,  1)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_DIR    , u_dma_buf_ioctl_sync_args,  2,  3)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_FAST   , u_dma_buf_ioctl_sync_args,  4,  4)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_MODE   , u_dma_buf_ioctl_sync_args,  8, 15)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_OWNER  , u_dma_buf_ioctl_sync_args, 16, 16)
 
@@ -1777,6 +1780,39 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             sync_mode      = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE(&sync_args);
             sync_offset    = (u64)(sync_args.offset);
             sync_size      = (size_t)(sync_args.size);
+            if (!udmabuf_range_valid(this, sync_offset, sync_size)) {
+                result = -EINVAL;
+                break;
+            }
+#if (IOCTL_VERSION >= 3)
+            if (GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_FAST(&sync_args) != 0) {
+                /* Skip mutex locking and sync parameter updates for faster synchronization. */
+                dma_addr_t phys_addr = this->phys_addr + sync_offset;
+                enum dma_data_direction direction;
+                switch(sync_direction) {
+                    case 1 : direction = DMA_TO_DEVICE    ; break;
+                    case 2 : direction = DMA_FROM_DEVICE  ; break;
+                    default: direction = DMA_BIDIRECTIONAL; break;
+                }
+                switch(sync_command) {
+                    case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU:
+                        dma_sync_single_for_cpu(this->dma_dev, phys_addr, sync_size, direction);
+                        break;
+                    case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE:
+                        dma_sync_single_for_device(this->dma_dev, phys_addr, sync_size, direction);
+                        break;
+                    default  :
+                        break;
+                }
+                result = 0;
+                break;
+            }
+#else
+            if (GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_FAST(&sync_args) != 0) {
+                result = -EINVAL;
+                break;
+            }
+#endif
             if (mutex_lock_interruptible(&this->sem) != 0) {
                 result = -ERESTARTSYS;
                 break;
