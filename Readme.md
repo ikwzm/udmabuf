@@ -1209,7 +1209,7 @@ When `SYNC_FAST` is set to a non-zero value, the driver:
 
 - Performs DMA cache synchronization directly using `dma_sync_single_for_cpu()` or `dma_sync_single_for_device()`.
 - Skips mutex locking.
-- Does not update the synchronization parameters or other synchronization state maintained by the driver.
+- Does not update the synchronization parameters(`sync_offset`, `sync_size`, `sync_direction` and `sync_mode`) or other synchronization state(`sync_owner`) maintained by the driver.
 - Uses the `offset`, `size`, and `SYNC_DIR` fields supplied in the ioctl arguments for the synchronization operation.
 
 The driver validates the requested buffer range before performing synchronization.
