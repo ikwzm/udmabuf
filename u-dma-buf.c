@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.5.2"
+#define DRIVER_VERSION     "5.6.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -118,15 +118,17 @@ MODULE_LICENSE("Dual BSD/GPL");
 #endif
 
 #if     (UDMABUF_CONFIG == 0)
-#define IOCTL_VERSION       2
-#elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL >= 2)
+#define IOCTL_VERSION       3
+#elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL >= 3)
+#define IOCTL_VERSION       3
+#elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL == 2)
 #define IOCTL_VERSION       2
 #elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL == 1)
 #define IOCTL_VERSION       1
 #elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL == 0)
 #define IOCTL_VERSION       0
 #elif   defined(CONFIG_U_DMA_BUF_IOCTL)
-#define IOCTL_VERSION       2
+#define IOCTL_VERSION       3
 #else
 #define IOCTL_VERSION       0
 #endif
@@ -344,6 +346,19 @@ struct udmabuf_object {
 #endif
 
 /**
+ * udmabuf_range_valid() - check whether the specified range is within the udmabuf
+ *                                  
+ * @this:       Pointer to the udmabuf object.
+ * @offset:     Offset from the beginning of the buffer
+ * @size:       Size of the range in bytes
+ * Return:      true if the range is valid, otherwise false.
+ */
+static inline bool udmabuf_range_valid(struct udmabuf_object* this, u64 offset, size_t size)
+{
+    return ((offset <= this->size) && (size <= this->size - offset));
+}
+
+/**
  * sync_mode(synchronous mode) value
  */
 #define SYNC_MODE_INVALID       (0x00)
@@ -385,18 +400,38 @@ struct udmabuf_object {
 #define  SYNC_COMMAND_SIZE_SHIFT      (0)
 #define  SYNC_COMMAND_OFFSET_MASK     (0xFFFFFFFF00000000)
 #define  SYNC_COMMAND_OFFSET_SHIFT    (32)
-#define  SYNC_COMMAND_ARGMENT_MASK    (0xFFFFFFFFFFFFFFFE)
+#define  SYNC_COMMAND_ARGUMENT_MASK   (0xFFFFFFFFFFFFFFFE)
 /**
- * udmabuf_sync_command_argments() - get argment for dma_sync_single_for_cpu() or dma_sync_single_for_device()
+ * udmabuf_sync_command_get_arguments() - get sync arguments from a sync command
  *                                  
- * @this:       Pointer to the udmabuf object.
- * @command     sync command (this->sync_for_cpu or this->sync_for_device)
- * @phys_addr   Pointer to the phys_addr for dma_sync_single_for_...()
- * @size        Pointer to the size for dma_sync_single_for_...()
- * @direction   Pointer to the direction for dma_sync_single_for_...()
- * Return:      Success(=0) or error status(<0).
+ * @command:    Encoded sync command
+ * @offset:     Pointer to the sync range offset
+ * @size:       Pointer to the sync range size
+ * @direction:  Pointer to the sync direction
+ * Return:      true if the command contains sync arguments, otherwise false.
  */
-static int udmabuf_sync_command_argments(
+static bool udmabuf_sync_command_get_arguments(u64 command, u64* offset, size_t* size, int* direction)
+{
+    if ((command & SYNC_COMMAND_ARGUMENT_MASK) != 0) {
+        *offset    = (command & SYNC_COMMAND_OFFSET_MASK) >> SYNC_COMMAND_OFFSET_SHIFT;
+        *size      = (command & SYNC_COMMAND_SIZE_MASK  ) >> SYNC_COMMAND_SIZE_SHIFT  ;
+        *direction = (command & SYNC_COMMAND_DIR_MASK   ) >> SYNC_COMMAND_DIR_SHIFT   ;
+        return true;
+    } else {
+        return false;
+    }
+} 
+
+/**
+ * udmabuf_sync_arguments() - Prepare arguments for DMA synchronization
+ * @this:       Pointer to the udmabuf object
+ * @command:    Sync command (this->sync_for_cpu or this->sync_for_device)
+ * @phys_addr:  Pointer to the DMA address for synchronization
+ * @size:       Pointer to the synchronization size
+ * @direction:  Pointer to the DMA data direction
+ * Return: 0 on success, or a negative error code on failure.
+ */
+static int udmabuf_sync_arguments(
     struct udmabuf_object      *this     ,
     u64                         command  ,
     dma_addr_t                 *phys_addr,
@@ -406,16 +441,12 @@ static int udmabuf_sync_command_argments(
     u64    sync_offset   ;
     size_t sync_size     ;
     int    sync_direction;
-    if ((command & SYNC_COMMAND_ARGMENT_MASK) != 0) {
-        sync_offset    = (u64   )((command & SYNC_COMMAND_OFFSET_MASK) >> SYNC_COMMAND_OFFSET_SHIFT);
-        sync_size      = (size_t)((command & SYNC_COMMAND_SIZE_MASK  ) >> SYNC_COMMAND_SIZE_SHIFT  );
-        sync_direction = (int   )((command & SYNC_COMMAND_DIR_MASK   ) >> SYNC_COMMAND_DIR_SHIFT   );
-    } else {
+    if (!udmabuf_sync_command_get_arguments(command, &sync_offset, &sync_size, &sync_direction)) {
         sync_offset    = this->sync_offset;
         sync_size      = this->sync_size;
         sync_direction = this->sync_direction;
     }
-    if (sync_offset + sync_size > this->size)
+    if (!udmabuf_range_valid(this, sync_offset, sync_size))
         return -EINVAL;
     switch(sync_direction) {
         case 1 : *direction = DMA_TO_DEVICE    ; break;
@@ -440,7 +471,7 @@ static int udmabuf_sync_for_cpu(struct udmabuf_object* this)
         dma_addr_t              phys_addr;
         size_t                  size;
         enum dma_data_direction direction;
-        status = udmabuf_sync_command_argments(this, this->sync_for_cpu, &phys_addr, &size, &direction);
+        status = udmabuf_sync_arguments(this, this->sync_for_cpu, &phys_addr, &size, &direction);
         if (status == 0) {
             dma_sync_single_for_cpu(this->dma_dev, phys_addr, size, direction);
             this->sync_for_cpu = 0;
@@ -463,7 +494,7 @@ static int udmabuf_sync_for_device(struct udmabuf_object* this)
         dma_addr_t              phys_addr;
         size_t                  size;
         enum dma_data_direction direction;
-        status = udmabuf_sync_command_argments(this, this->sync_for_device, &phys_addr, &size, &direction);
+        status = udmabuf_sync_arguments(this, this->sync_for_device, &phys_addr, &size, &direction);
         if (status == 0) {
             dma_sync_single_for_device(this->dma_dev, phys_addr, size, direction);
             this->sync_for_device = 0;
@@ -1240,7 +1271,7 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
         goto failed;
     }
 
-    if ((offset + size) > this->size) {
+    if (!udmabuf_range_valid(this, offset, size)) {
         dev_err(this->sys_dev, "%s() offset + size is over buffer size\n", __func__);
         retval = -EINVAL;
         goto failed;
@@ -1595,6 +1626,7 @@ typedef struct {
 
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_CMD    , u_dma_buf_ioctl_sync_args,  0,  1)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_DIR    , u_dma_buf_ioctl_sync_args,  2,  3)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_FAST   , u_dma_buf_ioctl_sync_args,  4,  4)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_MODE   , u_dma_buf_ioctl_sync_args,  8, 15)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(SYNC_OWNER  , u_dma_buf_ioctl_sync_args, 16, 16)
 
@@ -1675,16 +1707,17 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             break;
         }
         case U_DMA_BUF_IOCTL_GET_SYNC_OWNER: {
-            if (mutex_lock_interruptible(&this->sem) != 0)
+            uint32_t sync_owner;
+            if (mutex_lock_interruptible(&this->sem) != 0) {
                 result = -ERESTARTSYS;
-            else {
-                uint32_t sync_owner = (uint32_t)this->sync_owner;
-                mutex_unlock(&this->sem);
-                if (copy_to_user(argp, &sync_owner, sizeof(sync_owner)) != 0)
-                    result = -EFAULT;
-                else 
-                    result = 0;
+                break;
             }
+            sync_owner = (uint32_t)this->sync_owner;
+            mutex_unlock(&this->sem);
+            if (copy_to_user(argp, &sync_owner, sizeof(sync_owner)) != 0)
+                result = -EFAULT;
+            else 
+                result = 0;
             break;
         }
         case U_DMA_BUF_IOCTL_GET_DEV_INFO: {
@@ -1714,85 +1747,129 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             break;
         }
         case U_DMA_BUF_IOCTL_GET_SYNC: {
-            if (mutex_lock_interruptible(&this->sem) != 0)
+            u_dma_buf_ioctl_sync_args sync_args = {0};
+            if (mutex_lock_interruptible(&this->sem) != 0) {
                 result = -ERESTARTSYS;
-            else {
-                u_dma_buf_ioctl_sync_args sync_args = {0};
-                SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR  (&sync_args, this->sync_direction);
-                SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE (&sync_args, this->sync_mode);
-                SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_OWNER(&sync_args, this->sync_owner);
-                sync_args.size   = (uint64_t)this->sync_size;
-                sync_args.offset = (uint64_t)this->sync_offset;
-                mutex_unlock(&this->sem);
-                if (copy_to_user(argp, &sync_args, sizeof(sync_args)) != 0)
-                    result = -EFAULT;
-                else 
-                    result = 0;
+                break;
             }
+            SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR  (&sync_args, this->sync_direction);
+            SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE (&sync_args, this->sync_mode);
+            SET_U_DMA_BUF_IOCTL_FLAGS_SYNC_OWNER(&sync_args, this->sync_owner);
+            sync_args.size   = (uint64_t)this->sync_size;
+            sync_args.offset = (uint64_t)this->sync_offset;
+            mutex_unlock(&this->sem);
+            if (copy_to_user(argp, &sync_args, sizeof(sync_args)) != 0)
+                result = -EFAULT;
+            else 
+                result = 0;
             break;
         }
         case U_DMA_BUF_IOCTL_SET_SYNC: {
             u_dma_buf_ioctl_sync_args sync_args;
-            if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
+            int    sync_command;
+            int    sync_direction;
+            int    sync_mode;
+            u64    sync_offset;
+            size_t sync_size;
+            if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0) {
                 result = -EFAULT;
-            else if (mutex_lock_interruptible(&this->sem) != 0)
-                result = -ERESTARTSYS;
-            else {
-                int    sync_command   = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD (&sync_args);
-                int    sync_direction = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR (&sync_args);
-                int    sync_mode      = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE(&sync_args);
-                u64    sync_offset    = (u64)(sync_args.offset);
-                size_t sync_size      = (size_t)(sync_args.size);
+                break;
+            }
+            sync_command   = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD (&sync_args);
+            sync_direction = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR (&sync_args);
+            sync_mode      = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE(&sync_args);
+            sync_offset    = (u64)(sync_args.offset);
+            sync_size      = (size_t)(sync_args.size);
+            if (!udmabuf_range_valid(this, sync_offset, sync_size)) {
+                result = -EINVAL;
+                break;
+            }
+#if (IOCTL_VERSION >= 3)
+            if (GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_FAST(&sync_args) != 0) {
+                /* Skip mutex locking and sync parameter updates for faster synchronization. */
+                dma_addr_t phys_addr = this->phys_addr + sync_offset;
+                enum dma_data_direction direction;
                 switch(sync_direction) {
-                    case 0   : this->sync_direction = 0; break;
-                    case 1   : this->sync_direction = 1; break;
-                    case 2   : this->sync_direction = 2; break;
-                    default  : /* none */                break;
+                    case 1 : direction = DMA_TO_DEVICE    ; break;
+                    case 2 : direction = DMA_FROM_DEVICE  ; break;
+                    default: direction = DMA_BIDIRECTIONAL; break;
                 }
-                if (sync_mode   >  0) {this->sync_mode   = sync_mode  ;}
-                if (sync_offset >= 0) {this->sync_offset = sync_offset;}
-                if (sync_size   >  0) {this->sync_size   = sync_size  ;}
                 switch(sync_command) {
                     case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU:
-                        this->sync_for_cpu = 1;
-                        result = udmabuf_sync_for_cpu(this);
+                        dma_sync_single_for_cpu(this->dma_dev, phys_addr, sync_size, direction);
                         break;
                     case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE:
-                        this->sync_for_device = 1;
-                        result = udmabuf_sync_for_device(this);
+                        dma_sync_single_for_device(this->dma_dev, phys_addr, sync_size, direction);
                         break;
                     default  :
-                        result = 0;
                         break;
                 }
-                mutex_unlock(&this->sem);
+                result = 0;
+                break;
             }
+#else
+            if (GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_FAST(&sync_args) != 0) {
+                result = -EINVAL;
+                break;
+            }
+#endif
+            if (mutex_lock_interruptible(&this->sem) != 0) {
+                result = -ERESTARTSYS;
+                break;
+            }
+            switch(sync_direction) {
+                case 0   : this->sync_direction = 0; break;
+                case 1   : this->sync_direction = 1; break;
+                case 2   : this->sync_direction = 2; break;
+                default  : /* none */                break;
+            }
+            if (sync_mode   >  0) {this->sync_mode   = sync_mode  ;}
+            if (sync_offset >= 0) {this->sync_offset = sync_offset;}
+            if (sync_size   >  0) {this->sync_size   = sync_size  ;}
+            switch(sync_command) {
+                case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU:
+                    this->sync_for_cpu = 1;
+                    result = udmabuf_sync_for_cpu(this);
+                    break;
+                case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE:
+                    this->sync_for_device = 1;
+                    result = udmabuf_sync_for_device(this);
+                    break;
+                default  :
+                    result = 0;
+                    break;
+            }
+            mutex_unlock(&this->sem);
             break;
         }
         case U_DMA_BUF_IOCTL_SET_SYNC_FOR_CPU: {
             u64 sync_args;
-            if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
+            if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0) {
                 result = -EFAULT;
-            else if (mutex_lock_interruptible(&this->sem) != 0)
-                result = -ERESTARTSYS;
-            else {
-                this->sync_for_cpu = sync_args;
-                result = udmabuf_sync_for_cpu(this);
-                mutex_unlock(&this->sem);
+                break;
             }
+            if (mutex_lock_interruptible(&this->sem) != 0) {
+                result = -ERESTARTSYS;
+                break;
+            }
+            this->sync_for_cpu = sync_args;
+            result = udmabuf_sync_for_cpu(this);
+            mutex_unlock(&this->sem);
             break;
         }
         case U_DMA_BUF_IOCTL_SET_SYNC_FOR_DEVICE: {
             u64 sync_args;
-            if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0)
+            if (copy_from_user(&sync_args, argp, sizeof(sync_args)) != 0) {
                 result = -EFAULT;
-            else if (mutex_lock_interruptible(&this->sem) != 0)
-                result = -ERESTARTSYS;
-            else {
-                this->sync_for_device = sync_args;
-                result = udmabuf_sync_for_device(this);
-                mutex_unlock(&this->sem);
+                break;
             }
+            if (mutex_lock_interruptible(&this->sem) != 0) {
+                result = -ERESTARTSYS;
+                break;
+            }
+            this->sync_for_device = sync_args;
+            result = udmabuf_sync_for_device(this);
+            mutex_unlock(&this->sem);
             break;
         }
 #if (USE_DMA_BUF_EXPORT == 1) && (IOCTL_VERSION >= 2)
