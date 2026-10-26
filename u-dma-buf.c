@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.1-RC5"
+#define DRIVER_VERSION     "5.6.1-RC6"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1841,17 +1841,22 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             sync_command   = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD (&sync_args);
             sync_direction = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR (&sync_args);
             sync_mode      = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE(&sync_args);
-            sync_offset    = (u64)(sync_args.offset);
-            sync_size      = (size_t)(sync_args.size);
-            if (!udmabuf_range_valid(this, sync_offset, sync_size)) {
+            if (sync_args.size > SIZE_MAX) {
                 result = -EINVAL;
                 break;
             }
 #if (IOCTL_VERSION >= 3)
             if (GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_FAST(&sync_args) != 0) {
                 /* Skip mutex locking and sync parameter updates for faster synchronization. */
-                dma_addr_t phys_addr = this->phys_addr + sync_offset;
+                dma_addr_t phys_addr;
                 enum dma_data_direction direction;
+                sync_offset = sync_args.offset;
+                sync_size   = (size_t)(sync_args.size);
+                if (!udmabuf_range_valid(this, sync_offset, sync_size)) {
+                    result = -EINVAL;
+                    break;
+                }
+                phys_addr = this->phys_addr + sync_offset;
                 switch(sync_direction) {
                     case 1 : direction = DMA_TO_DEVICE    ; break;
                     case 2 : direction = DMA_FROM_DEVICE  ; break;
@@ -1865,6 +1870,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
                         dma_sync_single_for_device(this->dma_dev, phys_addr, sync_size, direction);
                         break;
                     default  :
+                        /* If any other command is specified, do nothing and return success. */
                         break;
                 }
                 result = 0;
@@ -1880,27 +1886,37 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
                 result = -ERESTARTSYS;
                 break;
             }
-            switch(sync_direction) {
-                case 0   : this->sync_direction = 0; break;
-                case 1   : this->sync_direction = 1; break;
-                case 2   : this->sync_direction = 2; break;
-                default  : /* none */                break;
-            }
-            if (sync_mode   >  0) {this->sync_mode   = sync_mode  ;}
-            if (sync_offset >= 0) {this->sync_offset = sync_offset;}
-            if (sync_size   >  0) {this->sync_size   = sync_size  ;}
-            switch(sync_command) {
-                case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU:
-                    this->sync_for_cpu = 1;
-                    result = udmabuf_sync_for_cpu(this);
-                    break;
-                case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE:
-                    this->sync_for_device = 1;
-                    result = udmabuf_sync_for_device(this);
-                    break;
-                default  :
-                    result = 0;
-                    break;
+            sync_offset = (sync_args.offset >= 0) ? sync_args.offset : this->sync_offset;
+            sync_size   = (sync_args.size   >  0) ? sync_args.size   : this->sync_size;
+            if (!udmabuf_range_valid(this, sync_offset, sync_size)) {
+                result = -EINVAL;
+            } else {
+                this->sync_offset = sync_offset;
+                this->sync_size   = sync_size;
+                switch(sync_direction) {
+                    case 0   : this->sync_direction = 0; break;
+                    case 1   : this->sync_direction = 1; break;
+                    case 2   : this->sync_direction = 2; break;
+                    default  : /* none */                break;
+                }
+                if (sync_mode > 0) {this->sync_mode = sync_mode;}
+                switch(sync_command) {
+                    case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU:
+                        this->sync_for_cpu = 1;
+                        result = udmabuf_sync_for_cpu(this);
+                        break;
+                    case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE:
+                        this->sync_for_device = 1;
+                        result = udmabuf_sync_for_device(this);
+                        break;
+                    default  :
+                       /* Commands other than those listed above only update sync_offset, 
+                        * sync_size, sync_direction, and sync_mode; no synchronization is
+                        * performed.
+                        */
+                        result = 0;
+                        break;
+                }
             }
             mutex_unlock(&this->sem);
             break;
