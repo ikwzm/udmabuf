@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.1-RC3"
+#define DRIVER_VERSION     "5.6.1-RC4"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -953,7 +953,9 @@ static int udmabuf_object_mmap(struct udmabuf_object* this, struct vm_area_struc
  * udmabuf_export_begin_cpu()     - udmabuf export dma-buf begin_cpu operation.
  * udmabuf_export_end_cpu()       - udmabuf export dma-buf end_cpu operation.
  * udmabuf_export_ops             - udmabuf export dma-buf operation table.
- * udmabuf_export_create_entry()  - Create udmabuf export dma-buf entry and add list.
+ * udmabuf_export_create_entry()  - Create  udmabuf export dma-buf entry and add list.
+ * udmabuf_export_destroy_entry() - Destroy udmabuf export dma-buf entry.
+ * udmabuf_export_fd_install()    - Install the file descriptor for udmabuf export dma-buf entry.
  */
 #if (USE_DMA_BUF_EXPORT == 1)
 struct udmabuf_export_entry {
@@ -1234,9 +1236,43 @@ static const struct dma_buf_ops udmabuf_export_ops = {
 };
 
 /**
+ * udmabuf_export_destroy_entry() - Destroy udmabuf export dma-buf entry.
+ * @entry:      Pointer to the udmabuf export entry to destroy.
+ *
+ * Releases resources associated with the export entry.
+ * Releases the reserved file descriptor if it has not been installed.
+ * If a DMA-BUF has been created, drops its reference; otherwise, frees
+ * the entry directly.
+ *
+ * The entry must not have been installed with fd_install() when this
+ * function is called.
+ */
+static void udmabuf_export_destroy_entry(struct udmabuf_export_entry* entry)
+{
+    if (entry != NULL) {
+        if (entry->fd >= 0) {
+            put_unused_fd(entry->fd);
+            entry->fd = -1;
+        }
+        if (entry->dma_buf != NULL)
+            dma_buf_put(entry->dma_buf);
+        else
+            kfree(entry);
+    }
+}
+    
+/**
  * udmabuf_export_create_entry() - Create udmabuf export dma-buf entry and add list.
  * @this:       Pointer to the udmabuf object.
- * Return:      Pointer to the udmabuf export_dma_buf(>0) or error status(<=0).
+ * @offset:     Offset into the udmabuf buffer.
+ * @size:       Size of the exported buffer.
+ * @fd_flags:   Flags for the exported file descriptor.
+ *
+ * Creates a DMA-BUF for the specified buffer range, adds the export entry
+ * to the export list, and reserves a file descriptor for the DMA-BUF.
+ *
+ * Return: Pointer to the created export entry on success, or an
+ * ERR_PTR()-encoded error on failure.
  */
 static struct udmabuf_export_entry* udmabuf_export_create_entry(
      struct udmabuf_object*  this     ,
@@ -1286,15 +1322,15 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     dmabuf_fd_flags = ((fd_flags & ~O_SYNC));
 
     entry = kzalloc(sizeof(*entry), GFP_KERNEL);
-    if (IS_ERR_OR_NULL(entry)) {
-        retval = PTR_ERR(entry);
-        entry  = NULL;
+    if (entry == NULL) {
+        retval = -ENOMEM;
         dev_err(this->sys_dev, "%s() kzalloc() failed. return=%d\n", __func__, retval);
         goto failed;
     }
     entry->object = this;
     entry->offset = offset;
     entry->size   = size;
+    entry->fd     = -1;
 
     entry->object_data.sys_dev         = this->sys_dev;
     entry->object_data.dma_dev         = this->dma_dev;
@@ -1337,17 +1373,17 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
         goto failed;
     }
 
-    entry->fd = dma_buf_fd(entry->dma_buf, dmabuf_fd_flags);
-    if (entry->fd < 0) {
-        retval = entry->fd;
-        entry->fd = 0;
-        dev_err(this->sys_dev, "%s(): dma_buf_fd() failed. return=%d\n", __func__, retval);
-        goto failed;
-    }
-
     mutex_lock(&this->export_dma_buf_list_sem);
     list_add_tail(&entry->list, &this->export_dma_buf_list);
     mutex_unlock(&this->export_dma_buf_list_sem);
+
+    entry->fd = get_unused_fd_flags(dmabuf_fd_flags);
+    if (entry->fd < 0) {
+        retval = entry->fd;
+        dev_err(this->sys_dev, "%s(): get_unused_fd_flags() failed. return=%d\n", __func__, retval);
+        entry->fd = -1;
+        goto failed;
+    }
 
     if (UDMABUF_EXPORT_DEBUG(this)) {
         dev_info(this->sys_dev, "force_sync     = %d\n", entry->force_sync);
@@ -1358,15 +1394,35 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     return entry;
 
  failed:
-    if (entry != NULL) {
-        if (entry->dma_buf != NULL) {
-            dma_buf_put(entry->dma_buf);
-        }
-        kfree(entry);
-    }
+    udmabuf_export_destroy_entry(entry);
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s() failed. return=%d\n", __func__, retval);
     return ERR_PTR(retval);
+}
+
+/**
+ * udmabuf_export_fd_install()  - Install the file descriptor for udmabuf export dma-buf entry.
+ * @entry:      Pointer to the udmabuf export entry to destroy.
+ *
+ * Installs the DMA-BUF file into the reserved file descriptor.
+ *
+ * Return: 0 on success, -ENODEV if @entry is NULL, or -EINVAL if
+ * the file descriptor is invalid or the DMA-BUF is NULL.
+ *
+ * After a successful call, the file descriptor must not be released
+ * using put_unused_fd(). The caller must not access @entry after
+ * successful installation.
+ */
+static inline int udmabuf_export_fd_install(struct udmabuf_export_entry* entry)
+{
+    if (entry == NULL)
+        return -ENODEV;
+    if (entry->fd < 0)
+        return -EINVAL;
+    if (entry->dma_buf == NULL)
+        return -EINVAL;
+    fd_install(entry->fd, entry->dma_buf->file);
+    return 0;
 }
 #endif /* #if (USE_DMA_BUF_EXPORT == 1) */
 
@@ -1892,17 +1948,22 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
                 u32    fd_flags = GET_U_DMA_BUF_IOCTL_FLAGS_EXPORT_FD_FLAGS(&export_args);
                 export_entry    = udmabuf_export_create_entry(this, offset, size, fd_flags);
             }
-            if (IS_ERR_OR_NULL(export_entry)) {
+            if (IS_ERR(export_entry)) {
                 result = PTR_ERR(export_entry);
-                export_entry = NULL;
                 goto export_failed;
             }
             export_args.fd   = export_entry->fd;
             export_args.addr = export_entry->object_data.phys_addr;
-            if (copy_to_user(argp, &export_args, sizeof(export_args)) != 0)
+            if (copy_to_user(argp, &export_args, sizeof(export_args)) != 0) {
+                udmabuf_export_destroy_entry(export_entry);
                 result = -EFAULT;
-            else 
-                result = 0;
+                goto export_failed;
+            }
+            result = udmabuf_export_fd_install(export_entry);
+            if (result < 0) {
+                udmabuf_export_destroy_entry(export_entry);
+                goto export_failed;
+            }
           export_failed:
             break;
         }
