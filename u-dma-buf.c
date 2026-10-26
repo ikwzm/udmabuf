@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.1-RC1"
+#define DRIVER_VERSION     "5.6.1-RC2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1438,7 +1438,12 @@ static int udmabuf_device_file_mmap(struct file *file, struct vm_area_struct* vm
  * @buff:       Pointer to the user buffer.
  * @count:      The number of bytes to be read.
  * @ppos:       Pointer to the offset value.
- * Return:      Transferd size.
+ * Return:      The number of bytes transferred on success.
+ *              Returns 0 if the copy to the user buffer fails.
+ *              In this case, the file position is not updated, allowing
+ *              the operation to be retried from the same position.
+ *              Cache synchronization for the device is not performed
+ *              when the copy fails.
  */
 static ssize_t udmabuf_device_file_read(struct file* file, char __user* buff, size_t count, loff_t* ppos)
 {
@@ -1453,6 +1458,10 @@ static ssize_t udmabuf_device_file_read(struct file* file, char __user* buff, si
     if (mutex_lock_interruptible(&this->sem))
         return -ERESTARTSYS;
 
+    if (*ppos < 0) {
+        result = -EINVAL;
+        goto return_unlock;
+    }
     if (*ppos >= this->size) {
         result = 0;
         goto return_unlock;
@@ -1460,7 +1469,10 @@ static ssize_t udmabuf_device_file_read(struct file* file, char __user* buff, si
 
     phys_addr = this->phys_addr + *ppos;
     virt_addr = this->virt_addr + *ppos;
-    xfer_size = (*ppos + count >= this->size) ? this->size - *ppos : count;
+    if (udmabuf_range_valid(this, *ppos, count))
+        xfer_size = count;
+    else
+        xfer_size = this->size - *ppos;
     need_sync = (((file->f_flags & O_SYNC) != 0) || ((this->sync_mode & SYNC_ALWAYS) != 0));
 
     if (need_sync == true)
@@ -1487,7 +1499,12 @@ static ssize_t udmabuf_device_file_read(struct file* file, char __user* buff, si
  * @buff:       Pointer to the user buffer.
  * @count:      The number of bytes to be written.
  * @ppos:       Pointer to the offset value
- * Return:      Transferd size.
+ * Return:      The number of bytes transferred on success.
+ *              Returns 0 if the copy from the user buffer fails.
+ *              In this case, the file position is not updated, allowing
+ *              the operation to be retried from the same position.
+ *              Cache synchronization for the device is not performed
+ *              when the copy fails.
  */
 static ssize_t udmabuf_device_file_write(struct file* file, const char __user* buff, size_t count, loff_t* ppos)
 {
@@ -1502,6 +1519,10 @@ static ssize_t udmabuf_device_file_write(struct file* file, const char __user* b
     if (mutex_lock_interruptible(&this->sem))
         return -ERESTARTSYS;
 
+    if (*ppos < 0) {
+        result = -EINVAL;
+        goto return_unlock;
+    }
     if (*ppos >= this->size) {
         result = 0;
         goto return_unlock;
@@ -1509,7 +1530,10 @@ static ssize_t udmabuf_device_file_write(struct file* file, const char __user* b
 
     phys_addr = this->phys_addr + *ppos;
     virt_addr = this->virt_addr + *ppos;
-    xfer_size = (*ppos + count >= this->size) ? this->size - *ppos : count;
+    if (udmabuf_range_valid(this, *ppos, count))
+        xfer_size = count;
+    else
+        xfer_size = this->size - *ppos;
     need_sync = (((file->f_flags & O_SYNC) != 0) || ((this->sync_mode & SYNC_ALWAYS) != 0));
 
     if (need_sync == true)
