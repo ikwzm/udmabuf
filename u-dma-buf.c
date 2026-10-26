@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.1-RC4"
+#define DRIVER_VERSION     "5.6.1-RC5"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1016,9 +1016,9 @@ static struct sg_table *udmabuf_export_dma_buf_map(struct dma_buf_attachment* at
         dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
     sg_table = kzalloc(sizeof(*sg_table), GFP_KERNEL);
-    if (IS_ERR_OR_NULL(sg_table)) {
-        retval   = PTR_ERR(sg_table);
-        dev_err( this->sys_dev, "%s(fd=%d): kzalloc() failed. return=%d\n", __func__, entry->fd, retval);
+    if (sg_table == NULL) {
+        retval   = -ENOMEM;
+        dev_err( this->sys_dev, "%s(fd=%d): kzalloc() failed.\n", __func__, entry->fd);
         goto failed;
     }
     done |= DONE_ALLOC_SG_TABLE;
@@ -1324,7 +1324,7 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     entry = kzalloc(sizeof(*entry), GFP_KERNEL);
     if (entry == NULL) {
         retval = -ENOMEM;
-        dev_err(this->sys_dev, "%s() kzalloc() failed. return=%d\n", __func__, retval);
+        dev_err(this->sys_dev, "%s() kzalloc() failed.\n", __func__);
         goto failed;
     }
     entry->object = this;
@@ -2064,10 +2064,8 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
      */
     {
         this = kzalloc(sizeof(*this), GFP_KERNEL);
-        if (IS_ERR_OR_NULL(this)) {
-            int retval = PTR_ERR(this);
-            this = NULL;
-            pr_err(DRIVER_NAME ": kzalloc() failed. return=%d\n", retval);
+        if (this == NULL) {
+            pr_err(DRIVER_NAME ": kzalloc() failed.\n");
             goto failed;
         }
     }
@@ -2667,10 +2665,9 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
     }
 
     entry = kzalloc(sizeof(*entry), GFP_KERNEL);
-    if (IS_ERR_OR_NULL(entry)) {
-        retval = PTR_ERR(entry);
-        entry  = NULL;
-        pr_err(DRIVER_NAME ": kzalloc() failed. return=%d\n", retval);
+    if (entry == NULL) {
+        retval = -ENOMEM;
+        pr_err(DRIVER_NAME ": kzalloc() failed.\n");
         goto failed;
     }
 
