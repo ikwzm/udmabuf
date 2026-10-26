@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.1-RC7"
+#define DRIVER_VERSION     "5.6.1-RC8"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -3183,17 +3183,18 @@ static int udmabuf_platform_device_probe(struct device *dev)
      */
     if (of_property_read_ulong(dev->of_node, "sync-offset", &u64_value) == 0) {
         if (u64_value >= obj->size) {
-            dev_err(dev, "invalid sync-offset property value=%llu\n", u64_value);
+            dev_err(dev, "invalid sync-offset property value=%llu\n", (unsigned long long)u64_value);
             goto failed_with_unlock;
         }
-        obj->sync_offset = (int)u64_value;
+        obj->sync_offset = u64_value;
     }
     /*
      * sync-size property
      */
     if (of_property_read_ulong(dev->of_node, "sync-size", &u64_value) == 0) {
-        if (obj->sync_offset + u64_value > obj->size) {
-            dev_err(dev, "invalid sync-size property value=%llu\n", u64_value);
+        if ((u64_value > SIZE_MAX) ||
+            !udmabuf_range_valid(obj, obj->sync_offset, u64_value)) {
+            dev_err(dev, "invalid sync-size property value=%llu\n", (unsigned long long)u64_value);
             goto failed_with_unlock;
         }
         obj->sync_size = (size_t)u64_value;
