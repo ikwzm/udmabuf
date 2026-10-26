@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.1-RC2"
+#define DRIVER_VERSION     "5.6.1-RC3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1557,32 +1557,16 @@ static ssize_t udmabuf_device_file_write(struct file* file, const char __user* b
 /**
  * udmabuf_device_file_llseek() - udmabuf device file llseek operation.
  * @file:       Pointer to the file structure.
- * @offset:     File offset to seek.
+ * @offset:     Offset to seek to.
  * @whence:     Type of seek.
- * Return:      The new position.
+ * Return:      The new file position on success, or a negative error code
+ *              on failure.
  */
 static loff_t udmabuf_device_file_llseek(struct file* file, loff_t offset, int whence)
 {
     struct udmabuf_object* this = file->private_data;
-    loff_t                 new_pos;
 
-    switch (whence) {
-        case 0 : /* SEEK_SET */
-            new_pos = offset;
-            break;
-        case 1 : /* SEEK_CUR */
-            new_pos = file->f_pos + offset;
-            break;
-        case 2 : /* SEEK_END */
-            new_pos = this->size  + offset;
-            break;
-        default:
-            return -EINVAL;
-    }
-    if (new_pos < 0         ){return -EINVAL;}
-    if (new_pos > this->size){return -EINVAL;}
-    file->f_pos = new_pos;
-    return new_pos;
+    return fixed_size_llseek(file, offset, whence, this->size);    
 }
 
 /**
