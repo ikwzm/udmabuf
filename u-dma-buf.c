@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.1-RC8"
+#define DRIVER_VERSION     "5.6.1-RC9"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -346,6 +346,15 @@ struct udmabuf_object {
 #endif
 
 /**
+ * RANGE_VALID() - check whether the specified range is within limit
+ * @limit:      Upper limit of the range
+ * @offset:     Offset from the begining of the range
+ * @size:       Size of the range in bytes
+ * Return:      true if the range is valid, otherwise false.
+ */
+#define RANGE_VALID(limit, offset, size) (((offset) <= (limit)) && ((size) <= (limit) - (offset)))
+
+/**
  * udmabuf_range_valid() - check whether the specified range is within the udmabuf
  *                                  
  * @this:       Pointer to the udmabuf object.
@@ -355,7 +364,7 @@ struct udmabuf_object {
  */
 static inline bool udmabuf_range_valid(struct udmabuf_object* this, u64 offset, size_t size)
 {
-    return ((offset <= this->size) && (size <= this->size - offset));
+    return RANGE_VALID(this->size, offset, size);
 }
 
 /**
@@ -691,8 +700,6 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
     unsigned long offset         = vmf->pgoff << PAGE_SHIFT;
     unsigned long phys_addr      = this->phys_addr + offset;
     unsigned long page_frame_num = phys_addr  >> PAGE_SHIFT;
-    unsigned long request_size   = 1UL        << PAGE_SHIFT;
-    unsigned long available_size = this->alloc_size -offset;
     unsigned long virt_addr;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0))
@@ -706,7 +713,7 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
                  "vma_fault(virt_addr=%pad, phys_addr=%pad)\n", &virt_addr, &phys_addr
         );
 
-    if (request_size > available_size)
+    if (!RANGE_VALID((this->alloc_size >> PAGE_SHIFT), vmf->pgoff, 1))
         return VM_FAULT_SIGBUS;
 
     if (!pfn_valid(page_frame_num))
@@ -871,7 +878,7 @@ static inline void vm_flags_mod(struct vm_area_struct* vma, vm_flags_t set, vm_f
  */
 static int udmabuf_object_mmap(struct udmabuf_object* this, struct vm_area_struct* vma, bool force_sync)
 {
-    if (vma->vm_pgoff + vma_pages(vma) > (this->alloc_size >> PAGE_SHIFT))
+    if (!RANGE_VALID((this->alloc_size >> PAGE_SHIFT), vma->vm_pgoff, vma_pages(vma)))
         return -EINVAL;
 
     if ((force_sync == true) || ((this->sync_mode & SYNC_ALWAYS) != 0)) {
