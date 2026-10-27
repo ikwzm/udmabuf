@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.0"
+#define DRIVER_VERSION     "5.6.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -346,6 +346,15 @@ struct udmabuf_object {
 #endif
 
 /**
+ * RANGE_VALID() - check whether the specified range is within limit
+ * @limit:      Upper limit of the range
+ * @offset:     Offset from the begining of the range
+ * @size:       Size of the range in bytes
+ * Return:      true if the range is valid, otherwise false.
+ */
+#define RANGE_VALID(limit, offset, size) (((offset) <= (limit)) && ((size) <= (limit) - (offset)))
+
+/**
  * udmabuf_range_valid() - check whether the specified range is within the udmabuf
  *                                  
  * @this:       Pointer to the udmabuf object.
@@ -355,7 +364,7 @@ struct udmabuf_object {
  */
 static inline bool udmabuf_range_valid(struct udmabuf_object* this, u64 offset, size_t size)
 {
-    return ((offset <= this->size) && (size <= this->size - offset));
+    return RANGE_VALID(this->size, offset, size);
 }
 
 /**
@@ -691,8 +700,6 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
     unsigned long offset         = vmf->pgoff << PAGE_SHIFT;
     unsigned long phys_addr      = this->phys_addr + offset;
     unsigned long page_frame_num = phys_addr  >> PAGE_SHIFT;
-    unsigned long request_size   = 1UL        << PAGE_SHIFT;
-    unsigned long available_size = this->alloc_size -offset;
     unsigned long virt_addr;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0))
@@ -706,7 +713,7 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
                  "vma_fault(virt_addr=%pad, phys_addr=%pad)\n", &virt_addr, &phys_addr
         );
 
-    if (request_size > available_size)
+    if (!RANGE_VALID((this->alloc_size >> PAGE_SHIFT), vmf->pgoff, 1))
         return VM_FAULT_SIGBUS;
 
     if (!pfn_valid(page_frame_num))
@@ -871,7 +878,7 @@ static inline void vm_flags_mod(struct vm_area_struct* vma, vm_flags_t set, vm_f
  */
 static int udmabuf_object_mmap(struct udmabuf_object* this, struct vm_area_struct* vma, bool force_sync)
 {
-    if (vma->vm_pgoff + vma_pages(vma) > (this->alloc_size >> PAGE_SHIFT))
+    if (!RANGE_VALID((this->alloc_size >> PAGE_SHIFT), vma->vm_pgoff, vma_pages(vma)))
         return -EINVAL;
 
     if ((force_sync == true) || ((this->sync_mode & SYNC_ALWAYS) != 0)) {
@@ -953,7 +960,9 @@ static int udmabuf_object_mmap(struct udmabuf_object* this, struct vm_area_struc
  * udmabuf_export_begin_cpu()     - udmabuf export dma-buf begin_cpu operation.
  * udmabuf_export_end_cpu()       - udmabuf export dma-buf end_cpu operation.
  * udmabuf_export_ops             - udmabuf export dma-buf operation table.
- * udmabuf_export_create_entry()  - Create udmabuf export dma-buf entry and add list.
+ * udmabuf_export_create_entry()  - Create  udmabuf export dma-buf entry and add list.
+ * udmabuf_export_destroy_entry() - Destroy udmabuf export dma-buf entry.
+ * udmabuf_export_fd_install()    - Install the file descriptor for udmabuf export dma-buf entry.
  */
 #if (USE_DMA_BUF_EXPORT == 1)
 struct udmabuf_export_entry {
@@ -1014,9 +1023,9 @@ static struct sg_table *udmabuf_export_dma_buf_map(struct dma_buf_attachment* at
         dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
     sg_table = kzalloc(sizeof(*sg_table), GFP_KERNEL);
-    if (IS_ERR_OR_NULL(sg_table)) {
-        retval   = PTR_ERR(sg_table);
-        dev_err( this->sys_dev, "%s(fd=%d): kzalloc() failed. return=%d\n", __func__, entry->fd, retval);
+    if (sg_table == NULL) {
+        retval   = -ENOMEM;
+        dev_err( this->sys_dev, "%s(fd=%d): kzalloc() failed.\n", __func__, entry->fd);
         goto failed;
     }
     done |= DONE_ALLOC_SG_TABLE;
@@ -1105,11 +1114,10 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
 
     mutex_lock(&this->export_dma_buf_list_sem);
     list_del(&entry->list);
-    mutex_unlock(&this->export_dma_buf_list_sem);
-    kfree(entry);
-
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
+    mutex_unlock(&this->export_dma_buf_list_sem);
+    kfree(entry);
 }
 
 /**
@@ -1235,9 +1243,43 @@ static const struct dma_buf_ops udmabuf_export_ops = {
 };
 
 /**
+ * udmabuf_export_destroy_entry() - Destroy udmabuf export dma-buf entry.
+ * @entry:      Pointer to the udmabuf export entry to destroy.
+ *
+ * Releases resources associated with the export entry.
+ * Releases the reserved file descriptor if it has not been installed.
+ * If a DMA-BUF has been created, drops its reference; otherwise, frees
+ * the entry directly.
+ *
+ * The entry must not have been installed with fd_install() when this
+ * function is called.
+ */
+static void udmabuf_export_destroy_entry(struct udmabuf_export_entry* entry)
+{
+    if (entry != NULL) {
+        if (entry->fd >= 0) {
+            put_unused_fd(entry->fd);
+            entry->fd = -1;
+        }
+        if (entry->dma_buf != NULL)
+            dma_buf_put(entry->dma_buf);
+        else
+            kfree(entry);
+    }
+}
+    
+/**
  * udmabuf_export_create_entry() - Create udmabuf export dma-buf entry and add list.
  * @this:       Pointer to the udmabuf object.
- * Return:      Pointer to the udmabuf export_dma_buf(>0) or error status(<=0).
+ * @offset:     Offset into the udmabuf buffer.
+ * @size:       Size of the exported buffer.
+ * @fd_flags:   Flags for the exported file descriptor.
+ *
+ * Creates a DMA-BUF for the specified buffer range, adds the export entry
+ * to the export list, and reserves a file descriptor for the DMA-BUF.
+ *
+ * Return: Pointer to the created export entry on success, or an
+ * ERR_PTR()-encoded error on failure.
  */
 static struct udmabuf_export_entry* udmabuf_export_create_entry(
      struct udmabuf_object*  this     ,
@@ -1287,15 +1329,15 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     dmabuf_fd_flags = ((fd_flags & ~O_SYNC));
 
     entry = kzalloc(sizeof(*entry), GFP_KERNEL);
-    if (IS_ERR_OR_NULL(entry)) {
-        retval = PTR_ERR(entry);
-        entry  = NULL;
-        dev_err(this->sys_dev, "%s() kzalloc() failed. return=%d\n", __func__, retval);
+    if (entry == NULL) {
+        retval = -ENOMEM;
+        dev_err(this->sys_dev, "%s() kzalloc() failed.\n", __func__);
         goto failed;
     }
     entry->object = this;
     entry->offset = offset;
     entry->size   = size;
+    entry->fd     = -1;
 
     entry->object_data.sys_dev         = this->sys_dev;
     entry->object_data.dma_dev         = this->dma_dev;
@@ -1338,17 +1380,17 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
         goto failed;
     }
 
-    entry->fd = dma_buf_fd(entry->dma_buf, dmabuf_fd_flags);
-    if (entry->fd < 0) {
-        retval = entry->fd;
-        entry->fd = 0;
-        dev_err(this->sys_dev, "%s(): dma_buf_fd() failed. return=%d\n", __func__, retval);
-        goto failed;
-    }
-
     mutex_lock(&this->export_dma_buf_list_sem);
     list_add_tail(&entry->list, &this->export_dma_buf_list);
     mutex_unlock(&this->export_dma_buf_list_sem);
+
+    entry->fd = get_unused_fd_flags(dmabuf_fd_flags);
+    if (entry->fd < 0) {
+        retval = entry->fd;
+        dev_err(this->sys_dev, "%s(): get_unused_fd_flags() failed. return=%d\n", __func__, retval);
+        entry->fd = -1;
+        goto failed;
+    }
 
     if (UDMABUF_EXPORT_DEBUG(this)) {
         dev_info(this->sys_dev, "force_sync     = %d\n", entry->force_sync);
@@ -1359,15 +1401,35 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     return entry;
 
  failed:
-    if (entry != NULL) {
-        if (entry->dma_buf != NULL) {
-            dma_buf_put(entry->dma_buf);
-        }
-        kfree(entry);
-    }
+    udmabuf_export_destroy_entry(entry);
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->sys_dev, "%s() failed. return=%d\n", __func__, retval);
     return ERR_PTR(retval);
+}
+
+/**
+ * udmabuf_export_fd_install()  - Install the file descriptor for udmabuf export dma-buf entry.
+ * @entry:      Pointer to the udmabuf export entry to destroy.
+ *
+ * Installs the DMA-BUF file into the reserved file descriptor.
+ *
+ * Return: 0 on success, -ENODEV if @entry is NULL, or -EINVAL if
+ * the file descriptor is invalid or the DMA-BUF is NULL.
+ *
+ * After a successful call, the file descriptor must not be released
+ * using put_unused_fd(). The caller must not access @entry after
+ * successful installation.
+ */
+static inline int udmabuf_export_fd_install(struct udmabuf_export_entry* entry)
+{
+    if (entry == NULL)
+        return -ENODEV;
+    if (entry->fd < 0)
+        return -EINVAL;
+    if (entry->dma_buf == NULL)
+        return -EINVAL;
+    fd_install(entry->fd, entry->dma_buf->file);
+    return 0;
 }
 #endif /* #if (USE_DMA_BUF_EXPORT == 1) */
 
@@ -1439,7 +1501,12 @@ static int udmabuf_device_file_mmap(struct file *file, struct vm_area_struct* vm
  * @buff:       Pointer to the user buffer.
  * @count:      The number of bytes to be read.
  * @ppos:       Pointer to the offset value.
- * Return:      Transferd size.
+ * Return:      The number of bytes transferred on success.
+ *              Returns 0 if the copy to the user buffer fails.
+ *              In this case, the file position is not updated, allowing
+ *              the operation to be retried from the same position.
+ *              Cache synchronization for the device is not performed
+ *              when the copy fails.
  */
 static ssize_t udmabuf_device_file_read(struct file* file, char __user* buff, size_t count, loff_t* ppos)
 {
@@ -1454,6 +1521,10 @@ static ssize_t udmabuf_device_file_read(struct file* file, char __user* buff, si
     if (mutex_lock_interruptible(&this->sem))
         return -ERESTARTSYS;
 
+    if (*ppos < 0) {
+        result = -EINVAL;
+        goto return_unlock;
+    }
     if (*ppos >= this->size) {
         result = 0;
         goto return_unlock;
@@ -1461,7 +1532,10 @@ static ssize_t udmabuf_device_file_read(struct file* file, char __user* buff, si
 
     phys_addr = this->phys_addr + *ppos;
     virt_addr = this->virt_addr + *ppos;
-    xfer_size = (*ppos + count >= this->size) ? this->size - *ppos : count;
+    if (udmabuf_range_valid(this, *ppos, count))
+        xfer_size = count;
+    else
+        xfer_size = this->size - *ppos;
     need_sync = (((file->f_flags & O_SYNC) != 0) || ((this->sync_mode & SYNC_ALWAYS) != 0));
 
     if (need_sync == true)
@@ -1488,7 +1562,12 @@ static ssize_t udmabuf_device_file_read(struct file* file, char __user* buff, si
  * @buff:       Pointer to the user buffer.
  * @count:      The number of bytes to be written.
  * @ppos:       Pointer to the offset value
- * Return:      Transferd size.
+ * Return:      The number of bytes transferred on success.
+ *              Returns 0 if the copy from the user buffer fails.
+ *              In this case, the file position is not updated, allowing
+ *              the operation to be retried from the same position.
+ *              Cache synchronization for the device is not performed
+ *              when the copy fails.
  */
 static ssize_t udmabuf_device_file_write(struct file* file, const char __user* buff, size_t count, loff_t* ppos)
 {
@@ -1503,6 +1582,10 @@ static ssize_t udmabuf_device_file_write(struct file* file, const char __user* b
     if (mutex_lock_interruptible(&this->sem))
         return -ERESTARTSYS;
 
+    if (*ppos < 0) {
+        result = -EINVAL;
+        goto return_unlock;
+    }
     if (*ppos >= this->size) {
         result = 0;
         goto return_unlock;
@@ -1510,7 +1593,10 @@ static ssize_t udmabuf_device_file_write(struct file* file, const char __user* b
 
     phys_addr = this->phys_addr + *ppos;
     virt_addr = this->virt_addr + *ppos;
-    xfer_size = (*ppos + count >= this->size) ? this->size - *ppos : count;
+    if (udmabuf_range_valid(this, *ppos, count))
+        xfer_size = count;
+    else
+        xfer_size = this->size - *ppos;
     need_sync = (((file->f_flags & O_SYNC) != 0) || ((this->sync_mode & SYNC_ALWAYS) != 0));
 
     if (need_sync == true)
@@ -1534,32 +1620,16 @@ static ssize_t udmabuf_device_file_write(struct file* file, const char __user* b
 /**
  * udmabuf_device_file_llseek() - udmabuf device file llseek operation.
  * @file:       Pointer to the file structure.
- * @offset:     File offset to seek.
+ * @offset:     Offset to seek to.
  * @whence:     Type of seek.
- * Return:      The new position.
+ * Return:      The new file position on success, or a negative error code
+ *              on failure.
  */
 static loff_t udmabuf_device_file_llseek(struct file* file, loff_t offset, int whence)
 {
     struct udmabuf_object* this = file->private_data;
-    loff_t                 new_pos;
 
-    switch (whence) {
-        case 0 : /* SEEK_SET */
-            new_pos = offset;
-            break;
-        case 1 : /* SEEK_CUR */
-            new_pos = file->f_pos + offset;
-            break;
-        case 2 : /* SEEK_END */
-            new_pos = this->size  + offset;
-            break;
-        default:
-            return -EINVAL;
-    }
-    if (new_pos < 0         ){return -EINVAL;}
-    if (new_pos > this->size){return -EINVAL;}
-    file->f_pos = new_pos;
-    return new_pos;
+    return fixed_size_llseek(file, offset, whence, this->size);    
 }
 
 /**
@@ -1778,17 +1848,22 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             sync_command   = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD (&sync_args);
             sync_direction = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_DIR (&sync_args);
             sync_mode      = GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_MODE(&sync_args);
-            sync_offset    = (u64)(sync_args.offset);
-            sync_size      = (size_t)(sync_args.size);
-            if (!udmabuf_range_valid(this, sync_offset, sync_size)) {
+            if (sync_args.size > SIZE_MAX) {
                 result = -EINVAL;
                 break;
             }
 #if (IOCTL_VERSION >= 3)
             if (GET_U_DMA_BUF_IOCTL_FLAGS_SYNC_FAST(&sync_args) != 0) {
                 /* Skip mutex locking and sync parameter updates for faster synchronization. */
-                dma_addr_t phys_addr = this->phys_addr + sync_offset;
+                dma_addr_t phys_addr;
                 enum dma_data_direction direction;
+                sync_offset = sync_args.offset;
+                sync_size   = (size_t)(sync_args.size);
+                if (!udmabuf_range_valid(this, sync_offset, sync_size)) {
+                    result = -EINVAL;
+                    break;
+                }
+                phys_addr = this->phys_addr + sync_offset;
                 switch(sync_direction) {
                     case 1 : direction = DMA_TO_DEVICE    ; break;
                     case 2 : direction = DMA_FROM_DEVICE  ; break;
@@ -1802,6 +1877,7 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
                         dma_sync_single_for_device(this->dma_dev, phys_addr, sync_size, direction);
                         break;
                     default  :
+                        /* If any other command is specified, do nothing and return success. */
                         break;
                 }
                 result = 0;
@@ -1817,27 +1893,37 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
                 result = -ERESTARTSYS;
                 break;
             }
-            switch(sync_direction) {
-                case 0   : this->sync_direction = 0; break;
-                case 1   : this->sync_direction = 1; break;
-                case 2   : this->sync_direction = 2; break;
-                default  : /* none */                break;
-            }
-            if (sync_mode   >  0) {this->sync_mode   = sync_mode  ;}
-            if (sync_offset >= 0) {this->sync_offset = sync_offset;}
-            if (sync_size   >  0) {this->sync_size   = sync_size  ;}
-            switch(sync_command) {
-                case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU:
-                    this->sync_for_cpu = 1;
-                    result = udmabuf_sync_for_cpu(this);
-                    break;
-                case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE:
-                    this->sync_for_device = 1;
-                    result = udmabuf_sync_for_device(this);
-                    break;
-                default  :
-                    result = 0;
-                    break;
+            sync_offset = (sync_args.offset >= 0) ? sync_args.offset : this->sync_offset;
+            sync_size   = (sync_args.size   >  0) ? sync_args.size   : this->sync_size;
+            if (!udmabuf_range_valid(this, sync_offset, sync_size)) {
+                result = -EINVAL;
+            } else {
+                this->sync_offset = sync_offset;
+                this->sync_size   = sync_size;
+                switch(sync_direction) {
+                    case 0   : this->sync_direction = 0; break;
+                    case 1   : this->sync_direction = 1; break;
+                    case 2   : this->sync_direction = 2; break;
+                    default  : /* none */                break;
+                }
+                if (sync_mode > 0) {this->sync_mode = sync_mode;}
+                switch(sync_command) {
+                    case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU:
+                        this->sync_for_cpu = 1;
+                        result = udmabuf_sync_for_cpu(this);
+                        break;
+                    case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_DEVICE:
+                        this->sync_for_device = 1;
+                        result = udmabuf_sync_for_device(this);
+                        break;
+                    default  :
+                       /* Commands other than those listed above only update sync_offset, 
+                        * sync_size, sync_direction, and sync_mode; no synchronization is
+                        * performed.
+                        */
+                        result = 0;
+                        break;
+                }
             }
             mutex_unlock(&this->sem);
             break;
@@ -1879,23 +1965,31 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             if (copy_from_user(&export_args, argp, sizeof(export_args)) != 0) {
                 result = -EFAULT;
                 goto export_failed;
+            } else if (export_args.size > SIZE_MAX) {
+                result = -EINVAL;
+                goto export_failed;
             } else {
                 u64    offset   = (u64)(export_args.offset);
                 size_t size     = (size_t)(export_args.size);
                 u32    fd_flags = GET_U_DMA_BUF_IOCTL_FLAGS_EXPORT_FD_FLAGS(&export_args);
                 export_entry    = udmabuf_export_create_entry(this, offset, size, fd_flags);
             }
-            if (IS_ERR_OR_NULL(export_entry)) {
+            if (IS_ERR(export_entry)) {
                 result = PTR_ERR(export_entry);
-                export_entry = NULL;
                 goto export_failed;
             }
             export_args.fd   = export_entry->fd;
             export_args.addr = export_entry->object_data.phys_addr;
-            if (copy_to_user(argp, &export_args, sizeof(export_args)) != 0)
+            if (copy_to_user(argp, &export_args, sizeof(export_args)) != 0) {
+                udmabuf_export_destroy_entry(export_entry);
                 result = -EFAULT;
-            else 
-                result = 0;
+                goto export_failed;
+            }
+            result = udmabuf_export_fd_install(export_entry);
+            if (result < 0) {
+                udmabuf_export_destroy_entry(export_entry);
+                goto export_failed;
+            }
           export_failed:
             break;
         }
@@ -1996,10 +2090,8 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
      */
     {
         this = kzalloc(sizeof(*this), GFP_KERNEL);
-        if (IS_ERR_OR_NULL(this)) {
-            int retval = PTR_ERR(this);
-            this = NULL;
-            pr_err(DRIVER_NAME ": kzalloc() failed. return=%d\n", retval);
+        if (this == NULL) {
+            pr_err(DRIVER_NAME ": kzalloc() failed.\n");
             goto failed;
         }
     }
@@ -2599,10 +2691,9 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
     }
 
     entry = kzalloc(sizeof(*entry), GFP_KERNEL);
-    if (IS_ERR_OR_NULL(entry)) {
-        retval = PTR_ERR(entry);
-        entry  = NULL;
-        pr_err(DRIVER_NAME ": kzalloc() failed. return=%d\n", retval);
+    if (entry == NULL) {
+        retval = -ENOMEM;
+        pr_err(DRIVER_NAME ": kzalloc() failed.\n");
         goto failed;
     }
 
@@ -2851,7 +2942,7 @@ static int udmabuf_platform_device_remove(struct device *dev, struct udmabuf_obj
         bool of_reserved_mem = obj->of_reserved_mem;
 #endif
         retval = udmabuf_object_destroy(obj);
-        if (retval != 0) {
+        if (retval == 0) {
             dev_set_drvdata(dev, NULL);
 #if (USE_OF_RESERVED_MEM == 1)
             if (of_reserved_mem) {
@@ -3099,17 +3190,18 @@ static int udmabuf_platform_device_probe(struct device *dev)
      */
     if (of_property_read_ulong(dev->of_node, "sync-offset", &u64_value) == 0) {
         if (u64_value >= obj->size) {
-            dev_err(dev, "invalid sync-offset property value=%llu\n", u64_value);
+            dev_err(dev, "invalid sync-offset property value=%llu\n", (unsigned long long)u64_value);
             goto failed_with_unlock;
         }
-        obj->sync_offset = (int)u64_value;
+        obj->sync_offset = u64_value;
     }
     /*
      * sync-size property
      */
     if (of_property_read_ulong(dev->of_node, "sync-size", &u64_value) == 0) {
-        if (obj->sync_offset + u64_value > obj->size) {
-            dev_err(dev, "invalid sync-size property value=%llu\n", u64_value);
+        if ((u64_value > SIZE_MAX) ||
+            !udmabuf_range_valid(obj, obj->sync_offset, u64_value)) {
+            dev_err(dev, "invalid sync-size property value=%llu\n", (unsigned long long)u64_value);
             goto failed_with_unlock;
         }
         obj->sync_size = (size_t)u64_value;
@@ -3424,7 +3516,7 @@ static int udmabuf_static_device_create(udmabuf_static_device_param* param)
         retval = udmabuf_platform_device_create(name, id, size, option);
     }
 
-    return 0;
+    return retval;
 }
 
 #define DEFINE_UDMABUF_STATIC_DEVICE_PARAM(__num)                          \
