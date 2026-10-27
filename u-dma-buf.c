@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.1-RC10"
+#define DRIVER_VERSION     "5.6.1-RC11"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -3516,7 +3516,7 @@ static int udmabuf_static_device_create(udmabuf_static_device_param* param)
         retval = udmabuf_platform_device_create(name, id, size, option);
     }
 
-    return 0;
+    return retval;
 }
 
 #define DEFINE_UDMABUF_STATIC_DEVICE_PARAM(__num)                          \
