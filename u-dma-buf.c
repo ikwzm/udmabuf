@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.1-RC9"
+#define DRIVER_VERSION     "5.6.1-RC10"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -2942,7 +2942,7 @@ static int udmabuf_platform_device_remove(struct device *dev, struct udmabuf_obj
         bool of_reserved_mem = obj->of_reserved_mem;
 #endif
         retval = udmabuf_object_destroy(obj);
-        if (retval != 0) {
+        if (retval == 0) {
             dev_set_drvdata(dev, NULL);
 #if (USE_OF_RESERVED_MEM == 1)
             if (of_reserved_mem) {
