@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.1"
+#define DRIVER_VERSION     "5.6.2-alpha.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -323,7 +323,7 @@ struct udmabuf_object {
     struct mutex         export_dma_buf_list_sem;
 #endif
 #if (USE_OF_RESERVED_MEM == 1)
-    bool                 of_reserved_mem;
+    struct device*       of_reserved_mem_dev;
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
     int                  debug_vma;
@@ -2185,7 +2185,7 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
     }
 #if (USE_OF_RESERVED_MEM == 1)
     {
-        this->of_reserved_mem = 0;
+        this->of_reserved_mem_dev = NULL;
     }
 #endif
 #if (USE_QUIRK_MMAP == 1)
@@ -2401,6 +2401,12 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
         dma_free_coherent(this->dma_dev, this->alloc_size, this->virt_addr, this->phys_addr);
         this->virt_addr = NULL;
     }
+#if (USE_OF_RESERVED_MEM == 1)
+    if (this->of_reserved_mem_dev != NULL) {
+        of_reserved_mem_device_release(this->of_reserved_mem_dev);
+        this->of_reserved_mem_dev = NULL;
+    }
+#endif
     put_device(this->dma_dev);
     cdev_del(&this->cdev);
     device_destroy(udmabuf_sys_class, this->device_number);
@@ -2938,17 +2944,9 @@ static int udmabuf_platform_device_remove(struct device *dev, struct udmabuf_obj
     int retval = 0;
 
     if (obj != NULL) {
-#if (USE_OF_RESERVED_MEM == 1)
-        bool of_reserved_mem = obj->of_reserved_mem;
-#endif
         retval = udmabuf_object_destroy(obj);
         if (retval == 0) {
             dev_set_drvdata(dev, NULL);
-#if (USE_OF_RESERVED_MEM == 1)
-            if (of_reserved_mem) {
-                of_reserved_mem_device_release(dev);
-            }
-#endif
         }
     } else {
         retval = -ENODEV;
@@ -3086,7 +3084,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
     if (dev->of_node != NULL) {
         retval = of_reserved_mem_device_init(dev);
         if (retval == 0) {
-            obj->of_reserved_mem = 1;
+            obj->of_reserved_mem_dev = dev;
         } else if (retval != -ENODEV) {
             dev_err(dev, "of_reserved_mem_device_init failed. return=%d\n", retval);
             goto failed_with_unlock;
@@ -3107,7 +3105,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
      * of_dma_configure() will not be executed.
      * Because in that case, it is already executed in of_reserved_mem_device_init().
      */
-    if (obj->of_reserved_mem == 0)
+    if (obj->of_reserved_mem_dev == NULL)
 #endif
     {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0))
