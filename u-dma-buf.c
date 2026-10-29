@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.2"
+#define DRIVER_VERSION     "5.6.2-alpha.3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -2059,6 +2059,10 @@ static dev_t      udmabuf_device_number = 0;
  * @parent:     parent device or NULL.
  * @minor:      minor_number  or -1 or -2.
  * Return:      Pointer to the udmabuf object or NULL.
+ *
+ * Note: On success, this function returns with this->sem locked.
+ * The caller must unlock it after udmabuf_object_setup() completes,
+ * regardless of whether setup succeeds or fails.
  */
 static struct udmabuf_object* udmabuf_object_create(const char* name, struct device* parent, int minor)
 {
@@ -2066,6 +2070,7 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
     unsigned int           done     = 0;
     const unsigned int     DONE_ALLOC_MINOR   = (1 << 0);
     const unsigned int     DONE_CHRDEV_ADD    = (1 << 1);
+    const unsigned int     DONE_SEM_LOCK      = (1 << 2);
     const unsigned int     DONE_DEVICE_CREATE = (1 << 3);
     const unsigned int     DONE_SET_DMA_DEV   = (1 << 4);
     /*
@@ -2103,6 +2108,15 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
      */
     {
         this->device_number = MKDEV(MAJOR(udmabuf_device_number), minor);
+    }
+    /*
+     * Lock this->sem before registering the device with device_create()
+     * to prevent sysfs attribute access during initialization.
+     */
+    {
+        mutex_init(&this->sem);
+        mutex_lock(&this->sem);
+        done |= DONE_SEM_LOCK;
     }
     /*
      * register /sys/class/u-dma-buf/<name>
@@ -2216,7 +2230,6 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
         this->debug_export    = 0;
     }
 #endif
-    mutex_init(&this->sem);
 
     return this;
 
@@ -2224,6 +2237,7 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
     if (done & DONE_SET_DMA_DEV  ) { put_device(this->dma_dev);}
     if (done & DONE_CHRDEV_ADD   ) { cdev_del(&this->cdev); }
     if (done & DONE_DEVICE_CREATE) { device_destroy(udmabuf_sys_class, this->device_number);}
+    if (done & DONE_SEM_LOCK     ) { mutex_unlock(&this->sem);}
     if (done & DONE_ALLOC_MINOR  ) { ida_simple_remove(&udmabuf_device_ida, minor);}
     if (this != NULL)              { kfree(this); }
     return NULL;
@@ -3051,9 +3065,8 @@ static int udmabuf_platform_device_probe(struct device *dev)
         goto failed;
     }
     /*
-     * mutex_lock() then dev_set_drvdata()
+     * dev_set_drvdata()
      */
-    mutex_lock(&obj->sem);
     dev_set_drvdata(dev, obj);
     /*
      * set size
@@ -3303,10 +3316,6 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
         retval = (retval == 0) ? -EINVAL : retval;
         goto failed;
     }
-    /*
-     * mutex_lock()
-     */
-    mutex_lock(&obj->sem);
     /*
      * set size
      */
