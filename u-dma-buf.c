@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.6"
+#define DRIVER_VERSION     "5.6.2-alpha.7"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1121,9 +1121,12 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->dma_dev, "%s(fd=%d) start.\n", __func__, entry_fd);
 
+    mutex_lock(&this->alive_lock);
     mutex_lock(&this->export_dma_buf_list_sem);
-    list_del(&entry->list);
+    if (!list_empty(&entry->list))
+        list_del_init(&entry->list);
     mutex_unlock(&this->export_dma_buf_list_sem);
+    mutex_unlock(&this->alive_lock);
     if (entry->name) {
         kfree(entry->name);
         entry->name = NULL;
@@ -1357,6 +1360,7 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     entry->offset = offset;
     entry->size   = size;
     entry->fd     = -1;
+    INIT_LIST_HEAD(&entry->list);
 
     retval = udmabuf_object_get(entry->object);
     if (retval != 0) {
@@ -1412,10 +1416,6 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
         goto failed;
     }
 
-    mutex_lock(&this->export_dma_buf_list_sem);
-    list_add_tail(&entry->list, &this->export_dma_buf_list);
-    mutex_unlock(&this->export_dma_buf_list_sem);
-
     entry->fd = get_unused_fd_flags(dmabuf_fd_flags);
     if (entry->fd < 0) {
         retval = entry->fd;
@@ -1423,6 +1423,18 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
         entry->fd = -1;
         goto failed;
     }
+
+    mutex_lock(&this->alive_lock);
+    if (this->alive == 0) {
+        mutex_unlock(&this->alive_lock);
+        retval = -ENODEV;
+        dev_err(this->dma_dev, "%s() udmabuf_object is not alive.\n", __func__);
+        goto failed;
+    }
+    mutex_lock(&this->export_dma_buf_list_sem);
+    list_add_tail(&entry->list, &this->export_dma_buf_list);
+    mutex_unlock(&this->export_dma_buf_list_sem);
+    mutex_unlock(&this->alive_lock);
 
     if (UDMABUF_EXPORT_DEBUG(this)) {
         dev_info(this->dma_dev, "force_sync     = %d\n", entry->force_sync);
@@ -2474,8 +2486,6 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
     mutex_lock(&this->alive_lock);
     cdev_alive  = this->alive;
     this->alive = false;
-    mutex_unlock(&this->alive_lock);
-
 #if (USE_DMA_BUF_EXPORT == 1)
     {
         bool empty;
@@ -2488,6 +2498,7 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
         }
     }
 #endif
+    mutex_unlock(&this->alive_lock);
     
     if (cdev_alive)
         cdev_del(&this->cdev);
