@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.3"
+#define DRIVER_VERSION     "5.6.2-alpha.4"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -973,6 +973,7 @@ struct udmabuf_export_entry {
     bool                   force_sync;  
     u64                    offset;
     size_t                 size;
+    char*                  name;
     struct list_head       list;
 };
 
@@ -1118,6 +1119,10 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
     mutex_lock(&this->export_dma_buf_list_sem);
     list_del(&entry->list);
     mutex_unlock(&this->export_dma_buf_list_sem);
+    if (entry->name) {
+        kfree(entry->name);
+        entry->name = NULL;
+    }
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->dma_dev, "%s(fd=%d) done.\n", __func__, entry_fd);
     kfree(entry);
@@ -1266,8 +1271,11 @@ static void udmabuf_export_destroy_entry(struct udmabuf_export_entry* entry)
         }
         if (entry->dma_buf != NULL)
             dma_buf_put(entry->dma_buf);
-        else
+        else {
+            if (entry->name != NULL)
+                kfree(entry->name);
             kfree(entry);
+        }
     }
 }
     
@@ -1342,6 +1350,13 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     entry->size   = size;
     entry->fd     = -1;
 
+    entry->name = kstrdup(dev_name(entry->object->sys_dev), GFP_KERNEL);
+    if (entry->name == NULL) {
+        retval = -ENOMEM;
+        dev_err(this->dma_dev, "%s() kstrdup() failed.\n", __func__);
+        goto failed;
+    }
+
     entry->object_data.sys_dev         = this->sys_dev;
     entry->object_data.dma_dev         = this->dma_dev;
     entry->object_data.phys_addr       = this->phys_addr + offset;
@@ -1373,7 +1388,7 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     export_info.size     = size;
     export_info.priv     = (void*)entry;
     export_info.flags    = export_fd_flags;
-    export_info.exp_name = dev_name(this->sys_dev);
+    export_info.exp_name = entry->name;
 
     entry->dma_buf = dma_buf_export(&export_info);
     if (IS_ERR(entry->dma_buf)) {
