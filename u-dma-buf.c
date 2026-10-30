@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.4"
+#define DRIVER_VERSION     "5.6.2-alpha.5"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -299,7 +299,9 @@ struct udmabuf_object {
     struct cdev          cdev;
     dev_t                device_number;
     struct mutex         sem;
-    bool                 is_open;
+    struct mutex         alive_lock;
+    bool                 alive;
+    struct kref          refcount;
     size_t               size;
     size_t               alloc_size;
     void*                virt_addr;
@@ -344,6 +346,9 @@ struct udmabuf_object {
 #else
 #define UDMABUF_EXPORT_DEBUG(this) (0)
 #endif
+
+static int  udmabuf_object_get(struct udmabuf_object* this);
+static void udmabuf_object_put(struct udmabuf_object* this);
 
 /**
  * RANGE_VALID() - check whether the specified range is within limit
@@ -1125,6 +1130,7 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
     }
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->dma_dev, "%s(fd=%d) done.\n", __func__, entry_fd);
+    udmabuf_object_put(this);
     kfree(entry);
 }
 
@@ -1269,9 +1275,11 @@ static void udmabuf_export_destroy_entry(struct udmabuf_export_entry* entry)
             put_unused_fd(entry->fd);
             entry->fd = -1;
         }
-        if (entry->dma_buf != NULL)
+        if (entry->dma_buf != NULL) {
             dma_buf_put(entry->dma_buf);
-        else {
+        } else {
+            if (entry->object != NULL)
+                udmabuf_object_put(entry->object);
             if (entry->name != NULL)
                 kfree(entry->name);
             kfree(entry);
@@ -1350,6 +1358,12 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     entry->size   = size;
     entry->fd     = -1;
 
+    retval = udmabuf_object_get(entry->object);
+    if (retval != 0) {
+        dev_err(this->dma_dev, "%s() udmabuf_object_get() failed. return=%d\n", __func__, retval);
+        entry->object = NULL;
+        goto failed;
+    }
     entry->name = kstrdup(dev_name(entry->object->sys_dev), GFP_KERNEL);
     if (entry->name == NULL) {
         retval = -ENOMEM;
@@ -1478,9 +1492,10 @@ static int udmabuf_device_file_open(struct inode *inode, struct file *file)
     int status = 0;
 
     this = container_of(inode->i_cdev, struct udmabuf_object, cdev);
-    file->private_data = this;
-    this->is_open = 1;
-
+    status = udmabuf_object_get(this);
+    if (status == 0) {
+        file->private_data = this;
+    }
     return status;
 }
 
@@ -1494,7 +1509,7 @@ static int udmabuf_device_file_release(struct inode *inode, struct file *file)
 {
     struct udmabuf_object* this = file->private_data;
 
-    this->is_open = 0;
+    udmabuf_object_put(this);
 
     return 0;
 }
@@ -2060,6 +2075,8 @@ static const struct file_operations udmabuf_device_file_ops = {
  * * udmabuf_object_setup()     - Setup the udmabuf object.
  * * udmabuf_object_info()      - Print infomation the udmabuf object.
  * * udmabuf_object_destroy()   - Destroy the udmabuf object.
+ * * udmabuf_object_get()       - Get a reference to a live udmabuf object.
+ * * udmabuf_object_put()       - Release a reference to a udmabuf object.
  */
 static DEFINE_IDA(udmabuf_device_ida);
 static dev_t      udmabuf_device_number = 0;
@@ -2132,6 +2149,10 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
         mutex_init(&this->sem);
         mutex_lock(&this->sem);
         done |= DONE_SEM_LOCK;
+
+        mutex_init(&this->alive_lock);
+        this->alive = false;
+        kref_init(&this->refcount);
     }
     /*
      * register /sys/class/u-dma-buf/<name>
@@ -2317,6 +2338,9 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
         ;
     }
 #endif
+    mutex_lock(&this->alive_lock);
+    this->alive = true;
+    mutex_unlock(&this->alive_lock);
     return 0;
 }
 
@@ -2398,30 +2422,22 @@ static void udmabuf_object_info(struct udmabuf_object* this)
 }
 
 /**
- * udmabuf_object_destroy() -  Destroy the udmabuf object.
- * @this:       Pointer to the udmabuf object.
- * Return:      Success(=0) or error status(<0).
+ * udmabuf_object_release() - Release a udmabuf object.
+ * @ref: Pointer to the object's reference counter.
  *
- * Unregister the device after releasing the resources.
+ * Free the resources associated with the udmabuf object, including the
+ * page array, DMA buffer, and reserved-memory resources, if applicable.
+ * Release the reference to the DMA device and free the object itself.
+ *
+ * This function is called when the object's reference count reaches zero.
  */
-static int udmabuf_object_destroy(struct udmabuf_object* this)
+static void udmabuf_object_release(struct kref* ref)
 {
-    if (!this)
-        return -ENODEV;
-
-#if (USE_DMA_BUF_EXPORT == 1)
-    {
-        bool empty;
-        mutex_lock(&this->export_dma_buf_list_sem);
-        empty = list_empty(&this->export_dma_buf_list);
-        mutex_unlock(&this->export_dma_buf_list_sem);
-        if (empty == false) {
-            dev_err(this->sys_dev, "exported dma-buf is currently busy.\n");
-            return -EBUSY;
-        }
-    }
-#endif
+    struct udmabuf_object* this = container_of(ref, struct udmabuf_object, refcount);
     
+    if (DMA_INFO_ENABLE) {
+        pr_info(DRIVER_NAME " %s: device release.\n", dev_name(this->dma_dev));
+    }
 #if ((USE_QUIRK_MMAP == 1) && USE_QUIRK_MMAP_PAGE == 1)
     if (this->pages != NULL) {
         kfree(this->pages);
@@ -2436,15 +2452,87 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
 #if (USE_OF_RESERVED_MEM == 1)
     if (this->of_reserved_mem_dev != NULL) {
         of_reserved_mem_device_release(this->of_reserved_mem_dev);
+        put_device(this->of_reserved_mem_dev);
         this->of_reserved_mem_dev = NULL;
     }
 #endif
     put_device(this->dma_dev);
+    kfree(this);
+}
+
+/**
+ * udmabuf_object_destroy() -  Destroy the udmabuf object.
+ * @this:       Pointer to the udmabuf object.
+ * Return:      Success(=0) or error status(<0).
+ *
+ * Unregister the device after releasing the resources.
+ * If exported DMA-BUFs remain, the device is still unregistered
+ * and the object is destroyed, but -EBUSY is returned.
+ */
+static int udmabuf_object_destroy(struct udmabuf_object* this)
+{
+    int retval = 0;
+
+    if (!this)
+        return -ENODEV;
+
+    mutex_lock(&this->alive_lock);
+    this->alive = false;
+    mutex_unlock(&this->alive_lock);
+
+#if (USE_DMA_BUF_EXPORT == 1)
+    {
+        bool empty;
+        mutex_lock(&this->export_dma_buf_list_sem);
+        empty = list_empty(&this->export_dma_buf_list);
+        mutex_unlock(&this->export_dma_buf_list_sem);
+        if (empty == false) {
+            dev_warn(this->sys_dev, "exported dma-buf is currently busy.\n");
+            retval = -EBUSY;
+        }
+    }
+#endif
+    
     cdev_del(&this->cdev);
     device_destroy(udmabuf_sys_class, this->device_number);
     ida_simple_remove(&udmabuf_device_ida, MINOR(this->device_number));
-    kfree(this);
-    return 0;
+
+    udmabuf_object_put(this);
+    return retval;
+}
+
+/**
+ * udmabuf_object_get() - Get a reference to a live udmabuf object.
+ * @this: Pointer to the udmabuf object.
+ *
+ * Increment the object's reference count if the object is alive.
+ * The object's alive state is checked under alive_lock to prevent
+ * acquiring a reference after the object has been marked as not alive.
+ *
+ * Return: 0 on success, or -ENODEV if the object is not alive.
+ */
+static int  udmabuf_object_get(struct udmabuf_object* this)
+{
+    int retval = 0;
+    mutex_lock(&this->alive_lock);
+    if (this->alive)
+        kref_get(&this->refcount);
+    else
+        retval = -ENODEV;
+    mutex_unlock(&this->alive_lock);
+    return retval;
+}
+
+/**
+ * udmabuf_object_put() - Release a reference to a udmabuf object.
+ * @this: Pointer to the udmabuf object.
+ *
+ * Decrement the object's reference count. If the reference count reaches
+ * zero, udmabuf_object_release() is called to release the object.
+ */
+static void udmabuf_object_put(struct udmabuf_object* this)
+{
+    kref_put(&this->refcount, udmabuf_object_release);
 }
 
 /**
@@ -2977,9 +3065,7 @@ static int udmabuf_platform_device_remove(struct device *dev, struct udmabuf_obj
 
     if (obj != NULL) {
         retval = udmabuf_object_destroy(obj);
-        if (retval == 0) {
-            dev_set_drvdata(dev, NULL);
-        }
+        dev_set_drvdata(dev, NULL);
     } else {
         retval = -ENODEV;
     }
@@ -3115,7 +3201,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
     if (dev->of_node != NULL) {
         retval = of_reserved_mem_device_init(dev);
         if (retval == 0) {
-            obj->of_reserved_mem_dev = dev;
+            obj->of_reserved_mem_dev = get_device(dev);
         } else if (retval != -ENODEV) {
             dev_err(dev, "of_reserved_mem_device_init failed. return=%d\n", retval);
             goto failed_with_unlock;
@@ -3286,7 +3372,7 @@ static void udmabuf_child_device_delete(struct device* dev)
     udmabuf_object_destroy(dev_get_drvdata(dev));
 
     if (info_enable) {
-        pr_info(DRIVER_NAME ": %s removed.\n", ((device_name) ? device_name: ""));
+        pr_info(DRIVER_NAME " %s: removed.\n", ((device_name) ? device_name: ""));
     }
     if (device_name)
         kfree(device_name);
@@ -3374,7 +3460,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
     }
 
     if (info_enable) {
-        pr_info(DRIVER_NAME ": %s installed.\n", dev_name(obj->sys_dev));
+        pr_info(DRIVER_NAME " %s: installed.\n", dev_name(obj->sys_dev));
     }
     return 0;
 
@@ -3662,7 +3748,9 @@ static inline int _udmabuf_platform_driver_remove(struct platform_device *pdev)
 
     retval = udmabuf_platform_device_remove(&pdev->dev, this);
 
-    if (retval != 0) {
+    if (retval == -EBUSY) {
+        dev_info(&pdev->dev, "driver removed. return=%d\n", retval);
+    } else if (retval != 0) {
         dev_err(&pdev->dev, "driver remove failed. return=%d\n", retval);
     } else if (info_enable) {
         dev_info(&pdev->dev, "driver removed.\n");
