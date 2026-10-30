@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.7"
+#define DRIVER_VERSION     "5.6.2-alpha.8"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -2288,6 +2288,8 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
     /*
      * setup buffer size and allocation size
      */
+    if (this->size > SIZE_MAX - (PAGE_SIZE - 1))
+        return -EOVERFLOW;
     this->alloc_size = ((this->size + (((size_t)1 << PAGE_SHIFT) - 1)) >> PAGE_SHIFT) << PAGE_SHIFT;
     /*
      * dma buffer allocation 
