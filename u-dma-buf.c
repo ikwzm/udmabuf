@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.8"
+#define DRIVER_VERSION     "5.6.2-alpha.9"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -2835,7 +2835,16 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
 
 #if (USE_DEV_PROPERTY == 0)
     {
-        entry->device_name  = (name != NULL) ? kstrdup(name, GFP_KERNEL) : NULL;
+        if (name != NULL) {
+            entry->device_name = kstrdup(name, GFP_KERNEL);
+            if (entry->device_name == NULL) {
+                retval = -ENOMEM;
+                pr_err(DRIVER_NAME ": kstrdup() failed.\n");
+                goto failed;
+            }
+        } else {
+            entry->device_name  = NULL;
+        }
         entry->minor_number = id;
         entry->buffer_size  = size;
         entry->option       = option;
