@@ -90,6 +90,8 @@ else
   KERNEL_SRC_DIR ?= /lib/modules/$(shell uname -r)/build
 endif
 
+PWD   := $(shell pwd)
+
 #
 # For out of kernel tree rules
 #
