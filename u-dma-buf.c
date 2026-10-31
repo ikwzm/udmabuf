@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.9"
+#define DRIVER_VERSION     "5.6.2-alpha.10"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -2894,7 +2894,8 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
     entry->parent = get_device(parent);
     entry->prep_remove = prep_remove;
     entry->post_remove = post_remove;
-    
+    INIT_LIST_HEAD(&entry->list);
+
     mutex_lock(&udmabuf_device_list_sem);
     list_add_tail(&entry->list, &udmabuf_device_list);
     mutex_unlock(&udmabuf_device_list_sem);
@@ -2919,7 +2920,8 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
 static void udmabuf_device_list_delete_entry(struct udmabuf_device_entry* entry)
 {
     mutex_lock(&udmabuf_device_list_sem);
-    list_del(&entry->list);
+    if (!list_empty(&entry->list))
+        list_del_init(&entry->list);
     mutex_unlock(&udmabuf_device_list_sem);
 #if (USE_DEV_PROPERTY == 0)
     if (entry->device_name != NULL)
@@ -3487,13 +3489,14 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
     mutex_unlock(&obj->sem);
  failed:
     if (entry != NULL) {
+        if (entry->parent) {
+            put_device(entry->parent);
+            entry->parent = NULL;
+        }
         udmabuf_device_list_delete_entry(entry);
     }
     if (obj   != NULL) {
         udmabuf_object_destroy(obj);
-    }
-    if (entry != NULL) {
-        put_device(parent);
     }
     return retval;
 }
