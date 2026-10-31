@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.10"
+#define DRIVER_VERSION     "5.6.2-alpha.11"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -2553,6 +2553,7 @@ static void udmabuf_object_put(struct udmabuf_object* this)
  * * struct udmabuf_device_entry          - udmabuf device entry structure.
  * * udmabuf_device_list                  - list of udmabuf device entry structure.
  * * udmabuf_device_list_sem              - semaphore of udmabuf device list.
+ * * udmabuf_device_list_lifecycle_lock   - serializes device lifecycle operations on udmabuf_device_list.
  * * udmabuf_device_list_create_entry()   - Create udmabuf device entry and add to list.
  * * udmabuf_device_list_delete_entry()   - Delete udmabuf device entry from list.
  * * udmabuf_device_list_remove_entry()   - Remove udmabuf device entry from list with remove functions.
@@ -2587,11 +2588,13 @@ struct udmabuf_device_entry {
 };
 
 /**
- * udmabuf_device_list        - list of udmabuf device entry structure.
- * udmabuf_device_list_sem    - semaphore of udmabuf device list.
+ * udmabuf_device_list                - list of udmabuf device entry structure.
+ * udmabuf_device_list_sem            - semaphore of udmabuf device list.
+ * udmabuf_device_list_lifecycle_lock - serializes device lifecycle operations on udmabuf_device_list.
  */
 static struct list_head udmabuf_device_list;
 static struct mutex     udmabuf_device_list_sem;
+static struct mutex     udmabuf_device_list_lifecycle_lock;
 
 /**
  * udmabuf_get_device_name_property()  - Get "device-name"  property from udmabuf device.
@@ -2955,10 +2958,12 @@ static void udmabuf_device_list_remove_entry(struct udmabuf_device_entry* entry)
 static void udmabuf_device_list_cleanup(void)
 {
     struct udmabuf_device_entry* entry;
+    mutex_lock(&udmabuf_device_list_lifecycle_lock);
     while(!list_empty(&udmabuf_device_list)) {
         entry = list_first_entry(&udmabuf_device_list, typeof(*(entry)), list);
         udmabuf_device_list_remove_entry(entry);
     }
+    mutex_unlock(&udmabuf_device_list_lifecycle_lock);
 }
 
 /**
@@ -3642,13 +3647,14 @@ static int udmabuf_static_device_create(udmabuf_static_device_param* param)
         }
     }        
 
+    mutex_lock(&udmabuf_device_list_lifecycle_lock);
     if (parent) {
         retval = udmabuf_child_device_create(name, id, size, option, parent);
         put_device(parent);
     } else {
         retval = udmabuf_platform_device_create(name, id, size, option);
     }
-
+    mutex_unlock(&udmabuf_device_list_lifecycle_lock);
     return retval;
 }
 
@@ -3896,16 +3902,21 @@ struct device* u_dma_buf_device_create(const char* name, int id, size_t size, u6
     int            result = 0;
     struct device* dev;
 
+    mutex_lock(&udmabuf_device_list_lifecycle_lock);
+
     if (parent) {
         result = udmabuf_child_device_create(name, id, size, option, parent);
     } else {
         result = udmabuf_platform_device_create(name, id, size, option);
     }
 
-    if (result)
-        return ERR_PTR(result);
+    if (result) {
+        dev = ERR_PTR(result);
+    } else {
+        dev = u_dma_buf_device_search(name, id);
+    }
 
-    dev = u_dma_buf_device_search(name, id);
+    mutex_unlock(&udmabuf_device_list_lifecycle_lock);
     return dev;
 }
 EXPORT_SYMBOL(u_dma_buf_device_create);
@@ -3919,12 +3930,20 @@ EXPORT_SYMBOL(u_dma_buf_device_create);
 #if (IN_KERNEL_FUNCTIONS == 1)
 int u_dma_buf_device_remove(struct device *dev)
 {
-    struct udmabuf_device_entry* entry = udmabuf_device_list_search(dev, NULL, -1);
-    if (entry == NULL)
-        return -EINVAL;
+    struct udmabuf_device_entry* entry;
+    int result = 0;
 
-    udmabuf_device_list_remove_entry(entry);
-    return 0;
+    mutex_lock(&udmabuf_device_list_lifecycle_lock);
+
+    entry = udmabuf_device_list_search(dev, NULL, -1);
+    if (entry == NULL) {
+        result = -EINVAL;
+    } else {
+        udmabuf_device_list_remove_entry(entry);
+        result = 0;
+    }
+    mutex_unlock(&udmabuf_device_list_lifecycle_lock);
+    return result;
 }
 EXPORT_SYMBOL(u_dma_buf_device_remove);
 #endif
@@ -3942,24 +3961,35 @@ int u_dma_buf_device_getmap(struct device *dev, size_t* size, void** virt_addr, 
 {
     struct udmabuf_device_entry* entry;
     struct udmabuf_object*       this;
+    int                          result = 0;
+
+    mutex_lock(&udmabuf_device_list_lifecycle_lock);
 
     entry = udmabuf_device_list_search(dev, NULL, -1);
-    if (entry == NULL)
-        return -EINVAL;
+    if (entry == NULL) {
+        result = -EINVAL;
+        goto done;
+    }
 
     this = dev_get_drvdata(entry->dev);
-    if (this == NULL)
-        return -ENODEV;
+    if (this == NULL) {
+        result = -ENODEV;
+        goto done;
+    }
 
-    if (!mutex_trylock(&this->sem))
-        return -EBUSY;
+    if (!mutex_trylock(&this->sem)) {
+        result = -EBUSY;
+        goto done;
+    }
 
     if (size      != NULL) {*size      = this->size     ;}
     if (virt_addr != NULL) {*virt_addr = this->virt_addr;}
     if (phys_addr != NULL) {*phys_addr = this->phys_addr;}
 
     mutex_unlock(&this->sem);
-    return 0;
+ done:
+    mutex_unlock(&udmabuf_device_list_lifecycle_lock);
+    return result;
 }
 EXPORT_SYMBOL(u_dma_buf_device_getmap);
 #endif
@@ -3980,16 +4010,24 @@ int u_dma_buf_device_sync(struct device *dev, int command, int direction, u64 of
     struct udmabuf_object*       this;
     int                          result = 0;
 
+    mutex_lock(&udmabuf_device_list_lifecycle_lock);
+
     entry = udmabuf_device_list_search(dev, NULL, -1);
-    if (entry == NULL)
-        return -EINVAL;
+    if (entry == NULL) {
+        result = -EINVAL;
+        goto done;
+    }
 
     this = dev_get_drvdata(entry->dev);
-    if (this == NULL)
-        return -ENODEV;
+    if (this == NULL) {
+        result = -ENODEV;
+        goto done;
+    }
 
-    if (!mutex_trylock(&this->sem))
-        return -EBUSY;
+    if (!mutex_trylock(&this->sem)) {
+        result = -EBUSY;
+        goto done;
+    }
 
     switch(direction) {
         case 0   : this->sync_direction = 0; break;
@@ -4018,6 +4056,8 @@ int u_dma_buf_device_sync(struct device *dev, int command, int direction, u64 of
     }
 
     mutex_unlock(&this->sem);
+ done:
+    mutex_unlock(&udmabuf_device_list_lifecycle_lock);
     return result;
 }
 EXPORT_SYMBOL(u_dma_buf_device_sync);
