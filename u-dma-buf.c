@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.11"
+#define DRIVER_VERSION     "5.6.2-alpha.12"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -299,8 +299,8 @@ struct udmabuf_object {
     struct cdev          cdev;
     dev_t                device_number;
     struct mutex         sem;
-    struct mutex         alive_lock;
-    bool                 alive;
+    struct mutex         status_lock;
+    int                  status;
     struct kref          refcount;
     size_t               size;
     size_t               alloc_size;
@@ -371,6 +371,13 @@ static inline bool udmabuf_range_valid(struct udmabuf_object* this, u64 offset, 
 {
     return RANGE_VALID(this->size, offset, size);
 }
+
+/**
+ * udmabuf_object status value
+ */
+#define UDMABUF_OBJECT_INITIAL  (0)
+#define UDMABUF_OBJECT_ALIVE    (1)
+#define UDMABUF_OBJECT_DEAD     (2)
 
 /**
  * sync_mode(synchronous mode) value
@@ -1121,12 +1128,12 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
     if (UDMABUF_EXPORT_DEBUG(this))
         dev_info(this->dma_dev, "%s(fd=%d) start.\n", __func__, entry_fd);
 
-    mutex_lock(&this->alive_lock);
+    mutex_lock(&this->status_lock);
     mutex_lock(&this->export_dma_buf_list_sem);
     if (!list_empty(&entry->list))
         list_del_init(&entry->list);
     mutex_unlock(&this->export_dma_buf_list_sem);
-    mutex_unlock(&this->alive_lock);
+    mutex_unlock(&this->status_lock);
     if (entry->name) {
         kfree(entry->name);
         entry->name = NULL;
@@ -1424,9 +1431,9 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
         goto failed;
     }
 
-    mutex_lock(&this->alive_lock);
-    if (this->alive == 0) {
-        mutex_unlock(&this->alive_lock);
+    mutex_lock(&this->status_lock);
+    if (this->status != UDMABUF_OBJECT_ALIVE) {
+        mutex_unlock(&this->status_lock);
         retval = -ENODEV;
         dev_err(this->dma_dev, "%s() udmabuf_object is not alive.\n", __func__);
         goto failed;
@@ -1434,7 +1441,7 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     mutex_lock(&this->export_dma_buf_list_sem);
     list_add_tail(&entry->list, &this->export_dma_buf_list);
     mutex_unlock(&this->export_dma_buf_list_sem);
-    mutex_unlock(&this->alive_lock);
+    mutex_unlock(&this->status_lock);
 
     if (UDMABUF_EXPORT_DEBUG(this)) {
         dev_info(this->dma_dev, "force_sync     = %d\n", entry->force_sync);
@@ -2161,8 +2168,8 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
         mutex_lock(&this->sem);
         done |= DONE_SEM_LOCK;
 
-        mutex_init(&this->alive_lock);
-        this->alive = false;
+        mutex_init(&this->status_lock);
+        this->status = UDMABUF_OBJECT_INITIAL;
         kref_init(&this->refcount);
     }
     /*
@@ -2346,9 +2353,9 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
             return retval;
         }
     }
-    mutex_lock(&this->alive_lock);
-    this->alive = true;
-    mutex_unlock(&this->alive_lock);
+    mutex_lock(&this->status_lock);
+    this->status = UDMABUF_OBJECT_ALIVE;
+    mutex_unlock(&this->status_lock);
     return 0;
 }
 
@@ -2480,16 +2487,16 @@ static void udmabuf_object_release(struct kref* ref)
 static int udmabuf_object_destroy(struct udmabuf_object* this)
 {
     int retval = 0;
-    bool cdev_alive;
+    int curr_status;
 
     if (!this)
         return -ENODEV;
 
-    mutex_lock(&this->alive_lock);
-    cdev_alive  = this->alive;
-    this->alive = false;
+    mutex_lock(&this->status_lock);
+    curr_status  = this->status;
+    this->status = UDMABUF_OBJECT_DEAD;
 #if (USE_DMA_BUF_EXPORT == 1)
-    {
+    if (curr_status != UDMABUF_OBJECT_DEAD) {
         bool empty;
         mutex_lock(&this->export_dma_buf_list_sem);
         empty = list_empty(&this->export_dma_buf_list);
@@ -2500,10 +2507,14 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
         }
     }
 #endif
-    mutex_unlock(&this->alive_lock);
+    mutex_unlock(&this->status_lock);
     
-    if (cdev_alive)
+    if (curr_status == UDMABUF_OBJECT_DEAD)
+        return retval;
+    
+    if (curr_status == UDMABUF_OBJECT_ALIVE)
         cdev_del(&this->cdev);
+
     device_destroy(udmabuf_sys_class, this->device_number);
     ida_simple_remove(&udmabuf_device_ida, MINOR(this->device_number));
 
@@ -2516,7 +2527,7 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
  * @this: Pointer to the udmabuf object.
  *
  * Increment the object's reference count if the object is alive.
- * The object's alive state is checked under alive_lock to prevent
+ * The object's state is checked under status_lock to prevent
  * acquiring a reference after the object has been marked as not alive.
  *
  * Return: 0 on success, or -ENODEV if the object is not alive.
@@ -2524,12 +2535,12 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
 static int  udmabuf_object_get(struct udmabuf_object* this)
 {
     int retval = 0;
-    mutex_lock(&this->alive_lock);
-    if (this->alive)
+    mutex_lock(&this->status_lock);
+    if (this->status == UDMABUF_OBJECT_ALIVE)
         kref_get(&this->refcount);
     else
         retval = -ENODEV;
-    mutex_unlock(&this->alive_lock);
+    mutex_unlock(&this->status_lock);
     return retval;
 }
 
