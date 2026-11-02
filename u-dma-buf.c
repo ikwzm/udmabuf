@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.15"
+#define DRIVER_VERSION     "5.6.2-alpha.16"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -3199,11 +3199,9 @@ static int udmabuf_platform_device_probe(struct device *dev)
      * udmabuf_object_create()
      */
     obj = udmabuf_object_create(device_name, dev, minor_number);
-    if (IS_ERR_OR_NULL(obj)) {
-        retval = PTR_ERR(obj);
-        dev_err(dev, "object create failed. return=%d\n", retval);
-        obj = NULL;
-        retval = (retval == 0) ? -EINVAL : retval;
+    if (obj == NULL) {
+        dev_err(dev, "object create failed.\n");
+        retval = -EINVAL;
         goto failed;
     }
     /*
@@ -3456,11 +3454,9 @@ static struct device* udmabuf_child_device_create(const char* name, int id, unsi
      * udmabuf_object_create()
      */
     obj = udmabuf_object_create(device_name, parent, id);
-    if (IS_ERR_OR_NULL(obj)) {
-        retval = PTR_ERR(obj);
-        pr_err(DRIVER_NAME ": object create failed. return=%d\n", retval);
-        obj = NULL;
-        retval = (retval == 0) ? -EINVAL : retval;
+    if (obj == NULL) {
+        pr_err(DRIVER_NAME ": object create failed.\n");
+        retval = -EINVAL;
         goto failed;
     }
     /*
