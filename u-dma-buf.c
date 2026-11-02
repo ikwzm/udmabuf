@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.14"
+#define DRIVER_VERSION     "5.6.2-alpha.15"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -3169,9 +3169,9 @@ static int udmabuf_platform_device_probe(struct device *dev)
         retval = -ENODEV;
         goto failed;
     }
-    if (size <= 0) {
-        dev_err(dev, "invalid size, size=%zu\n", size);
-        retval = -ENODEV;
+    if ((u64_value > SIZE_MAX) || (u64_value == 0)) {
+        dev_err(dev, "invalid size property value=%llu\n", (unsigned long long)u64_value);
+        retval = -EINVAL;
         goto failed;
     }
     /*
@@ -3224,7 +3224,8 @@ static int udmabuf_platform_device_probe(struct device *dev)
      */
     if (of_property_read_u32(dev->of_node, "dma-mask", &u32_value) == 0) {
         if ((u32_value > 64) || (u32_value < 12)) {
-            dev_err(dev, "invalid dma-mask property value=%d\n", u32_value);
+            dev_err(dev, "invalid dma-mask property value=%u\n", u32_value);
+            retval = -EINVAL;
             goto failed_with_unlock;
         }
         retval = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(u32_value));
@@ -3319,7 +3320,8 @@ static int udmabuf_platform_device_probe(struct device *dev)
      */
     if (of_property_read_u32(dev->of_node, "sync-mode", &u32_value) == 0) {
         if ((u32_value < SYNC_MODE_MIN) || (u32_value > SYNC_MODE_MAX)) {
-            dev_err(dev, "invalid sync-mode property value=%d\n", u32_value);
+            dev_err(dev, "invalid sync-mode property value=%u\n", u32_value);
+            retval = -EINVAL;
             goto failed_with_unlock;
         }
         obj->sync_mode &= ~SYNC_MODE_MASK;
@@ -3336,7 +3338,8 @@ static int udmabuf_platform_device_probe(struct device *dev)
      */
     if (of_property_read_u32(dev->of_node, "sync-direction", &u32_value) == 0) {
         if (u32_value > 2) {
-            dev_err(dev, "invalid sync-direction property value=%d\n", u32_value);
+            dev_err(dev, "invalid sync-direction property value=%u\n", u32_value);
+            retval = -EINVAL;
             goto failed_with_unlock;
         }
         obj->sync_direction = (int)u32_value;
@@ -3347,6 +3350,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
     if (of_property_read_ulong(dev->of_node, "sync-offset", &u64_value) == 0) {
         if (u64_value >= obj->size) {
             dev_err(dev, "invalid sync-offset property value=%llu\n", (unsigned long long)u64_value);
+            retval = -EINVAL;
             goto failed_with_unlock;
         }
         obj->sync_offset = u64_value;
@@ -3358,6 +3362,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
         if ((u64_value > SIZE_MAX) ||
             !udmabuf_range_valid(obj, obj->sync_offset, u64_value)) {
             dev_err(dev, "invalid sync-size property value=%llu\n", (unsigned long long)u64_value);
+            retval = -EINVAL;
             goto failed_with_unlock;
         }
         obj->sync_size = (size_t)u64_value;
