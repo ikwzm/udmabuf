@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.13"
+#define DRIVER_VERSION     "5.6.2-alpha.14"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -2831,15 +2831,17 @@ static struct udmabuf_device_entry* udmabuf_device_list_search(struct device *de
  */
 static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct device *dev, struct device *parent, const char* name, int id, unsigned int size, u64 option, void (*prep_remove)(struct device*), void (*post_remove)(struct device*))
 {                              
-    struct udmabuf_device_entry* exist_entry;
     struct udmabuf_device_entry* entry  = NULL;
     int                          retval = 0;
 
-    exist_entry = udmabuf_device_list_search(NULL, name, id);
-    if (!IS_ERR_OR_NULL(exist_entry)) {
-        pr_err(DRIVER_NAME ": device name(%s) or id(%d) is already exists\n", (name)?name:"NULL", id);
-        retval = -EINVAL;
-        goto failed;
+    if ((name != NULL) || (id >= 0)) {
+        struct udmabuf_device_entry* exist_entry;
+        exist_entry = udmabuf_device_list_search(NULL, name, id);
+        if (!IS_ERR_OR_NULL(exist_entry)) {
+            pr_err(DRIVER_NAME ": device name(%s) or id(%d) is already exists\n", (name)?name:"NULL", id);
+            retval = -EINVAL;
+            goto failed;
+        }
     }
 
     entry = kzalloc(sizeof(*entry), GFP_KERNEL);
@@ -3018,9 +3020,9 @@ static void udmabuf_platform_device_put(struct device* dev)
  * @id:         device id or negative integer.
  * @size:       buffer size.
  * @option:     option.
- * Return:      Success(=0) or error status(<0).
+ * Return:      pointer to struct device* dev(>=0) or error status(<0).
  */
-static int udmabuf_platform_device_create(const char* name, int id, unsigned int size, u64 option)
+static struct device* udmabuf_platform_device_create(const char* name, int id, unsigned int size, u64 option)
 {
     struct platform_device*      pdev   = NULL;
     struct udmabuf_device_entry* entry  = NULL;
@@ -3028,7 +3030,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
     u64                          dma_mask_size = udmabuf_get_option_dma_mask_size(option);
 
     if (size == 0)
-        return -EINVAL;
+        return ERR_PTR(-EINVAL);
 
     pdev = platform_device_alloc(DRIVER_NAME, id);
     if (IS_ERR_OR_NULL(pdev)) {
@@ -3080,7 +3082,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
         goto failed;
     }
     
-    return 0;
+    return &pdev->dev;
 
  failed:
     if (entry != NULL) {
@@ -3089,7 +3091,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
     if (pdev  != NULL) {
         platform_device_put(pdev);
     }
-    return retval;
+    return ERR_PTR(retval);
 }
 
 /**
@@ -3424,9 +3426,9 @@ static void udmabuf_child_device_delete(struct device* dev)
  * @size:       buffer size.
  * @option      option.
  * @parent:     parent device.
- * Return:      Success(=0) or error status(<0).
+ * Return:      pointer to struct device* dev(>=0) or error status(<0).
  */
-static int udmabuf_child_device_create(const char* name, int id, unsigned int size, u64 option, struct device* parent)
+static struct device* udmabuf_child_device_create(const char* name, int id, unsigned int size, u64 option, struct device* parent)
 {
     const char*                  device_name = NULL;
     struct udmabuf_object*       obj         = NULL;
@@ -3436,7 +3438,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
     pr_debug(DRIVER_NAME ": child device create start.\n");
 
     if (size == 0)
-        return -EINVAL;
+        return ERR_PTR(-EINVAL);
 
     /*
      * device-name property
@@ -3501,7 +3503,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
     if (info_enable) {
         pr_info(DRIVER_NAME " %s: installed.\n", dev_name(obj->sys_dev));
     }
-    return 0;
+    return obj->sys_dev;
 
  failed_with_unlock:
     mutex_unlock(&obj->sem);
@@ -3516,7 +3518,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
     if (obj   != NULL) {
         udmabuf_object_destroy(obj);
     }
-    return retval;
+    return ERR_PTR(retval);
 }
 
 /**
@@ -3642,6 +3644,7 @@ static int udmabuf_static_device_create(udmabuf_static_device_param* param)
     unsigned int   size    = param->size;
     char*          bind_id = (param->bind_id) ? param->bind_id : bind;
     u64            option  = 0;
+    struct device* dev     = NULL;
     struct device* parent  = NULL;
     
     if (bind_id != NULL) {
@@ -3662,13 +3665,17 @@ static int udmabuf_static_device_create(udmabuf_static_device_param* param)
 
     mutex_lock(&udmabuf_device_list_lifecycle_lock);
     if (parent) {
-        retval = udmabuf_child_device_create(name, id, size, option, parent);
+        dev = udmabuf_child_device_create(name, id, size, option, parent);
         put_device(parent);
     } else {
-        retval = udmabuf_platform_device_create(name, id, size, option);
+        dev = udmabuf_platform_device_create(name, id, size, option);
     }
     mutex_unlock(&udmabuf_device_list_lifecycle_lock);
-    return retval;
+    if (IS_ERR_OR_NULL(dev)) {
+        retval = (dev == NULL)? -EINVAL : PTR_ERR(dev);
+        return retval;
+    }
+    return 0;
 }
 
 #define DEFINE_UDMABUF_STATIC_DEVICE_PARAM(__num)                          \
@@ -3912,23 +3919,14 @@ EXPORT_SYMBOL(u_dma_buf_device_search);
 #if (IN_KERNEL_FUNCTIONS == 1)
 struct device* u_dma_buf_device_create(const char* name, int id, size_t size, u64 option, struct device* parent)
 {
-    int            result = 0;
     struct device* dev;
 
     mutex_lock(&udmabuf_device_list_lifecycle_lock);
-
     if (parent) {
-        result = udmabuf_child_device_create(name, id, size, option, parent);
+        dev = udmabuf_child_device_create(name, id, size, option, parent);
     } else {
-        result = udmabuf_platform_device_create(name, id, size, option);
+        dev = udmabuf_platform_device_create(name, id, size, option);
     }
-
-    if (result) {
-        dev = ERR_PTR(result);
-    } else {
-        dev = u_dma_buf_device_search(name, id);
-    }
-
     mutex_unlock(&udmabuf_device_list_lifecycle_lock);
     return dev;
 }
