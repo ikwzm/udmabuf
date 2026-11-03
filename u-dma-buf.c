@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.16"
+#define DRIVER_VERSION     "5.6.2-alpha.17"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -3034,7 +3034,7 @@ static struct device* udmabuf_platform_device_create(const char* name, int id, u
 
     pdev = platform_device_alloc(DRIVER_NAME, id);
     if (IS_ERR_OR_NULL(pdev)) {
-        retval = PTR_ERR(pdev);
+        retval = (pdev == NULL) ? -ENOMEM : PTR_ERR(pdev);
         pdev   = NULL;
         pr_err(DRIVER_NAME ": platform_device_alloc(%s,%d) failed. return=%d\n", DRIVER_NAME, id, retval);
         goto failed;
