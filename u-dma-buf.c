@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.1"
+#define DRIVER_VERSION     "5.6.2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -299,7 +299,9 @@ struct udmabuf_object {
     struct cdev          cdev;
     dev_t                device_number;
     struct mutex         sem;
-    bool                 is_open;
+    struct mutex         status_lock;
+    int                  status;
+    struct kref          refcount;
     size_t               size;
     size_t               alloc_size;
     void*                virt_addr;
@@ -323,7 +325,7 @@ struct udmabuf_object {
     struct mutex         export_dma_buf_list_sem;
 #endif
 #if (USE_OF_RESERVED_MEM == 1)
-    bool                 of_reserved_mem;
+    struct device*       of_reserved_mem_dev;
 #endif
 #if ((UDMABUF_DEBUG == 1) && (USE_QUIRK_MMAP == 1))
     int                  debug_vma;
@@ -344,6 +346,9 @@ struct udmabuf_object {
 #else
 #define UDMABUF_EXPORT_DEBUG(this) (0)
 #endif
+
+static int  udmabuf_object_get(struct udmabuf_object* this);
+static void udmabuf_object_put(struct udmabuf_object* this);
 
 /**
  * RANGE_VALID() - check whether the specified range is within limit
@@ -366,6 +371,13 @@ static inline bool udmabuf_range_valid(struct udmabuf_object* this, u64 offset, 
 {
     return RANGE_VALID(this->size, offset, size);
 }
+
+/**
+ * udmabuf_object status value
+ */
+#define UDMABUF_OBJECT_INITIAL  (0)
+#define UDMABUF_OBJECT_ALIVE    (1)
+#define UDMABUF_OBJECT_DEAD     (2)
 
 /**
  * sync_mode(synchronous mode) value
@@ -716,9 +728,6 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
     if (!RANGE_VALID((this->alloc_size >> PAGE_SHIFT), vmf->pgoff, 1))
         return VM_FAULT_SIGBUS;
 
-    if (!pfn_valid(page_frame_num))
-        return VM_FAULT_SIGBUS;
-
 #if (USE_QUIRK_MMAP_PAGE == 1)
     if (this->pages != NULL) {
         if (vmf->pgoff >= this->pagecount)
@@ -727,6 +736,9 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
     }
 #endif
     
+    if (!pfn_valid(page_frame_num))
+        return VM_FAULT_SIGBUS;
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))
     return vmf_insert_pfn(vma, virt_addr, page_frame_num);
 #else
@@ -973,6 +985,7 @@ struct udmabuf_export_entry {
     bool                   force_sync;  
     u64                    offset;
     size_t                 size;
+    char*                  name;
     struct list_head       list;
 };
 
@@ -1020,32 +1033,32 @@ static struct sg_table *udmabuf_export_dma_buf_map(struct dma_buf_attachment* at
     this = &entry->object_data;
 
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
+        dev_info(this->dma_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
     sg_table = kzalloc(sizeof(*sg_table), GFP_KERNEL);
     if (sg_table == NULL) {
         retval   = -ENOMEM;
-        dev_err( this->sys_dev, "%s(fd=%d): kzalloc() failed.\n", __func__, entry->fd);
+        dev_err( this->dma_dev, "%s(fd=%d): kzalloc() failed.\n", __func__, entry->fd);
         goto failed;
     }
     done |= DONE_ALLOC_SG_TABLE;
 
     retval = dma_get_sgtable(this->dma_dev, sg_table, this->virt_addr, this->phys_addr, this->alloc_size);
     if (retval) {
-        dev_err( this->sys_dev, "%s(fd=%d): dma_get_sgtable() failed. return=%d\n", __func__, entry->fd, retval);
+        dev_err( this->dma_dev, "%s(fd=%d): dma_get_sgtable() failed. return=%d\n", __func__, entry->fd, retval);
         goto failed;
     }
     done |= DONE_GET_SG_TABLE;
 
     retval = dma_map_sgtable(attachment->dev, sg_table, direction, 0);
     if (retval) {
-        dev_err( this->sys_dev, "%s(fd=%d): dma_map_sgtable() failed. return=%d\n", __func__, entry->fd, retval);
+        dev_err( this->dma_dev, "%s(fd=%d): dma_map_sgtable() failed. return=%d\n", __func__, entry->fd, retval);
         goto failed;
     }
     done |= DONE_MAP_SG_TABLE;
 
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
+        dev_info(this->dma_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
 
     return sg_table;
 
@@ -1054,7 +1067,7 @@ static struct sg_table *udmabuf_export_dma_buf_map(struct dma_buf_attachment* at
     if (done & DONE_GET_SG_TABLE  ) {sg_free_table(sg_table);};
     if (done & DONE_ALLOC_SG_TABLE) {kfree(sg_table);}
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) failed. return=%d\n", __func__, entry->fd, retval);
+        dev_info(this->dma_dev, "%s(fd=%d) failed. return=%d\n", __func__, entry->fd, retval);
     return ERR_PTR(retval);
 }
 
@@ -1081,7 +1094,7 @@ static void udmabuf_export_dma_buf_unmap(struct dma_buf_attachment* attachment,
     this = &entry->object_data;
 
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
+        dev_info(this->dma_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
     if (sg_table == NULL)
         goto done;
@@ -1091,7 +1104,7 @@ static void udmabuf_export_dma_buf_unmap(struct dma_buf_attachment* attachment,
     kfree(sg_table);
  done:
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
+        dev_info(this->dma_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
 }
 
 /**
@@ -1102,21 +1115,32 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
 {
     struct udmabuf_export_entry* entry = dma_buf->priv; 
     struct udmabuf_object*       this;
+    int                          entry_fd;
 
     if (entry == NULL)
         return;
 
     if ((this = entry->object) == NULL)
         return;
-    
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
-    mutex_lock(&this->export_dma_buf_list_sem);
-    list_del(&entry->list);
+    entry_fd = entry->fd;
+
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
+        dev_info(this->dma_dev, "%s(fd=%d) start.\n", __func__, entry_fd);
+
+    mutex_lock(&this->status_lock);
+    mutex_lock(&this->export_dma_buf_list_sem);
+    if (!list_empty(&entry->list))
+        list_del_init(&entry->list);
     mutex_unlock(&this->export_dma_buf_list_sem);
+    mutex_unlock(&this->status_lock);
+    if (entry->name) {
+        kfree(entry->name);
+        entry->name = NULL;
+    }
+    if (UDMABUF_EXPORT_DEBUG(this))
+        dev_info(this->dma_dev, "%s(fd=%d) done.\n", __func__, entry_fd);
+    udmabuf_object_put(this);
     kfree(entry);
 }
 
@@ -1138,21 +1162,21 @@ static int udmabuf_export_mmap(struct dma_buf* dma_buf, struct vm_area_struct* v
     this = &entry->object_data;
     
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
+        dev_info(this->dma_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
     retval = udmabuf_object_mmap(this, vma, entry->force_sync);
     if (retval) {
-        dev_err( this->sys_dev, "%s(fd=%d): udmabuf_object_mmap() failed return=%d\n", __func__, entry->fd, retval);
+        dev_err( this->dma_dev, "%s(fd=%d): udmabuf_object_mmap() failed return=%d\n", __func__, entry->fd, retval);
         goto failed;
     }
 
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
+        dev_info(this->dma_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
     return 0;
 
  failed:
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) failed. return=%d\n", __func__, entry->fd, retval);
+        dev_info(this->dma_dev, "%s(fd=%d) failed. return=%d\n", __func__, entry->fd, retval);
     return retval;
 }
 
@@ -1174,12 +1198,12 @@ static int udmabuf_export_begin_cpu(struct dma_buf* dma_buf, enum dma_data_direc
     this = &entry->object_data;
     
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
+        dev_info(this->dma_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
     dma_sync_single_for_cpu(this->dma_dev, this->phys_addr, this->alloc_size, direction);
 
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
+        dev_info(this->dma_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
 
     return 0;
 }
@@ -1202,12 +1226,12 @@ static int udmabuf_export_end_cpu(struct dma_buf* dma_buf, enum dma_data_directi
     this = &entry->object_data;
     
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
+        dev_info(this->dma_dev, "%s(fd=%d) start.\n", __func__, entry->fd);
 
     dma_sync_single_for_device(this->dma_dev, this->phys_addr, this->alloc_size, direction);
 
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
+        dev_info(this->dma_dev, "%s(fd=%d) done.\n", __func__, entry->fd);
 
     return 0;
 }
@@ -1261,10 +1285,15 @@ static void udmabuf_export_destroy_entry(struct udmabuf_export_entry* entry)
             put_unused_fd(entry->fd);
             entry->fd = -1;
         }
-        if (entry->dma_buf != NULL)
+        if (entry->dma_buf != NULL) {
             dma_buf_put(entry->dma_buf);
-        else
+        } else {
+            if (entry->object != NULL)
+                udmabuf_object_put(entry->object);
+            if (entry->name != NULL)
+                kfree(entry->name);
             kfree(entry);
+        }
     }
 }
     
@@ -1295,32 +1324,32 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     unsigned long                dmabuf_fd_flags;
 
     if (UDMABUF_EXPORT_DEBUG(this)) {
-        dev_info(this->sys_dev, "%s() start.\n", __func__);
-        dev_info(this->sys_dev, "offset         = 0x%llx\n" , offset);
-        dev_info(this->sys_dev, "size           = %zu\n"    , size);
-        dev_info(this->sys_dev, "fd_flags       = 0x%08lx\n", fd_flags);
+        dev_info(this->dma_dev, "%s() start.\n", __func__);
+        dev_info(this->dma_dev, "offset         = 0x%llx\n" , offset);
+        dev_info(this->dma_dev, "size           = %zu\n"    , size);
+        dev_info(this->dma_dev, "fd_flags       = 0x%08lx\n", fd_flags);
     }
 
     if ((offset & (PAGE_SIZE-1)) != 0) {
-        dev_err(this->sys_dev, "%s() offset is not page allignment\n", __func__);
+        dev_err(this->dma_dev, "%s() offset is not page allignment\n", __func__);
         retval = -EINVAL;
         goto failed;
     }
 
     if ((size & (PAGE_SIZE-1)) != 0) {
-        dev_err(this->sys_dev, "%s() size is not page allignment\n", __func__);
+        dev_err(this->dma_dev, "%s() size is not page allignment\n", __func__);
         retval = -EINVAL;
         goto failed;
     }
 
     if (!udmabuf_range_valid(this, offset, size)) {
-        dev_err(this->sys_dev, "%s() offset + size is over buffer size\n", __func__);
+        dev_err(this->dma_dev, "%s() offset + size is over buffer size\n", __func__);
         retval = -EINVAL;
         goto failed;
     }
 
     if ((fd_flags & ~(O_CLOEXEC | O_SYNC | O_ACCMODE)) != 0) {
-        dev_err(this->sys_dev, "%s() invalid fd_flags\n", __func__);
+        dev_err(this->dma_dev, "%s() invalid fd_flags\n", __func__);
         retval = -EINVAL;
         goto failed;
     }
@@ -1331,13 +1360,27 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     entry = kzalloc(sizeof(*entry), GFP_KERNEL);
     if (entry == NULL) {
         retval = -ENOMEM;
-        dev_err(this->sys_dev, "%s() kzalloc() failed.\n", __func__);
+        dev_err(this->dma_dev, "%s() kzalloc() failed.\n", __func__);
         goto failed;
     }
     entry->object = this;
     entry->offset = offset;
     entry->size   = size;
     entry->fd     = -1;
+    INIT_LIST_HEAD(&entry->list);
+
+    retval = udmabuf_object_get(entry->object);
+    if (retval != 0) {
+        dev_err(this->dma_dev, "%s() udmabuf_object_get() failed. return=%d\n", __func__, retval);
+        entry->object = NULL;
+        goto failed;
+    }
+    entry->name = kstrdup(dev_name(entry->object->sys_dev), GFP_KERNEL);
+    if (entry->name == NULL) {
+        retval = -ENOMEM;
+        dev_err(this->dma_dev, "%s() kstrdup() failed.\n", __func__);
+        goto failed;
+    }
 
     entry->object_data.sys_dev         = this->sys_dev;
     entry->object_data.dma_dev         = this->dma_dev;
@@ -1370,40 +1413,48 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     export_info.size     = size;
     export_info.priv     = (void*)entry;
     export_info.flags    = export_fd_flags;
-    export_info.exp_name = dev_name(this->sys_dev);
+    export_info.exp_name = entry->name;
 
     entry->dma_buf = dma_buf_export(&export_info);
     if (IS_ERR(entry->dma_buf)) {
         retval = PTR_ERR(entry->dma_buf);
         entry->dma_buf = NULL;
-        dev_err(this->sys_dev, "%s(): dma_buf_export() failed. return=%d\n", __func__, retval);
+        dev_err(this->dma_dev, "%s(): dma_buf_export() failed. return=%d\n", __func__, retval);
         goto failed;
     }
-
-    mutex_lock(&this->export_dma_buf_list_sem);
-    list_add_tail(&entry->list, &this->export_dma_buf_list);
-    mutex_unlock(&this->export_dma_buf_list_sem);
 
     entry->fd = get_unused_fd_flags(dmabuf_fd_flags);
     if (entry->fd < 0) {
         retval = entry->fd;
-        dev_err(this->sys_dev, "%s(): get_unused_fd_flags() failed. return=%d\n", __func__, retval);
+        dev_err(this->dma_dev, "%s(): get_unused_fd_flags() failed. return=%d\n", __func__, retval);
         entry->fd = -1;
         goto failed;
     }
 
+    mutex_lock(&this->status_lock);
+    if (this->status != UDMABUF_OBJECT_ALIVE) {
+        mutex_unlock(&this->status_lock);
+        retval = -ENODEV;
+        dev_err(this->dma_dev, "%s() udmabuf_object is not alive.\n", __func__);
+        goto failed;
+    }
+    mutex_lock(&this->export_dma_buf_list_sem);
+    list_add_tail(&entry->list, &this->export_dma_buf_list);
+    mutex_unlock(&this->export_dma_buf_list_sem);
+    mutex_unlock(&this->status_lock);
+
     if (UDMABUF_EXPORT_DEBUG(this)) {
-        dev_info(this->sys_dev, "force_sync     = %d\n", entry->force_sync);
-        dev_info(this->sys_dev, "export_fd      = %d\n", entry->fd);
-        dev_info(this->sys_dev, "%s() done.\n", __func__);
+        dev_info(this->dma_dev, "force_sync     = %d\n", entry->force_sync);
+        dev_info(this->dma_dev, "export_fd      = %d\n", entry->fd);
+        dev_info(this->dma_dev, "%s() done.\n", __func__);
     }
 
     return entry;
 
  failed:
-    udmabuf_export_destroy_entry(entry);
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->sys_dev, "%s() failed. return=%d\n", __func__, retval);
+        dev_info(this->dma_dev, "%s() failed. return=%d\n", __func__, retval);
+    udmabuf_export_destroy_entry(entry);
     return ERR_PTR(retval);
 }
 
@@ -1460,9 +1511,10 @@ static int udmabuf_device_file_open(struct inode *inode, struct file *file)
     int status = 0;
 
     this = container_of(inode->i_cdev, struct udmabuf_object, cdev);
-    file->private_data = this;
-    this->is_open = 1;
-
+    status = udmabuf_object_get(this);
+    if (status == 0) {
+        file->private_data = this;
+    }
     return status;
 }
 
@@ -1476,7 +1528,7 @@ static int udmabuf_device_file_release(struct inode *inode, struct file *file)
 {
     struct udmabuf_object* this = file->private_data;
 
-    this->is_open = 0;
+    udmabuf_object_put(this);
 
     return 0;
 }
@@ -2042,6 +2094,8 @@ static const struct file_operations udmabuf_device_file_ops = {
  * * udmabuf_object_setup()     - Setup the udmabuf object.
  * * udmabuf_object_info()      - Print infomation the udmabuf object.
  * * udmabuf_object_destroy()   - Destroy the udmabuf object.
+ * * udmabuf_object_get()       - Get a reference to a live udmabuf object.
+ * * udmabuf_object_put()       - Release a reference to a udmabuf object.
  */
 static DEFINE_IDA(udmabuf_device_ida);
 static dev_t      udmabuf_device_number = 0;
@@ -2056,13 +2110,17 @@ static dev_t      udmabuf_device_number = 0;
  * @parent:     parent device or NULL.
  * @minor:      minor_number  or -1 or -2.
  * Return:      Pointer to the udmabuf object or NULL.
+ *
+ * Note: On success, this function returns with this->sem locked.
+ * The caller must unlock it after udmabuf_object_setup() completes,
+ * regardless of whether setup succeeds or fails.
  */
 static struct udmabuf_object* udmabuf_object_create(const char* name, struct device* parent, int minor)
 {
     struct udmabuf_object* this     = NULL;
     unsigned int           done     = 0;
     const unsigned int     DONE_ALLOC_MINOR   = (1 << 0);
-    const unsigned int     DONE_CHRDEV_ADD    = (1 << 1);
+    const unsigned int     DONE_SEM_LOCK      = (1 << 2);
     const unsigned int     DONE_DEVICE_CREATE = (1 << 3);
     const unsigned int     DONE_SET_DMA_DEV   = (1 << 4);
     /*
@@ -2102,6 +2160,19 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
         this->device_number = MKDEV(MAJOR(udmabuf_device_number), minor);
     }
     /*
+     * Lock this->sem before registering the device with device_create()
+     * to prevent sysfs attribute access during initialization.
+     */
+    {
+        mutex_init(&this->sem);
+        mutex_lock(&this->sem);
+        done |= DONE_SEM_LOCK;
+
+        mutex_init(&this->status_lock);
+        this->status = UDMABUF_OBJECT_INITIAL;
+        kref_init(&this->refcount);
+    }
+    /*
      * register /sys/class/u-dma-buf/<name>
      */
     {
@@ -2125,19 +2196,6 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
             goto failed;
         }
         done |= DONE_DEVICE_CREATE;
-    }
-    /*
-     * add chrdev.
-     */
-    {
-        int retval;
-        cdev_init(&this->cdev, &udmabuf_device_file_ops);
-        this->cdev.owner = THIS_MODULE;
-        if ((retval = cdev_add(&this->cdev, this->device_number, 1)) != 0) {
-            dev_err(this->sys_dev, "cdev_add() failed. return=%d\n", retval);
-            goto failed;
-        }
-        done |= DONE_CHRDEV_ADD;
     }
     /*
      * set dma_dev
@@ -2185,7 +2243,7 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
     }
 #if (USE_OF_RESERVED_MEM == 1)
     {
-        this->of_reserved_mem = 0;
+        this->of_reserved_mem_dev = NULL;
     }
 #endif
 #if (USE_QUIRK_MMAP == 1)
@@ -2213,14 +2271,13 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
         this->debug_export    = 0;
     }
 #endif
-    mutex_init(&this->sem);
 
     return this;
 
  failed:
     if (done & DONE_SET_DMA_DEV  ) { put_device(this->dma_dev);}
-    if (done & DONE_CHRDEV_ADD   ) { cdev_del(&this->cdev); }
     if (done & DONE_DEVICE_CREATE) { device_destroy(udmabuf_sys_class, this->device_number);}
+    if (done & DONE_SEM_LOCK     ) { mutex_unlock(&this->sem);}
     if (done & DONE_ALLOC_MINOR  ) { ida_simple_remove(&udmabuf_device_ida, minor);}
     if (this != NULL)              { kfree(this); }
     return NULL;
@@ -2238,6 +2295,8 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
     /*
      * setup buffer size and allocation size
      */
+    if (this->size > SIZE_MAX - (PAGE_SIZE - 1))
+        return -EOVERFLOW;
     this->alloc_size = ((this->size + (((size_t)1 << PAGE_SHIFT) - 1)) >> PAGE_SHIFT) << PAGE_SHIFT;
     /*
      * dma buffer allocation 
@@ -2285,6 +2344,18 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
         ;
     }
 #endif
+    {
+        int retval;
+        cdev_init(&this->cdev, &udmabuf_device_file_ops);
+        this->cdev.owner = THIS_MODULE;
+        if ((retval = cdev_add(&this->cdev, this->device_number, 1)) != 0) {
+            dev_err(this->sys_dev, "cdev_add() failed. return=%d\n", retval);
+            return retval;
+        }
+    }
+    mutex_lock(&this->status_lock);
+    this->status = UDMABUF_OBJECT_ALIVE;
+    mutex_unlock(&this->status_lock);
     return 0;
 }
 
@@ -2366,30 +2437,22 @@ static void udmabuf_object_info(struct udmabuf_object* this)
 }
 
 /**
- * udmabuf_object_destroy() -  Destroy the udmabuf object.
- * @this:       Pointer to the udmabuf object.
- * Return:      Success(=0) or error status(<0).
+ * udmabuf_object_release() - Release a udmabuf object.
+ * @ref: Pointer to the object's reference counter.
  *
- * Unregister the device after releasing the resources.
+ * Free the resources associated with the udmabuf object, including the
+ * page array, DMA buffer, and reserved-memory resources, if applicable.
+ * Release the reference to the DMA device and free the object itself.
+ *
+ * This function is called when the object's reference count reaches zero.
  */
-static int udmabuf_object_destroy(struct udmabuf_object* this)
+static void udmabuf_object_release(struct kref* ref)
 {
-    if (!this)
-        return -ENODEV;
-
-#if (USE_DMA_BUF_EXPORT == 1)
-    {
-        bool empty;
-        mutex_lock(&this->export_dma_buf_list_sem);
-        empty = list_empty(&this->export_dma_buf_list);
-        mutex_unlock(&this->export_dma_buf_list_sem);
-        if (empty == false) {
-            dev_err(this->sys_dev, "exported dma-buf is currently busy.\n");
-            return -EBUSY;
-        }
-    }
-#endif
+    struct udmabuf_object* this = container_of(ref, struct udmabuf_object, refcount);
     
+    if (DMA_INFO_ENABLE) {
+        pr_info(DRIVER_NAME " %s: device release.\n", dev_name(this->dma_dev));
+    }
 #if ((USE_QUIRK_MMAP == 1) && USE_QUIRK_MMAP_PAGE == 1)
     if (this->pages != NULL) {
         kfree(this->pages);
@@ -2401,12 +2464,96 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
         dma_free_coherent(this->dma_dev, this->alloc_size, this->virt_addr, this->phys_addr);
         this->virt_addr = NULL;
     }
+#if (USE_OF_RESERVED_MEM == 1)
+    if (this->of_reserved_mem_dev != NULL) {
+        of_reserved_mem_device_release(this->of_reserved_mem_dev);
+        put_device(this->of_reserved_mem_dev);
+        this->of_reserved_mem_dev = NULL;
+    }
+#endif
     put_device(this->dma_dev);
-    cdev_del(&this->cdev);
+    kfree(this);
+}
+
+/**
+ * udmabuf_object_destroy() -  Destroy the udmabuf object.
+ * @this:       Pointer to the udmabuf object.
+ * Return:      Success(=0) or error status(<0).
+ *
+ * Unregister the device after releasing the resources.
+ * If exported DMA-BUFs remain, the device is still unregistered
+ * and the object is destroyed, but -EBUSY is returned.
+ */
+static int udmabuf_object_destroy(struct udmabuf_object* this)
+{
+    int retval = 0;
+    int curr_status;
+
+    if (!this)
+        return -ENODEV;
+
+    mutex_lock(&this->status_lock);
+    curr_status  = this->status;
+    this->status = UDMABUF_OBJECT_DEAD;
+#if (USE_DMA_BUF_EXPORT == 1)
+    if (curr_status != UDMABUF_OBJECT_DEAD) {
+        bool empty;
+        mutex_lock(&this->export_dma_buf_list_sem);
+        empty = list_empty(&this->export_dma_buf_list);
+        mutex_unlock(&this->export_dma_buf_list_sem);
+        if (empty == false) {
+            dev_warn(this->sys_dev, "exported dma-buf is currently busy.\n");
+            retval = -EBUSY;
+        }
+    }
+#endif
+    mutex_unlock(&this->status_lock);
+    
+    if (curr_status == UDMABUF_OBJECT_DEAD)
+        return retval;
+    
+    if (curr_status == UDMABUF_OBJECT_ALIVE)
+        cdev_del(&this->cdev);
+
     device_destroy(udmabuf_sys_class, this->device_number);
     ida_simple_remove(&udmabuf_device_ida, MINOR(this->device_number));
-    kfree(this);
-    return 0;
+
+    udmabuf_object_put(this);
+    return retval;
+}
+
+/**
+ * udmabuf_object_get() - Get a reference to a live udmabuf object.
+ * @this: Pointer to the udmabuf object.
+ *
+ * Increment the object's reference count if the object is alive.
+ * The object's state is checked under status_lock to prevent
+ * acquiring a reference after the object has been marked as not alive.
+ *
+ * Return: 0 on success, or -ENODEV if the object is not alive.
+ */
+static int  udmabuf_object_get(struct udmabuf_object* this)
+{
+    int retval = 0;
+    mutex_lock(&this->status_lock);
+    if (this->status == UDMABUF_OBJECT_ALIVE)
+        kref_get(&this->refcount);
+    else
+        retval = -ENODEV;
+    mutex_unlock(&this->status_lock);
+    return retval;
+}
+
+/**
+ * udmabuf_object_put() - Release a reference to a udmabuf object.
+ * @this: Pointer to the udmabuf object.
+ *
+ * Decrement the object's reference count. If the reference count reaches
+ * zero, udmabuf_object_release() is called to release the object.
+ */
+static void udmabuf_object_put(struct udmabuf_object* this)
+{
+    kref_put(&this->refcount, udmabuf_object_release);
 }
 
 /**
@@ -2417,6 +2564,7 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
  * * struct udmabuf_device_entry          - udmabuf device entry structure.
  * * udmabuf_device_list                  - list of udmabuf device entry structure.
  * * udmabuf_device_list_sem              - semaphore of udmabuf device list.
+ * * udmabuf_device_list_lifecycle_lock   - serializes device lifecycle operations on udmabuf_device_list.
  * * udmabuf_device_list_create_entry()   - Create udmabuf device entry and add to list.
  * * udmabuf_device_list_delete_entry()   - Delete udmabuf device entry from list.
  * * udmabuf_device_list_remove_entry()   - Remove udmabuf device entry from list with remove functions.
@@ -2451,11 +2599,13 @@ struct udmabuf_device_entry {
 };
 
 /**
- * udmabuf_device_list        - list of udmabuf device entry structure.
- * udmabuf_device_list_sem    - semaphore of udmabuf device list.
+ * udmabuf_device_list                - list of udmabuf device entry structure.
+ * udmabuf_device_list_sem            - semaphore of udmabuf device list.
+ * udmabuf_device_list_lifecycle_lock - serializes device lifecycle operations on udmabuf_device_list.
  */
 static struct list_head udmabuf_device_list;
 static struct mutex     udmabuf_device_list_sem;
+static struct mutex     udmabuf_device_list_lifecycle_lock;
 
 /**
  * udmabuf_get_device_name_property()  - Get "device-name"  property from udmabuf device.
@@ -2633,6 +2783,8 @@ static struct udmabuf_device_entry* udmabuf_device_list_search(struct device *de
 {
     struct udmabuf_device_entry* entry;
     struct udmabuf_device_entry* found_entry = NULL;
+    if ((dev == NULL) && (name == NULL) && (id < 0))
+        return NULL;
     mutex_lock(&udmabuf_device_list_sem);
     list_for_each_entry(entry, &udmabuf_device_list, list) {
         bool found_by_dev  = true;
@@ -2679,15 +2831,17 @@ static struct udmabuf_device_entry* udmabuf_device_list_search(struct device *de
  */
 static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct device *dev, struct device *parent, const char* name, int id, unsigned int size, u64 option, void (*prep_remove)(struct device*), void (*post_remove)(struct device*))
 {                              
-    struct udmabuf_device_entry* exist_entry;
     struct udmabuf_device_entry* entry  = NULL;
     int                          retval = 0;
 
-    exist_entry = udmabuf_device_list_search(NULL, name, id);
-    if (!IS_ERR_OR_NULL(exist_entry)) {
-        pr_err(DRIVER_NAME ": device name(%s) or id(%d) is already exists\n", (name)?name:"NULL", id);
-        retval = -EINVAL;
-        goto failed;
+    if ((name != NULL) || (id >= 0)) {
+        struct udmabuf_device_entry* exist_entry;
+        exist_entry = udmabuf_device_list_search(NULL, name, id);
+        if (!IS_ERR_OR_NULL(exist_entry)) {
+            pr_err(DRIVER_NAME ": device name(%s) or id(%d) is already exists\n", (name)?name:"NULL", id);
+            retval = -EINVAL;
+            goto failed;
+        }
     }
 
     entry = kzalloc(sizeof(*entry), GFP_KERNEL);
@@ -2699,7 +2853,16 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
 
 #if (USE_DEV_PROPERTY == 0)
     {
-        entry->device_name  = (name != NULL) ? kstrdup(name, GFP_KERNEL) : NULL;
+        if (name != NULL) {
+            entry->device_name = kstrdup(name, GFP_KERNEL);
+            if (entry->device_name == NULL) {
+                retval = -ENOMEM;
+                pr_err(DRIVER_NAME ": kstrdup() failed.\n");
+                goto failed;
+            }
+        } else {
+            entry->device_name  = NULL;
+        }
         entry->minor_number = id;
         entry->buffer_size  = size;
         entry->option       = option;
@@ -2749,7 +2912,8 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
     entry->parent = get_device(parent);
     entry->prep_remove = prep_remove;
     entry->post_remove = post_remove;
-    
+    INIT_LIST_HEAD(&entry->list);
+
     mutex_lock(&udmabuf_device_list_sem);
     list_add_tail(&entry->list, &udmabuf_device_list);
     mutex_unlock(&udmabuf_device_list_sem);
@@ -2774,7 +2938,8 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
 static void udmabuf_device_list_delete_entry(struct udmabuf_device_entry* entry)
 {
     mutex_lock(&udmabuf_device_list_sem);
-    list_del(&entry->list);
+    if (!list_empty(&entry->list))
+        list_del_init(&entry->list);
     mutex_unlock(&udmabuf_device_list_sem);
 #if (USE_DEV_PROPERTY == 0)
     if (entry->device_name != NULL)
@@ -2808,10 +2973,12 @@ static void udmabuf_device_list_remove_entry(struct udmabuf_device_entry* entry)
 static void udmabuf_device_list_cleanup(void)
 {
     struct udmabuf_device_entry* entry;
+    mutex_lock(&udmabuf_device_list_lifecycle_lock);
     while(!list_empty(&udmabuf_device_list)) {
         entry = list_first_entry(&udmabuf_device_list, typeof(*(entry)), list);
         udmabuf_device_list_remove_entry(entry);
     }
+    mutex_unlock(&udmabuf_device_list_lifecycle_lock);
 }
 
 /**
@@ -2853,9 +3020,9 @@ static void udmabuf_platform_device_put(struct device* dev)
  * @id:         device id or negative integer.
  * @size:       buffer size.
  * @option:     option.
- * Return:      Success(=0) or error status(<0).
+ * Return:      pointer to struct device* dev(>=0) or error status(<0).
  */
-static int udmabuf_platform_device_create(const char* name, int id, unsigned int size, u64 option)
+static struct device* udmabuf_platform_device_create(const char* name, int id, unsigned int size, u64 option)
 {
     struct platform_device*      pdev   = NULL;
     struct udmabuf_device_entry* entry  = NULL;
@@ -2863,11 +3030,11 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
     u64                          dma_mask_size = udmabuf_get_option_dma_mask_size(option);
 
     if (size == 0)
-        return -EINVAL;
+        return ERR_PTR(-EINVAL);
 
     pdev = platform_device_alloc(DRIVER_NAME, id);
     if (IS_ERR_OR_NULL(pdev)) {
-        retval = PTR_ERR(pdev);
+        retval = (pdev == NULL) ? -ENOMEM : PTR_ERR(pdev);
         pdev   = NULL;
         pr_err(DRIVER_NAME ": platform_device_alloc(%s,%d) failed. return=%d\n", DRIVER_NAME, id, retval);
         goto failed;
@@ -2915,7 +3082,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
         goto failed;
     }
     
-    return 0;
+    return &pdev->dev;
 
  failed:
     if (entry != NULL) {
@@ -2924,7 +3091,7 @@ static int udmabuf_platform_device_create(const char* name, int id, unsigned int
     if (pdev  != NULL) {
         platform_device_put(pdev);
     }
-    return retval;
+    return ERR_PTR(retval);
 }
 
 /**
@@ -2938,18 +3105,8 @@ static int udmabuf_platform_device_remove(struct device *dev, struct udmabuf_obj
     int retval = 0;
 
     if (obj != NULL) {
-#if (USE_OF_RESERVED_MEM == 1)
-        bool of_reserved_mem = obj->of_reserved_mem;
-#endif
         retval = udmabuf_object_destroy(obj);
-        if (retval == 0) {
-            dev_set_drvdata(dev, NULL);
-#if (USE_OF_RESERVED_MEM == 1)
-            if (of_reserved_mem) {
-                of_reserved_mem_device_release(dev);
-            }
-#endif
-        }
+        dev_set_drvdata(dev, NULL);
     } else {
         retval = -ENODEV;
     }
@@ -3012,9 +3169,9 @@ static int udmabuf_platform_device_probe(struct device *dev)
         retval = -ENODEV;
         goto failed;
     }
-    if (size <= 0) {
-        dev_err(dev, "invalid size, size=%zu\n", size);
-        retval = -ENODEV;
+    if ((u64_value > SIZE_MAX) || (u64_value == 0)) {
+        dev_err(dev, "invalid size property value=%llu\n", (unsigned long long)u64_value);
+        retval = -EINVAL;
         goto failed;
     }
     /*
@@ -3042,17 +3199,14 @@ static int udmabuf_platform_device_probe(struct device *dev)
      * udmabuf_object_create()
      */
     obj = udmabuf_object_create(device_name, dev, minor_number);
-    if (IS_ERR_OR_NULL(obj)) {
-        retval = PTR_ERR(obj);
-        dev_err(dev, "object create failed. return=%d\n", retval);
-        obj = NULL;
-        retval = (retval == 0) ? -EINVAL : retval;
+    if (obj == NULL) {
+        dev_err(dev, "object create failed.\n");
+        retval = -EINVAL;
         goto failed;
     }
     /*
-     * mutex_lock() then dev_set_drvdata()
+     * dev_set_drvdata()
      */
-    mutex_lock(&obj->sem);
     dev_set_drvdata(dev, obj);
     /*
      * set size
@@ -3068,7 +3222,8 @@ static int udmabuf_platform_device_probe(struct device *dev)
      */
     if (of_property_read_u32(dev->of_node, "dma-mask", &u32_value) == 0) {
         if ((u32_value > 64) || (u32_value < 12)) {
-            dev_err(dev, "invalid dma-mask property value=%d\n", u32_value);
+            dev_err(dev, "invalid dma-mask property value=%u\n", u32_value);
+            retval = -EINVAL;
             goto failed_with_unlock;
         }
         retval = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(u32_value));
@@ -3086,7 +3241,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
     if (dev->of_node != NULL) {
         retval = of_reserved_mem_device_init(dev);
         if (retval == 0) {
-            obj->of_reserved_mem = 1;
+            obj->of_reserved_mem_dev = get_device(dev);
         } else if (retval != -ENODEV) {
             dev_err(dev, "of_reserved_mem_device_init failed. return=%d\n", retval);
             goto failed_with_unlock;
@@ -3107,7 +3262,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
      * of_dma_configure() will not be executed.
      * Because in that case, it is already executed in of_reserved_mem_device_init().
      */
-    if (obj->of_reserved_mem == 0)
+    if (obj->of_reserved_mem_dev == NULL)
 #endif
     {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0))
@@ -3163,7 +3318,8 @@ static int udmabuf_platform_device_probe(struct device *dev)
      */
     if (of_property_read_u32(dev->of_node, "sync-mode", &u32_value) == 0) {
         if ((u32_value < SYNC_MODE_MIN) || (u32_value > SYNC_MODE_MAX)) {
-            dev_err(dev, "invalid sync-mode property value=%d\n", u32_value);
+            dev_err(dev, "invalid sync-mode property value=%u\n", u32_value);
+            retval = -EINVAL;
             goto failed_with_unlock;
         }
         obj->sync_mode &= ~SYNC_MODE_MASK;
@@ -3180,7 +3336,8 @@ static int udmabuf_platform_device_probe(struct device *dev)
      */
     if (of_property_read_u32(dev->of_node, "sync-direction", &u32_value) == 0) {
         if (u32_value > 2) {
-            dev_err(dev, "invalid sync-direction property value=%d\n", u32_value);
+            dev_err(dev, "invalid sync-direction property value=%u\n", u32_value);
+            retval = -EINVAL;
             goto failed_with_unlock;
         }
         obj->sync_direction = (int)u32_value;
@@ -3191,6 +3348,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
     if (of_property_read_ulong(dev->of_node, "sync-offset", &u64_value) == 0) {
         if (u64_value >= obj->size) {
             dev_err(dev, "invalid sync-offset property value=%llu\n", (unsigned long long)u64_value);
+            retval = -EINVAL;
             goto failed_with_unlock;
         }
         obj->sync_offset = u64_value;
@@ -3202,11 +3360,19 @@ static int udmabuf_platform_device_probe(struct device *dev)
         if ((u64_value > SIZE_MAX) ||
             !udmabuf_range_valid(obj, obj->sync_offset, u64_value)) {
             dev_err(dev, "invalid sync-size property value=%llu\n", (unsigned long long)u64_value);
+            retval = -EINVAL;
             goto failed_with_unlock;
         }
         obj->sync_size = (size_t)u64_value;
     } else {
         obj->sync_size = obj->size;
+    }
+    if (!udmabuf_range_valid(obj, obj->sync_offset, obj->sync_size)) {
+        dev_err(dev, "invalid sync range property (sync-offset=%llu, sync-size=%llu)\n",
+                (unsigned long long)obj->sync_offset,
+                (unsigned long long)obj->sync_size);
+        retval = -EINVAL;
+        goto failed_with_unlock;
     }
     /*
      * udmabuf_object_setup()
@@ -3257,7 +3423,7 @@ static void udmabuf_child_device_delete(struct device* dev)
     udmabuf_object_destroy(dev_get_drvdata(dev));
 
     if (info_enable) {
-        pr_info(DRIVER_NAME ": %s removed.\n", ((device_name) ? device_name: ""));
+        pr_info(DRIVER_NAME " %s: removed.\n", ((device_name) ? device_name: ""));
     }
     if (device_name)
         kfree(device_name);
@@ -3270,9 +3436,9 @@ static void udmabuf_child_device_delete(struct device* dev)
  * @size:       buffer size.
  * @option      option.
  * @parent:     parent device.
- * Return:      Success(=0) or error status(<0).
+ * Return:      pointer to struct device* dev(>=0) or error status(<0).
  */
-static int udmabuf_child_device_create(const char* name, int id, unsigned int size, u64 option, struct device* parent)
+static struct device* udmabuf_child_device_create(const char* name, int id, unsigned int size, u64 option, struct device* parent)
 {
     const char*                  device_name = NULL;
     struct udmabuf_object*       obj         = NULL;
@@ -3282,7 +3448,7 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
     pr_debug(DRIVER_NAME ": child device create start.\n");
 
     if (size == 0)
-        return -EINVAL;
+        return ERR_PTR(-EINVAL);
 
     /*
      * device-name property
@@ -3295,17 +3461,11 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
      * udmabuf_object_create()
      */
     obj = udmabuf_object_create(device_name, parent, id);
-    if (IS_ERR_OR_NULL(obj)) {
-        retval = PTR_ERR(obj);
-        pr_err(DRIVER_NAME ": object create failed. return=%d\n", retval);
-        obj = NULL;
-        retval = (retval == 0) ? -EINVAL : retval;
+    if (obj == NULL) {
+        pr_err(DRIVER_NAME ": object create failed.\n");
+        retval = -EINVAL;
         goto failed;
     }
-    /*
-     * mutex_lock()
-     */
-    mutex_lock(&obj->sem);
     /*
      * set size
      */
@@ -3349,23 +3509,24 @@ static int udmabuf_child_device_create(const char* name, int id, unsigned int si
     }
 
     if (info_enable) {
-        pr_info(DRIVER_NAME ": %s installed.\n", dev_name(obj->sys_dev));
+        pr_info(DRIVER_NAME " %s: installed.\n", dev_name(obj->sys_dev));
     }
-    return 0;
+    return obj->sys_dev;
 
  failed_with_unlock:
     mutex_unlock(&obj->sem);
  failed:
     if (entry != NULL) {
+        if (entry->parent) {
+            put_device(entry->parent);
+            entry->parent = NULL;
+        }
         udmabuf_device_list_delete_entry(entry);
     }
     if (obj   != NULL) {
         udmabuf_object_destroy(obj);
     }
-    if (entry != NULL) {
-        put_device(parent);
-    }
-    return retval;
+    return ERR_PTR(retval);
 }
 
 /**
@@ -3491,6 +3652,7 @@ static int udmabuf_static_device_create(udmabuf_static_device_param* param)
     unsigned int   size    = param->size;
     char*          bind_id = (param->bind_id) ? param->bind_id : bind;
     u64            option  = 0;
+    struct device* dev     = NULL;
     struct device* parent  = NULL;
     
     if (bind_id != NULL) {
@@ -3509,14 +3671,19 @@ static int udmabuf_static_device_create(udmabuf_static_device_param* param)
         }
     }        
 
+    mutex_lock(&udmabuf_device_list_lifecycle_lock);
     if (parent) {
-        retval = udmabuf_child_device_create(name, id, size, option, parent);
+        dev = udmabuf_child_device_create(name, id, size, option, parent);
         put_device(parent);
     } else {
-        retval = udmabuf_platform_device_create(name, id, size, option);
+        dev = udmabuf_platform_device_create(name, id, size, option);
     }
-
-    return retval;
+    mutex_unlock(&udmabuf_device_list_lifecycle_lock);
+    if (IS_ERR_OR_NULL(dev)) {
+        retval = (dev == NULL)? -EINVAL : PTR_ERR(dev);
+        return retval;
+    }
+    return 0;
 }
 
 #define DEFINE_UDMABUF_STATIC_DEVICE_PARAM(__num)                          \
@@ -3637,7 +3804,9 @@ static inline int _udmabuf_platform_driver_remove(struct platform_device *pdev)
 
     retval = udmabuf_platform_device_remove(&pdev->dev, this);
 
-    if (retval != 0) {
+    if (retval == -EBUSY) {
+        dev_info(&pdev->dev, "driver removed. return=%d\n", retval);
+    } else if (retval != 0) {
         dev_err(&pdev->dev, "driver remove failed. return=%d\n", retval);
     } else if (info_enable) {
         dev_info(&pdev->dev, "driver removed.\n");
@@ -3758,19 +3927,15 @@ EXPORT_SYMBOL(u_dma_buf_device_search);
 #if (IN_KERNEL_FUNCTIONS == 1)
 struct device* u_dma_buf_device_create(const char* name, int id, size_t size, u64 option, struct device* parent)
 {
-    int            result = 0;
     struct device* dev;
 
+    mutex_lock(&udmabuf_device_list_lifecycle_lock);
     if (parent) {
-        result = udmabuf_child_device_create(name, id, size, option, parent);
+        dev = udmabuf_child_device_create(name, id, size, option, parent);
     } else {
-        result = udmabuf_platform_device_create(name, id, size, option);
+        dev = udmabuf_platform_device_create(name, id, size, option);
     }
-
-    if (result)
-        return ERR_PTR(result);
-
-    dev = u_dma_buf_device_search(name, id);
+    mutex_unlock(&udmabuf_device_list_lifecycle_lock);
     return dev;
 }
 EXPORT_SYMBOL(u_dma_buf_device_create);
@@ -3784,12 +3949,20 @@ EXPORT_SYMBOL(u_dma_buf_device_create);
 #if (IN_KERNEL_FUNCTIONS == 1)
 int u_dma_buf_device_remove(struct device *dev)
 {
-    struct udmabuf_device_entry* entry = udmabuf_device_list_search(dev, NULL, -1);
-    if (entry == NULL)
-        return -EINVAL;
+    struct udmabuf_device_entry* entry;
+    int result = 0;
 
-    udmabuf_device_list_remove_entry(entry);
-    return 0;
+    mutex_lock(&udmabuf_device_list_lifecycle_lock);
+
+    entry = udmabuf_device_list_search(dev, NULL, -1);
+    if (entry == NULL) {
+        result = -EINVAL;
+    } else {
+        udmabuf_device_list_remove_entry(entry);
+        result = 0;
+    }
+    mutex_unlock(&udmabuf_device_list_lifecycle_lock);
+    return result;
 }
 EXPORT_SYMBOL(u_dma_buf_device_remove);
 #endif
@@ -3807,24 +3980,35 @@ int u_dma_buf_device_getmap(struct device *dev, size_t* size, void** virt_addr, 
 {
     struct udmabuf_device_entry* entry;
     struct udmabuf_object*       this;
+    int                          result = 0;
+
+    mutex_lock(&udmabuf_device_list_lifecycle_lock);
 
     entry = udmabuf_device_list_search(dev, NULL, -1);
-    if (entry == NULL)
-        return -EINVAL;
+    if (entry == NULL) {
+        result = -EINVAL;
+        goto done;
+    }
 
     this = dev_get_drvdata(entry->dev);
-    if (this == NULL)
-        return -ENODEV;
+    if (this == NULL) {
+        result = -ENODEV;
+        goto done;
+    }
 
-    if (!mutex_trylock(&this->sem))
-        return -EBUSY;
+    if (!mutex_trylock(&this->sem)) {
+        result = -EBUSY;
+        goto done;
+    }
 
     if (size      != NULL) {*size      = this->size     ;}
     if (virt_addr != NULL) {*virt_addr = this->virt_addr;}
     if (phys_addr != NULL) {*phys_addr = this->phys_addr;}
 
     mutex_unlock(&this->sem);
-    return 0;
+ done:
+    mutex_unlock(&udmabuf_device_list_lifecycle_lock);
+    return result;
 }
 EXPORT_SYMBOL(u_dma_buf_device_getmap);
 #endif
@@ -3845,16 +4029,24 @@ int u_dma_buf_device_sync(struct device *dev, int command, int direction, u64 of
     struct udmabuf_object*       this;
     int                          result = 0;
 
+    mutex_lock(&udmabuf_device_list_lifecycle_lock);
+
     entry = udmabuf_device_list_search(dev, NULL, -1);
-    if (entry == NULL)
-        return -EINVAL;
+    if (entry == NULL) {
+        result = -EINVAL;
+        goto done;
+    }
 
     this = dev_get_drvdata(entry->dev);
-    if (this == NULL)
-        return -ENODEV;
+    if (this == NULL) {
+        result = -ENODEV;
+        goto done;
+    }
 
-    if (!mutex_trylock(&this->sem))
-        return -EBUSY;
+    if (!mutex_trylock(&this->sem)) {
+        result = -EBUSY;
+        goto done;
+    }
 
     switch(direction) {
         case 0   : this->sync_direction = 0; break;
@@ -3883,6 +4075,8 @@ int u_dma_buf_device_sync(struct device *dev, int command, int direction, u64 of
     }
 
     mutex_unlock(&this->sem);
+ done:
+    mutex_unlock(&udmabuf_device_list_lifecycle_lock);
     return result;
 }
 EXPORT_SYMBOL(u_dma_buf_device_sync);
