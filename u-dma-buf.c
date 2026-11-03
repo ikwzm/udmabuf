@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.18"
+#define DRIVER_VERSION     "5.6.2-alpha.19"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -728,9 +728,6 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
     if (!RANGE_VALID((this->alloc_size >> PAGE_SHIFT), vmf->pgoff, 1))
         return VM_FAULT_SIGBUS;
 
-    if (!pfn_valid(page_frame_num))
-        return VM_FAULT_SIGBUS;
-
 #if (USE_QUIRK_MMAP_PAGE == 1)
     if (this->pages != NULL) {
         if (vmf->pgoff >= this->pagecount)
@@ -739,6 +736,9 @@ static inline VM_FAULT_RETURN_TYPE _udmabuf_mmap_vma_fault(struct vm_area_struct
     }
 #endif
     
+    if (!pfn_valid(page_frame_num))
+        return VM_FAULT_SIGBUS;
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))
     return vmf_insert_pfn(vma, virt_addr, page_frame_num);
 #else
