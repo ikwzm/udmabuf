@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2-alpha.17"
+#define DRIVER_VERSION     "5.6.2-alpha.18"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -3366,6 +3366,13 @@ static int udmabuf_platform_device_probe(struct device *dev)
         obj->sync_size = (size_t)u64_value;
     } else {
         obj->sync_size = obj->size;
+    }
+    if (!udmabuf_range_valid(obj, obj->sync_offset, obj->sync_size)) {
+        dev_err(dev, "invalid sync range property (sync-offset=%llu, sync-size=%llu)\n",
+                (unsigned long long)obj->sync_offset,
+                (unsigned long long)obj->sync_size);
+        retval = -EINVAL;
+        goto failed_with_unlock;
     }
     /*
      * udmabuf_object_setup()
