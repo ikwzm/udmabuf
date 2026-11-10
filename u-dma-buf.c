@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.7.0-alpha.1"
+#define DRIVER_VERSION     "5.7.0-alpha.2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1115,7 +1115,6 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
 {
     struct udmabuf_export_entry* entry = dma_buf->priv; 
     struct udmabuf_object*       this;
-    int                          entry_fd;
 
     if (entry == NULL)
         return;
@@ -1123,10 +1122,11 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
     if ((this = entry->object) == NULL)
         return;
 
-    entry_fd = entry->fd;
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->dma_dev, "%s(fd=%d) start.\n", __func__, entry_fd);
+    if (UDMABUF_EXPORT_DEBUG(this)) {
+        dev_info(this->dma_dev, "%s() start.\n", __func__);
+        dev_info(this->dma_dev, "    export_fd  = %d\n"     , entry->fd);
+        dev_info(this->dma_dev, "    dma_buf    = 0x%p\n"   , entry->dma_buf);
+    }
 
     mutex_lock(&this->status_lock);
     mutex_lock(&this->export_dma_buf_list_sem);
@@ -1139,7 +1139,7 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
         entry->name = NULL;
     }
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->dma_dev, "%s(fd=%d) done.\n", __func__, entry_fd);
+        dev_info(this->dma_dev, "%s() done.\n", __func__);
     udmabuf_object_put(this);
     kfree(entry);
 }
@@ -1325,9 +1325,9 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
 
     if (UDMABUF_EXPORT_DEBUG(this)) {
         dev_info(this->dma_dev, "%s() start.\n", __func__);
-        dev_info(this->dma_dev, "offset         = 0x%llx\n" , offset);
-        dev_info(this->dma_dev, "size           = %zu\n"    , size);
-        dev_info(this->dma_dev, "fd_flags       = 0x%08lx\n", fd_flags);
+        dev_info(this->dma_dev, "    offset     = 0x%llx\n" , offset);
+        dev_info(this->dma_dev, "    size       = %zu\n"    , size);
+        dev_info(this->dma_dev, "    fd_flags   = 0x%08lx\n", fd_flags);
     }
 
     if ((offset & (PAGE_SIZE-1)) != 0) {
@@ -1444,8 +1444,9 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     mutex_unlock(&this->status_lock);
 
     if (UDMABUF_EXPORT_DEBUG(this)) {
-        dev_info(this->dma_dev, "force_sync     = %d\n", entry->force_sync);
-        dev_info(this->dma_dev, "export_fd      = %d\n", entry->fd);
+        dev_info(this->dma_dev, "    force_sync = %d\n"     , entry->force_sync);
+        dev_info(this->dma_dev, "    export_fd  = %d\n"     , entry->fd);
+        dev_info(this->dma_dev, "    dma_buf    = 0x%p\n"   , entry->dma_buf);
         dev_info(this->dma_dev, "%s() done.\n", __func__);
     }
 
