@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.7.0-alpha.2"
+#define DRIVER_VERSION     "5.7.0-alpha.3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1764,6 +1764,7 @@ typedef struct {
     uint64_t offset;
     uint64_t addr;
     int      fd;
+    uint8_t  padding[4];
 } u_dma_buf_ioctl_export_args;
 
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(EXPORT_FD_FLAGS, u_dma_buf_ioctl_export_args,  0, 31)

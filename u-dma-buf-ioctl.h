@@ -94,6 +94,7 @@ typedef struct {
     uint64_t offset;
     uint64_t addr;
     int      fd;
+    uint8_t  padding[4];
 } u_dma_buf_ioctl_export_args;
 
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(EXPORT_FD_FLAGS, u_dma_buf_ioctl_export_args,  0, 31)
