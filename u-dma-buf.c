@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.7.0"
+#define DRIVER_VERSION     "5.7.1-alpha.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -2671,8 +2671,8 @@ struct udmabuf_device_entry {
  * udmabuf_device_list_lifecycle_lock - serializes device lifecycle operations on udmabuf_device_list.
  */
 static struct list_head udmabuf_device_list;
-static struct mutex     udmabuf_device_list_sem;
-static struct mutex     udmabuf_device_list_lifecycle_lock;
+static DEFINE_MUTEX(udmabuf_device_list_sem);
+static DEFINE_MUTEX(udmabuf_device_list_lifecycle_lock);
 
 /**
  * udmabuf_get_device_name_property()  - Get "device-name"  property from udmabuf device.
@@ -4215,7 +4215,6 @@ static int __init u_dma_buf_init(void)
 
     ida_init(&udmabuf_device_ida);
     INIT_LIST_HEAD(&udmabuf_device_list);
-    mutex_init(&udmabuf_device_list_sem);
 
     retval = alloc_chrdev_region(&udmabuf_device_number, 0, DEVICE_MAX_NUM, DRIVER_NAME);
     if (retval != 0) {
