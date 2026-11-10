@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.6.2"
+#define DRIVER_VERSION     "5.7.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -296,12 +296,12 @@ MODULE_PARM_DESC( quirk_mmap_mode, "udmabuf default quirk mmap mode" QUIRK_MMAP_
 struct udmabuf_object {
     struct device*       sys_dev;
     struct device*       dma_dev;
+    struct device        dev;
     struct cdev          cdev;
     dev_t                device_number;
     struct mutex         sem;
     struct mutex         status_lock;
     int                  status;
-    struct kref          refcount;
     size_t               size;
     size_t               alloc_size;
     void*                virt_addr;
@@ -1115,7 +1115,6 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
 {
     struct udmabuf_export_entry* entry = dma_buf->priv; 
     struct udmabuf_object*       this;
-    int                          entry_fd;
 
     if (entry == NULL)
         return;
@@ -1123,10 +1122,11 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
     if ((this = entry->object) == NULL)
         return;
 
-    entry_fd = entry->fd;
-
-    if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->dma_dev, "%s(fd=%d) start.\n", __func__, entry_fd);
+    if (UDMABUF_EXPORT_DEBUG(this)) {
+        dev_info(this->dma_dev, "%s() start.\n", __func__);
+        dev_info(this->dma_dev, "    export_fd  = %d\n"     , entry->fd);
+        dev_info(this->dma_dev, "    dma_buf    = 0x%p\n"   , entry->dma_buf);
+    }
 
     mutex_lock(&this->status_lock);
     mutex_lock(&this->export_dma_buf_list_sem);
@@ -1139,7 +1139,7 @@ static void udmabuf_export_release(struct dma_buf *dma_buf)
         entry->name = NULL;
     }
     if (UDMABUF_EXPORT_DEBUG(this))
-        dev_info(this->dma_dev, "%s(fd=%d) done.\n", __func__, entry_fd);
+        dev_info(this->dma_dev, "%s() done.\n", __func__);
     udmabuf_object_put(this);
     kfree(entry);
 }
@@ -1325,9 +1325,9 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
 
     if (UDMABUF_EXPORT_DEBUG(this)) {
         dev_info(this->dma_dev, "%s() start.\n", __func__);
-        dev_info(this->dma_dev, "offset         = 0x%llx\n" , offset);
-        dev_info(this->dma_dev, "size           = %zu\n"    , size);
-        dev_info(this->dma_dev, "fd_flags       = 0x%08lx\n", fd_flags);
+        dev_info(this->dma_dev, "    offset     = 0x%llx\n" , offset);
+        dev_info(this->dma_dev, "    size       = %zu\n"    , size);
+        dev_info(this->dma_dev, "    fd_flags   = 0x%08lx\n", fd_flags);
     }
 
     if ((offset & (PAGE_SIZE-1)) != 0) {
@@ -1444,8 +1444,9 @@ static struct udmabuf_export_entry* udmabuf_export_create_entry(
     mutex_unlock(&this->status_lock);
 
     if (UDMABUF_EXPORT_DEBUG(this)) {
-        dev_info(this->dma_dev, "force_sync     = %d\n", entry->force_sync);
-        dev_info(this->dma_dev, "export_fd      = %d\n", entry->fd);
+        dev_info(this->dma_dev, "    force_sync = %d\n"     , entry->force_sync);
+        dev_info(this->dma_dev, "    export_fd  = %d\n"     , entry->fd);
+        dev_info(this->dma_dev, "    dma_buf    = 0x%p\n"   , entry->dma_buf);
         dev_info(this->dma_dev, "%s() done.\n", __func__);
     }
 
@@ -1763,6 +1764,7 @@ typedef struct {
     uint64_t offset;
     uint64_t addr;
     int      fd;
+    uint8_t  padding[4];
 } u_dma_buf_ioctl_export_args;
 
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(EXPORT_FD_FLAGS, u_dma_buf_ioctl_export_args,  0, 31)
@@ -2090,10 +2092,11 @@ static const struct file_operations udmabuf_device_file_ops = {
  *
  * * udmabuf_device_ida         - Udmabuf Object Device Minor Number allocator variable.
  * * udmabuf_device_number      - Udmabuf Object Device Major Number.
- * * udmabuf_object_create()    - Create udmabuf object.
- * * udmabuf_object_setup()     - Setup the udmabuf object.
+ * * udmabuf_object_create()    - Create a udmabuf object.
+ * * udmabuf_object_setup()     - Set up and register a udmabuf object.
  * * udmabuf_object_info()      - Print infomation the udmabuf object.
- * * udmabuf_object_destroy()   - Destroy the udmabuf object.
+ * * udmabuf_object_release()   - Release a udmabuf object.
+ * * udmabuf_object_destroy()   - Destroy a udmabuf object.
  * * udmabuf_object_get()       - Get a reference to a live udmabuf object.
  * * udmabuf_object_put()       - Release a reference to a udmabuf object.
  */
@@ -2105,24 +2108,48 @@ static dev_t      udmabuf_device_number = 0;
 #endif
 
 /**
- * udmabuf_object_create() -  Create udmabuf object.
- * @name:       device name   or NULL.
- * @parent:     parent device or NULL.
- * @minor:      minor_number  or -1 or -2.
- * Return:      Pointer to the udmabuf object or NULL.
+ * udmabuf_object_device_release() - Release a udmabuf device
+ * @dev:        Pointer to the device structure.
  *
- * Note: On success, this function returns with this->sem locked.
- * The caller must unlock it after udmabuf_object_setup() completes,
- * regardless of whether setup succeeds or fails.
+ * This function is called as the release callback of the
+ * udmabuf device when its reference count reaches zero.
+ *
+ * Retrieve the containing udmabuf object from @dev and
+ * release it by calling udmabuf_object_release().
+ */
+static void udmabuf_object_release(struct udmabuf_object* this);
+static void udmabuf_object_device_release(struct device* dev)
+{
+    struct udmabuf_object* this = container_of(dev, struct udmabuf_object, dev);
+    udmabuf_object_release(this);
+}
+
+/**
+ * udmabuf_object_create() - Create a udmabuf object.
+ * @name:       Device Name   or NULL to use the default name.
+ * @parent:     Parent device or NULL if there is no parent device.
+ * @minor:      Minor number to use (0 to DEVICE_MAX_NUM - 1),
+ *              or a negative value to allocate one automatically.
+ * Return:      Pointer to the initialized udmabuf object on success,
+ *              or NULL on failure.
+ *
+ * Allocate and initialize a udmabuf object.
+ *
+ * This function initializes the object's locks, device structure,
+ * device name, and device references. 
+ * The object status is initialized to UDMABUF_OBJECT_INITIAL.
+ *
+ * The device is initialized with device_initialize(), but is not
+ * registered with the device model. Device registration is performed
+ * later by udmabuf_object_setup() using cdev_device_add().
+ *
  */
 static struct udmabuf_object* udmabuf_object_create(const char* name, struct device* parent, int minor)
 {
     struct udmabuf_object* this     = NULL;
     unsigned int           done     = 0;
-    const unsigned int     DONE_ALLOC_MINOR   = (1 << 0);
-    const unsigned int     DONE_SEM_LOCK      = (1 << 2);
-    const unsigned int     DONE_DEVICE_CREATE = (1 << 3);
-    const unsigned int     DONE_SET_DMA_DEV   = (1 << 4);
+    const unsigned int     DONE_ALLOC_MINOR = (1 << 0);
+    const unsigned int     DONE_DEVICE_INIT = (1 << 1);
     /*
      * allocate device minor number
      */
@@ -2160,42 +2187,36 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
         this->device_number = MKDEV(MAJOR(udmabuf_device_number), minor);
     }
     /*
-     * Lock this->sem before registering the device with device_create()
-     * to prevent sysfs attribute access during initialization.
+     * Initialize locks before registering the device with cdev_device_add()
+     * to prevent concurrent access during device initialization.
      */
     {
         mutex_init(&this->sem);
-        mutex_lock(&this->sem);
-        done |= DONE_SEM_LOCK;
-
         mutex_init(&this->status_lock);
         this->status = UDMABUF_OBJECT_INITIAL;
-        kref_init(&this->refcount);
     }
     /*
-     * register /sys/class/u-dma-buf/<name>
+     * dev initialize and set sys_dev
      */
     {
-        if (name == NULL) {
-            this->sys_dev = device_create(udmabuf_sys_class,
-                                          parent,
-                                          this->device_number,
-                                          (void *)this,
-                                          DEVICE_NAME_FORMAT, MINOR(this->device_number));
-        } else {
-            this->sys_dev = device_create(udmabuf_sys_class,
-                                          parent,
-                                          this->device_number,
-                                          (void *)this,
-                                         "%s", name);
-        }
-        if (IS_ERR_OR_NULL(this->sys_dev)) {
-            int retval = PTR_ERR(this->sys_dev);
-            this->sys_dev = NULL;
-            pr_err(DRIVER_NAME ": device_create() failed. return=%d\n", retval);
+        int retval;
+        device_initialize(&this->dev);
+        this->dev.release = udmabuf_object_device_release;
+        this->dev.parent  = parent;
+        this->dev.class   = udmabuf_sys_class;
+        this->dev.devt    = this->device_number;
+        this->sys_dev     = &this->dev;
+        dev_set_drvdata(this->sys_dev, this);
+        done |= DONE_DEVICE_INIT;
+
+        if (name == NULL) 
+            retval = dev_set_name(this->sys_dev, DEVICE_NAME_FORMAT, MINOR(this->device_number));
+        else
+            retval = dev_set_name(this->sys_dev, "%s", name);
+        if (retval) {
+            pr_err(DRIVER_NAME ": dev_set_name() failed. return=%d\n", retval);
             goto failed;
         }
-        done |= DONE_DEVICE_CREATE;
     }
     /*
      * set dma_dev
@@ -2204,7 +2225,7 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
         if (parent != NULL)
             this->dma_dev = get_device(parent);
         else
-            this->dma_dev = get_device(this->sys_dev);
+            this->dma_dev = this->sys_dev;
         /*
          * set this->dma_dev->dma_mask
          */
@@ -2225,7 +2246,6 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
                 this->dma_dev->coherent_dma_mask = DMA_BIT_MASK(dma_mask_bit);
             }
         }
-        done |= DONE_SET_DMA_DEV;
     }
     /*
      * initialize other variables.
@@ -2275,18 +2295,39 @@ static struct udmabuf_object* udmabuf_object_create(const char* name, struct dev
     return this;
 
  failed:
-    if (done & DONE_SET_DMA_DEV  ) { put_device(this->dma_dev);}
-    if (done & DONE_DEVICE_CREATE) { device_destroy(udmabuf_sys_class, this->device_number);}
-    if (done & DONE_SEM_LOCK     ) { mutex_unlock(&this->sem);}
-    if (done & DONE_ALLOC_MINOR  ) { ida_simple_remove(&udmabuf_device_ida, minor);}
-    if (this != NULL)              { kfree(this); }
+    if (done & DONE_DEVICE_INIT) {
+        put_device(this->sys_dev);
+        return NULL;
+    } 
+    if (done & DONE_ALLOC_MINOR)
+        ida_simple_remove(&udmabuf_device_ida, minor);
+    if (this != NULL)
+        kfree(this);
     return NULL;
 }
 
 /**
- * udmabuf_object_setup() - Setup the udmabuf object.
+ * udmabuf_object_setup() - Set up and register a udmabuf object.
  * @this:       Pointer to the udmabuf object.
- * Return:      Success(=0) or error status(<0).
+ * Return:      0 on success, or a negative error code on failure.
+ *
+ * Allocate the DMA buffer and initialize the resources required
+ * for accessing the buffer.
+ *
+ * The allocation size is rounded up to a page boundary, and the
+ * buffer is allocated using dma_alloc_coherent().
+ *
+ * If quirk-mmap-page mode is enabled, this function also prepares
+ * the page array used for mapping the DMA buffer.
+ *
+ * Finally, initialize and register the character device and the
+ * associated device using cdev_device_add().
+ *
+ * The object status is changed to UDMABUF_OBJECT_ALIVE only after
+ * successful device registration. The status_lock and sem mutexes
+ * are held during registration to prevent concurrent access to
+ * the object before initialization is complete.
+ *
  */
 static int udmabuf_object_setup(struct udmabuf_object* this)
 {
@@ -2345,18 +2386,20 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
     }
 #endif
     {
-        int retval;
+        int retval = 0;
         cdev_init(&this->cdev, &udmabuf_device_file_ops);
         this->cdev.owner = THIS_MODULE;
-        if ((retval = cdev_add(&this->cdev, this->device_number, 1)) != 0) {
-            dev_err(this->sys_dev, "cdev_add() failed. return=%d\n", retval);
-            return retval;
-        }
+        mutex_lock(&this->status_lock);
+        mutex_lock(&this->sem);
+        retval = cdev_device_add(&this->cdev, this->sys_dev);
+        if (retval == 0)
+            this->status = UDMABUF_OBJECT_ALIVE;
+        mutex_unlock(&this->sem);
+        mutex_unlock(&this->status_lock);
+        if (retval != 0) 
+            dev_err(this->sys_dev, "cdev_device_add() failed. return=%d\n", retval);
+        return retval;
     }
-    mutex_lock(&this->status_lock);
-    this->status = UDMABUF_OBJECT_ALIVE;
-    mutex_unlock(&this->status_lock);
-    return 0;
 }
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 11))
@@ -2438,20 +2481,24 @@ static void udmabuf_object_info(struct udmabuf_object* this)
 
 /**
  * udmabuf_object_release() - Release a udmabuf object.
- * @ref: Pointer to the object's reference counter.
+ * @this:       Pointer to the udmabuf object.
  *
- * Free the resources associated with the udmabuf object, including the
- * page array, DMA buffer, and reserved-memory resources, if applicable.
- * Release the reference to the DMA device and free the object itself.
+ * Release the resources associated with the udmabuf object.
  *
- * This function is called when the object's reference count reaches zero.
+ * This function is called as the release callback of the object's
+ * struct device when its reference count reaches zero.
+ *
+ * Free the page array used for quirk-mmap-page mode, release the
+ * DMA buffer allocated by dma_alloc_coherent(), and release the
+ * reserved memory device attachment if present.
+ *
+ * Also release the reference to the DMA device, remove the
+ * allocated minor number from the IDA, and free the object itself.
  */
-static void udmabuf_object_release(struct kref* ref)
+static void udmabuf_object_release(struct udmabuf_object* this)
 {
-    struct udmabuf_object* this = container_of(ref, struct udmabuf_object, refcount);
-    
     if (DMA_INFO_ENABLE) {
-        pr_info(DRIVER_NAME " %s: device release.\n", dev_name(this->dma_dev));
+        pr_info(DRIVER_NAME " %s: device release.\n", dev_name(this->sys_dev));
     }
 #if ((USE_QUIRK_MMAP == 1) && USE_QUIRK_MMAP_PAGE == 1)
     if (this->pages != NULL) {
@@ -2471,18 +2518,36 @@ static void udmabuf_object_release(struct kref* ref)
         this->of_reserved_mem_dev = NULL;
     }
 #endif
-    put_device(this->dma_dev);
+    if ((this->dma_dev != NULL) && (this->dma_dev != this->sys_dev))
+        put_device(this->dma_dev);
+
+    ida_simple_remove(&udmabuf_device_ida, MINOR(this->device_number));
+
     kfree(this);
 }
 
 /**
- * udmabuf_object_destroy() -  Destroy the udmabuf object.
+ * udmabuf_object_destroy() - Destroy a udmabuf object.
  * @this:       Pointer to the udmabuf object.
- * Return:      Success(=0) or error status(<0).
+ * Return:      0 on success, -EBUSY if exported DMA-BUFs remain,
+ *              -ENODEV if @this is NULL, or a negative error code
+ *              if applicable.
  *
- * Unregister the device after releasing the resources.
- * If exported DMA-BUFs remain, the device is still unregistered
- * and the object is destroyed, but -EBUSY is returned.
+ * Mark the object as dead to prevent further access and unregister
+ * the character device and the associated device if the object
+ * has been successfully registered.
+ *
+ * If exported DMA-BUFs remain, this function still proceeds with
+ * device unregistration and releases the object's initial device
+ * reference, but returns -EBUSY.
+ *
+ * The actual resource cleanup and object deallocation are deferred
+ * until the device reference count reaches zero. This is handled
+ * by udmabuf_object_release().
+ *
+ * If the object has already been marked as dead, no further
+ * unregistration or reference release is performed.
+ *
  */
 static int udmabuf_object_destroy(struct udmabuf_object* this)
 {
@@ -2513,10 +2578,7 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
         return retval;
     
     if (curr_status == UDMABUF_OBJECT_ALIVE)
-        cdev_del(&this->cdev);
-
-    device_destroy(udmabuf_sys_class, this->device_number);
-    ida_simple_remove(&udmabuf_device_ida, MINOR(this->device_number));
+        cdev_device_del(&this->cdev, this->sys_dev);
 
     udmabuf_object_put(this);
     return retval;
@@ -2524,20 +2586,22 @@ static int udmabuf_object_destroy(struct udmabuf_object* this)
 
 /**
  * udmabuf_object_get() - Get a reference to a live udmabuf object.
- * @this: Pointer to the udmabuf object.
+ * @this:       Pointer to the udmabuf object.
+ * Return:      0 on success, or -ENODEV if the object is not alive.
  *
- * Increment the object's reference count if the object is alive.
- * The object's state is checked under status_lock to prevent
- * acquiring a reference after the object has been marked as not alive.
+ * Acquire a reference to the object's device using get_device().
  *
- * Return: 0 on success, or -ENODEV if the object is not alive.
+ * The object status is checked under status_lock to prevent
+ * acquiring a reference after the object has been marked as
+ * UDMABUF_OBJECT_DEAD.
+ *
  */
 static int  udmabuf_object_get(struct udmabuf_object* this)
 {
     int retval = 0;
     mutex_lock(&this->status_lock);
     if (this->status == UDMABUF_OBJECT_ALIVE)
-        kref_get(&this->refcount);
+        get_device(this->sys_dev);
     else
         retval = -ENODEV;
     mutex_unlock(&this->status_lock);
@@ -2546,14 +2610,17 @@ static int  udmabuf_object_get(struct udmabuf_object* this)
 
 /**
  * udmabuf_object_put() - Release a reference to a udmabuf object.
- * @this: Pointer to the udmabuf object.
+ * @this:       Pointer to the udmabuf object.
  *
- * Decrement the object's reference count. If the reference count reaches
- * zero, udmabuf_object_release() is called to release the object.
+ * Release a reference to the object's device using put_device().
+ *
+ * If the device reference count reaches zero, the object's
+ * release callback, udmabuf_object_release(), is called to
+ * release the resources associated with the object.
  */
 static void udmabuf_object_put(struct udmabuf_object* this)
 {
-    kref_put(&this->refcount, udmabuf_object_release);
+    put_device(this->sys_dev);
 }
 
 /**
@@ -3224,7 +3291,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
         if ((u32_value > 64) || (u32_value < 12)) {
             dev_err(dev, "invalid dma-mask property value=%u\n", u32_value);
             retval = -EINVAL;
-            goto failed_with_unlock;
+            goto failed;
         }
         retval = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(u32_value));
         if (retval != 0) {
@@ -3244,7 +3311,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
             obj->of_reserved_mem_dev = get_device(dev);
         } else if (retval != -ENODEV) {
             dev_err(dev, "of_reserved_mem_device_init failed. return=%d\n", retval);
-            goto failed_with_unlock;
+            goto failed;
         }
     }
 #endif
@@ -3273,7 +3340,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
 #endif
         if (retval != 0) {
             dev_err(dev, "of_dma_configure failed. return=%d\n", retval);
-            goto failed_with_unlock;
+            goto failed;
         }
 #else
         of_dma_configure(dev, dev->of_node);
@@ -3320,7 +3387,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
         if ((u32_value < SYNC_MODE_MIN) || (u32_value > SYNC_MODE_MAX)) {
             dev_err(dev, "invalid sync-mode property value=%u\n", u32_value);
             retval = -EINVAL;
-            goto failed_with_unlock;
+            goto failed;
         }
         obj->sync_mode &= ~SYNC_MODE_MASK;
         obj->sync_mode |= (int)u32_value;
@@ -3338,7 +3405,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
         if (u32_value > 2) {
             dev_err(dev, "invalid sync-direction property value=%u\n", u32_value);
             retval = -EINVAL;
-            goto failed_with_unlock;
+            goto failed;
         }
         obj->sync_direction = (int)u32_value;
     }
@@ -3349,7 +3416,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
         if (u64_value >= obj->size) {
             dev_err(dev, "invalid sync-offset property value=%llu\n", (unsigned long long)u64_value);
             retval = -EINVAL;
-            goto failed_with_unlock;
+            goto failed;
         }
         obj->sync_offset = u64_value;
     }
@@ -3361,7 +3428,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
             !udmabuf_range_valid(obj, obj->sync_offset, u64_value)) {
             dev_err(dev, "invalid sync-size property value=%llu\n", (unsigned long long)u64_value);
             retval = -EINVAL;
-            goto failed_with_unlock;
+            goto failed;
         }
         obj->sync_size = (size_t)u64_value;
     } else {
@@ -3372,7 +3439,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
                 (unsigned long long)obj->sync_offset,
                 (unsigned long long)obj->sync_size);
         retval = -EINVAL;
-        goto failed_with_unlock;
+        goto failed;
     }
     /*
      * udmabuf_object_setup()
@@ -3380,10 +3447,8 @@ static int udmabuf_platform_device_probe(struct device *dev)
     retval = udmabuf_object_setup(obj);
     if (retval) {
         dev_err(dev, "object setup failed. return=%d\n", retval);
-        goto failed_with_unlock;
+        goto failed;
     }
-
-    mutex_unlock(&obj->sem);
 
     if (info_enable) {
         udmabuf_object_info(obj);
@@ -3391,8 +3456,6 @@ static int udmabuf_platform_device_probe(struct device *dev)
 
     return 0;
 
- failed_with_unlock:
-    mutex_unlock(&obj->sem);
  failed:
     if (obj != NULL) {
         udmabuf_platform_device_remove(dev, obj);
@@ -3491,7 +3554,7 @@ static struct device* udmabuf_child_device_create(const char* name, int id, unsi
         retval = PTR_ERR(entry);
         entry  = NULL;
         dev_err(obj->sys_dev, "device create entry failed. return=%d\n", retval);
-        goto failed_with_unlock;
+        goto failed;
     }
     /*
      * udmabuf_object_setup()
@@ -3499,10 +3562,8 @@ static struct device* udmabuf_child_device_create(const char* name, int id, unsi
     retval = udmabuf_object_setup(obj);
     if (retval) {
         dev_err(obj->sys_dev, "object setup failed. return=%d\n", retval);
-        goto failed_with_unlock;
+        goto failed;
     }
-
-    mutex_unlock(&obj->sem);
 
     if (info_enable) {
         udmabuf_object_info(obj);
@@ -3513,8 +3574,6 @@ static struct device* udmabuf_child_device_create(const char* name, int id, unsi
     }
     return obj->sys_dev;
 
- failed_with_unlock:
-    mutex_unlock(&obj->sem);
  failed:
     if (entry != NULL) {
         if (entry->parent) {
