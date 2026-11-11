@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.7.1"
+#define DRIVER_VERSION     "5.7.2-alpha.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1704,7 +1704,9 @@ static loff_t udmabuf_device_file_llseek(struct file* file, loff_t offset, int w
 
 #define DEFINE_U_DMA_BUF_IOCTL_FLAGS(name,type,lo,hi)                     \
 static const  int      U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT = (lo);   \
-static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  = (((uint64_t)1UL << ((hi)-(lo)+1))-1); \
+static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  =         \
+    (((hi)-(lo)+1) >= 64) ? ~((uint64_t)0) :                              \
+                            (((uint64_t)1 << ((hi)-(lo)+1)) - 1);         \
 static inline void SET_U_DMA_BUF_IOCTL_FLAGS_ ## name(type *p, int value) \
 {                                                                         \
     const int      shift = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT;      \
@@ -2810,7 +2812,9 @@ static int  udmabuf_get_option_property(struct device *dev, u64* value, bool loc
 #define DEFINE_UDMABUF_OPTION(name,type,lo,hi)             \
 static inline type udmabuf_get_option_ ## name(u64 option) \
 {                                                          \
-    const u64 mask = ((1UL << ((hi)-(lo)+1))-1);           \
+    const int sft  = (hi)-(lo)+1;                          \
+    const u64 mask = (sft >= 64) ? ~((u64)0) :             \
+                                   (((u64)1 << sft)-1);    \
     return (type)((option >> (lo)) & mask);                \
 }
 DEFINE_UDMABUF_OPTION(dma_mask_size   ,u64, 0, 7)
