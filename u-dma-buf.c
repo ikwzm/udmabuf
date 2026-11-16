@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.8.0-alpha.1"
+#define DRIVER_VERSION     "5.8.0-alpha.2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -230,6 +230,12 @@ MODULE_IMPORT_NS("DMA_BUF");
 #elif   (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16 ,0))
 MODULE_IMPORT_NS(DMA_BUF);
 #endif
+#endif
+
+#if     (STATIC_DEVICE_NUM > 0) || (IN_KERNEL_FUNCTIONS == 1) || (USE_DEV_PROPERTY == 0)
+#define USE_DEVICE_LIST 1
+#else
+#define USE_DEVICE_LIST 0
 #endif
 
 #ifndef U64_MAX
@@ -2669,6 +2675,7 @@ static void udmabuf_object_put(struct udmabuf_object* this)
 /**
  * struct udmabuf_device_entry - udmabuf device entry structure.
  */
+#if (USE_DEVICE_LIST == 1)
 struct udmabuf_device_entry {
     struct device*       dev;
     struct device*       parent;
@@ -2682,15 +2689,18 @@ struct udmabuf_device_entry {
 #endif
     struct list_head     list;
 };
+#endif
 
 /**
  * udmabuf_device_list                - list of udmabuf device entry structure.
  * udmabuf_device_list_sem            - semaphore of udmabuf device list.
  * udmabuf_device_list_lifecycle_lock - serializes device lifecycle operations on udmabuf_device_list.
  */
+#if (USE_DEVICE_LIST == 1)
 static struct list_head udmabuf_device_list;
 static DEFINE_MUTEX(udmabuf_device_list_sem);
 static DEFINE_MUTEX(udmabuf_device_list_lifecycle_lock);
+#endif
 
 /**
  * udmabuf_get_device_name_property()  - Get "device-name"  property from udmabuf device.
@@ -2866,6 +2876,7 @@ static int  udmabuf_get_quirk_mmap_property(struct device *dev, int* value, bool
  * @id:         device id or negative integer.
  * Return:      Pointer to the found udmabuf device entry or NULL.
  */
+#if (USE_DEVICE_LIST == 1)
 static struct udmabuf_device_entry* udmabuf_device_list_search(struct device *dev, const char* name, int id)
 {
     struct udmabuf_device_entry* entry;
@@ -2902,6 +2913,7 @@ static struct udmabuf_device_entry* udmabuf_device_list_search(struct device *de
     mutex_unlock(&udmabuf_device_list_sem);
     return found_entry;
 }
+#endif
 
 /**
  * udmabuf_device_list_create_entry() - Create udmabuf device entry and add to list.
@@ -2916,6 +2928,7 @@ static struct udmabuf_device_entry* udmabuf_device_list_search(struct device *de
  * @post_remove post function when remove entry from udmabuf device list or NULL.
  * Return:      pointer to the udmabuf device entry or NULL.
  */
+#if (USE_DEVICE_LIST == 1)
 static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct device *dev, struct device *parent, const char* name, int id, unsigned int size, u64 option, void (*prep_remove)(struct device*), void (*post_remove)(struct device*))
 {                              
     struct udmabuf_device_entry* entry  = NULL;
@@ -3017,11 +3030,13 @@ static struct udmabuf_device_entry* udmabuf_device_list_create_entry(struct devi
     }
     return ERR_PTR(retval);
 }
+#endif
 
 /**
  * udmabuf_device_list_delete_entry() - Delete udmabuf device entry from list.
  * @entry:      Pointer to the udmabuf device entry.
  */
+#if (USE_DEVICE_LIST == 1)
 static void udmabuf_device_list_delete_entry(struct udmabuf_device_entry* entry)
 {
     mutex_lock(&udmabuf_device_list_sem);
@@ -3034,11 +3049,13 @@ static void udmabuf_device_list_delete_entry(struct udmabuf_device_entry* entry)
 #endif
     kfree(entry);
 }
+#endif
 
 /**
  * udmabuf_device_list_remove_entry() - Remove udmabuf device entry from list with remove functions.
  * @entry:      Pointer to the udmabuf device entry.
  */
+#if (USE_DEVICE_LIST == 1)
 static void udmabuf_device_list_remove_entry(struct udmabuf_device_entry* entry)
 {
     struct device* dev    = entry->dev;
@@ -3053,12 +3070,14 @@ static void udmabuf_device_list_remove_entry(struct udmabuf_device_entry* entry)
     if (parent)
         put_device(parent);
 }
+#endif
 
 /**
  * udmabuf_device_list_cleanup() - Remove all udmabuf device entry from list.
  */
 static void udmabuf_device_list_cleanup(void)
 {
+#if (USE_DEVICE_LIST == 1)
     struct udmabuf_device_entry* entry;
     mutex_lock(&udmabuf_device_list_lifecycle_lock);
     while(!list_empty(&udmabuf_device_list)) {
@@ -3066,6 +3085,7 @@ static void udmabuf_device_list_cleanup(void)
         udmabuf_device_list_remove_entry(entry);
     }
     mutex_unlock(&udmabuf_device_list_lifecycle_lock);
+#endif
 }
 
 /**
@@ -3084,6 +3104,7 @@ static void udmabuf_device_list_cleanup(void)
  * udmabuf_platform_device_del() - Delete udmabuf platform device before remove from device list.
  * @dev:        handle to the device structure.
  */
+#if (USE_DEVICE_LIST == 1)
 static void udmabuf_platform_device_del(struct device* dev)
 {
     /*
@@ -3091,15 +3112,18 @@ static void udmabuf_platform_device_del(struct device* dev)
      */
     platform_device_del(to_platform_device(dev));
 }
+#endif
 
 /**
  * udmabuf_platform_device_put() - Put udmabuf platform device after remove from device list.
  * @dev:        handle to the device structure.
  */
+#if (USE_DEVICE_LIST == 1)
 static void udmabuf_platform_device_put(struct device* dev)
 {
     platform_device_put(to_platform_device(dev));
 }
+#endif
 
 /**
  * udmabuf_platform_device_create() - Create udmabuf platform device and add to list.
@@ -3109,6 +3133,7 @@ static void udmabuf_platform_device_put(struct device* dev)
  * @option:     option.
  * Return:      pointer to struct device* dev(>=0) or error status(<0).
  */
+#if (USE_DEVICE_LIST == 1)
 static struct device* udmabuf_platform_device_create(const char* name, int id, unsigned int size, u64 option)
 {
     struct platform_device*      pdev   = NULL;
@@ -3180,6 +3205,7 @@ static struct device* udmabuf_platform_device_create(const char* name, int id, u
     }
     return ERR_PTR(retval);
 }
+#endif
 
 /**
  * udmabuf_platform_device_remove() - Remove call for the platform device driver.
@@ -3499,6 +3525,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
  * udmabuf_child_device_delete()   - Delete udmabuf child device after remove from device list.
  * @dev:        handle to the device structure.
  */
+#if (USE_DEVICE_LIST == 1)
 static void udmabuf_child_device_delete(struct device* dev)
 {
     char* device_name = kstrdup(dev_name(dev), GFP_KERNEL);
@@ -3511,6 +3538,7 @@ static void udmabuf_child_device_delete(struct device* dev)
     if (device_name)
         kfree(device_name);
 }
+#endif
 
 /**
  * udmabuf_child_device_create() - Create udmabuf child device and add to list.
@@ -3521,6 +3549,7 @@ static void udmabuf_child_device_delete(struct device* dev)
  * @parent:     parent device.
  * Return:      pointer to struct device* dev(>=0) or error status(<0).
  */
+#if (USE_DEVICE_LIST == 1)
 static struct device* udmabuf_child_device_create(const char* name, int id, unsigned int size, u64 option, struct device* parent)
 {
     const char*                  device_name = NULL;
@@ -3607,6 +3636,7 @@ static struct device* udmabuf_child_device_create(const char* name, int id, unsi
     }
     return ERR_PTR(retval);
 }
+#endif
 
 /**
  * DOC: Udmabuf Static Devices section.
@@ -3622,6 +3652,7 @@ static struct device* udmabuf_child_device_create(const char* name, int id, unsi
 /**
  * * udmabuf_available_bus_type_list[] - List of bus_type available for udmabuf static device.
  */
+#if (STATIC_DEVICE_NUM > 0) || (IN_KERNEL_FUNCTIONS == 1)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
 #define BUS_TYPE_T const struct bus_type
 #else
@@ -3652,6 +3683,7 @@ static BUS_TYPE_T* udmabuf_available_bus_type_list[] = {
     PCIE_PORT_BUS_TYPE
     NULL
 };
+#endif
 
 /**
  * udmabuf_find_available_bus_type() - Find available bus_type by name.
@@ -3659,6 +3691,7 @@ static BUS_TYPE_T* udmabuf_available_bus_type_list[] = {
  * @name_len:   length of @name.
  * Return:      pointer to the bus_type or NULL.
  */
+#if (STATIC_DEVICE_NUM > 0) || (IN_KERNEL_FUNCTIONS == 1)
 static BUS_TYPE_T* udmabuf_find_available_bus_type(char* name, int name_len)
 {
     int i;
@@ -3676,6 +3709,7 @@ static BUS_TYPE_T* udmabuf_find_available_bus_type(char* name, int name_len)
     }
     return udmabuf_available_bus_type_list[i];
 }
+#endif
 
 /**
  * udmabuf_static_bind_parse() - Parse bind string to get bus_type and device_name.
@@ -4289,7 +4323,9 @@ static int __init u_dma_buf_init(void)
     }
 
     ida_init(&udmabuf_device_ida);
+#if (USE_DEVICE_LIST == 1)
     INIT_LIST_HEAD(&udmabuf_device_list);
+#endif
 
     retval = alloc_chrdev_region(&udmabuf_device_number, 0, DEVICE_MAX_NUM, DRIVER_NAME);
     if (retval != 0) {
