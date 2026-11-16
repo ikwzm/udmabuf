@@ -21,11 +21,27 @@ config U_DMA_BUF_CONFIG
 	  If y, allows u-dma-buf configuration by Kconfig.
 	  If n, build with
 	    U_DMA_BUF_DEBUG=y
+	    U_DMA_BUF_STATIC_DEVICE=8
 	    U_DMA_BUF_QUIRK_MMAP=y
 	    U_DMA_BUF_IN_KERNEL_FUNCTIONS=y
 	    U_DMA_BUF_IOCTL=y
 	    U_DMA_BUF_EXPORT=y
-	  
+
+config U_DMA_BUF_STATIC_DEVICE
+	int "Number of static u-dma-buf devices (0-8)"
+	depends on U_DMA_BUF_CONFIG
+	range 0 8
+	default 8
+	help
+	  Specify the number of static u-dma-buf devices to be
+	  created when the u-dma-buf driver module is loaded.
+
+	  These devices are created according to the module
+	  parameter U_DMA_BUF_STATIC_DEVICE.
+
+	  The value must be between 0 and 8.
+	  If 0 is specified, no static devices are created.
+
 config U_DMA_BUF_DEBUG
 	bool "u-dma-buf enable debug report"
 	depends on U_DMA_BUF_CONFIG
