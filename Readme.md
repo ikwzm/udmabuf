@@ -72,14 +72,15 @@ This repository contains a [Makefie](./Makefile).
 Makefile has the following Parameters:
 
 | Parameter Name                       | Description                  | Default Value                        |
-|--------------------------------------|------------------------------|--------------------------------------|
-| ARCH                                 | Architecture Name            | `$(shell uname -m \| sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/ -e s/riscv.*/riscv/ )` |
-| KERNEL_SRC                           | Kernel Source Directory      | `/lib/modules/$(shell uname -r)/build` |
-| CONFIG_U_DMA_BUF_DEBUG               | Enable debug report          | y |
-| CONFIG_U_DMA_BUF_QUIRK_MMAP          | Enable quirk-mmap            | y |
-| CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS | Enable in-kernel functions   | y |
-| CONFIG_U_DMA_BUF_IOCTL               | Enable ioctl                 | y |
-| CONFIG_U_DMA_BUF_EXPORT              | Enable PRIME DMA-BUFS export | y |
+|--------------------------------------|-----------------------------------|--------------------------------------|
+| ARCH                                 | Architecture Name                 | `$(shell uname -m \| sed -e s/arm.*/arm/ -e s/aarch64.*/arm64/ -e s/riscv.*/riscv/ )` |
+| KERNEL_SRC                           | Kernel Source Directory           | `/lib/modules/$(shell uname -r)/build` |
+| CONFIG_U_DMA_BUF_STATIC_DEVICE       | Number of static devices (0 to 8) | 8 |
+| CONFIG_U_DMA_BUF_DEBUG               | Enable debug report               | y |
+| CONFIG_U_DMA_BUF_QUIRK_MMAP          | Enable quirk-mmap                 | y |
+| CONFIG_U_DMA_BUF_IN_KERNEL_FUNCTIONS | Enable in-kernel functions        | y |
+| CONFIG_U_DMA_BUF_IOCTL               | Enable ioctl                      | y |
+| CONFIG_U_DMA_BUF_EXPORT              | Enable PRIME DMA-BUFS export      | y |
 
 ### Cross Compile
 
@@ -158,11 +159,14 @@ shell$ diff <linux-source-tree>/arch/arm64/configs/xilinx_zynqmp_defconfig
 Load the u-dma-buf kernel driver using `insmod`. The size of a DMA buffer should be
 provided as an argument as follows.
 The device driver is created, and allocates a DMA buffer with the specified size.
-The maximum number of DMA buffers that can be allocated using `insmod` is 8 (udmabuf0/1/2/3/4/5/6/7).
+
+The number of static devices that can be created using `insmod` (udmabuf0, udmabuf1, ...)
+can be configured at build time using `CONFIG_U_DMA_BUF_STATIC_DEVICE`.
+The configurable range is 0 to 8, and the default value is 8.
 
 ```console
 zynq$ insmod u-dma-buf.ko udmabuf0=1048576
-u-dma-buf udmabuf0: driver version = 5.7.1
+u-dma-buf udmabuf0: driver version = 5.8.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -209,10 +213,14 @@ The u-dma-buf kernel module has the following module parameters:
 
 ### `udmabuf[0-7]`
 
-This parameter specifies the capacity of the u-dma-buf to be created in bytes.
-The number of u-dma-buf that can be created with this parameter is 8.
-The device name will be udmabuf[0-7].
-If this parameter is 0, the u-dma-buf is not created.
+These parameters specify the capacity of each u-dma-buf to be created, in bytes.
+
+The number of static devices that can be created using these parameters is configurable at build time via CONFIG_U_DMA_BUF_STATIC_DEVICE.
+The configurable range is 0 to 8, and the default value is 8.
+
+The device names are udmabuf0 through udmabuf7.
+Only the parameters within the configured range are available.
+If a parameter is set to 0, the corresponding u-dma-buf is not created.
 
 ### `info_enable`
 
@@ -242,7 +250,7 @@ For example, to designate "0000:00:15.0" under the pci bus as the parent device 
 
 ```console
 shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 udmabuf0_bind="pci/0000:00:15.0" 
-[13422.022482] u-dma-buf udmabuf0: driver version = 5.7.1
+[13422.022482] u-dma-buf udmabuf0: driver version = 5.8.0
 [13422.022483] u-dma-buf udmabuf0: major number   = 238
 [13422.022483] u-dma-buf udmabuf0: minor number   = 0
 [13422.022484] u-dma-buf udmabuf0: phys address   = 0x0000000070950000
@@ -302,7 +310,7 @@ allocate buffers and create device drivers when loaded by `insmod`.
 
 ```console
 zynq$ insmod u-dma-buf.ko
-u-dma-buf udmabuf0: driver version = 5.7.1
+u-dma-buf udmabuf0: driver version = 5.8.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -895,7 +903,9 @@ The following header file is required to use ioctl.
 
 #define DEFINE_U_DMA_BUF_IOCTL_FLAGS(name,type,lo,hi)                     \
 static const  int      U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT = (lo);   \
-static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  = (((uint64_t)1UL << ((hi)-(lo)+1))-1); \
+static const  uint64_t U_DMA_BUF_IOCTL_FLAGS_ ## name ## _MASK  =         \
+    (((hi)-(lo)+1) >= 64) ? ~((uint64_t)0) :                              \
+                            (((uint64_t)1 << ((hi)-(lo)+1)) - 1);         \
 static inline void SET_U_DMA_BUF_IOCTL_FLAGS_ ## name(type *p, int value) \
 {                                                                         \
     const int      shift = U_DMA_BUF_IOCTL_FLAGS_ ## name ## _SHIFT;      \
@@ -921,6 +931,7 @@ DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_DMA_CONFIG  , u_dma_buf_ioctl_drv_info , 12,
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_RESERVED_MEM, u_dma_buf_ioctl_drv_info , 13, 13)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP     , u_dma_buf_ioctl_drv_info , 16, 16)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP_PAGE, u_dma_buf_ioctl_drv_info , 17, 17)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(STATIC_DEVICE_NUM  , u_dma_buf_ioctl_drv_info , 24, 31)
 
 typedef struct {
     uint64_t flags;
@@ -955,6 +966,7 @@ typedef struct {
     uint64_t offset;
     uint64_t addr;
     int      fd;
+    uint8_t  padding[4];
 } u_dma_buf_ioctl_export_args;
 
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(EXPORT_FD_FLAGS, u_dma_buf_ioctl_export_args,  0, 31)
@@ -993,6 +1005,7 @@ The driver information obtained by this ioctl includes the driver support and ve
     if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
         u_dma_buf_ioctl_drv_info drv_info = {0};
         int status = ioctl(fd, U_DMA_BUF_IOCTL_GET_DRV_INFO, &drv_info);
+        int static_device_num   = GET_U_DMA_BUF_IOCTL_FLAGS_STATIC_DEVICE_NUM(&drv_info);
         int ioctl_version       = GET_U_DMA_BUF_IOCTL_FLAGS_IOCTL_VERSION(&drv_info);
         int in_kernel_function  = GET_U_DMA_BUF_IOCTL_FLAGS_IN_KERNEL_FUNCTIONS(&drv_info);
         int use_of_dma_config   = GET_U_DMA_BUF_IOCTL_FLAGS_USE_OF_DMA_CONFIG(&drv_info);
@@ -1810,7 +1823,7 @@ Install u-dma-buf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
 
 ```console
 zynq# insmod u-dma-buf.ko udmabuf0=8388608
-[ 1183.911189] u-dma-buf udmabuf0: driver version = 5.7.1
+[ 1183.911189] u-dma-buf udmabuf0: driver version = 5.8.0
 [ 1183.921238] u-dma-buf udmabuf0: major number   = 240
 [ 1183.931275] u-dma-buf udmabuf0: minor number   = 0
 [ 1183.936063] u-dma-buf udmabuf0: phys address   = 0x0000000041600000

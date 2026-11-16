@@ -21,11 +21,27 @@ config U_DMA_BUF_CONFIG
 	  If y, allows u-dma-buf configuration by Kconfig.
 	  If n, build with
 	    U_DMA_BUF_DEBUG=y
+	    U_DMA_BUF_STATIC_DEVICE=8
 	    U_DMA_BUF_QUIRK_MMAP=y
 	    U_DMA_BUF_IN_KERNEL_FUNCTIONS=y
 	    U_DMA_BUF_IOCTL=y
 	    U_DMA_BUF_EXPORT=y
-	  
+
+config U_DMA_BUF_STATIC_DEVICE
+	int "Number of static u-dma-buf devices (0-8)"
+	depends on U_DMA_BUF_CONFIG
+	range 0 8
+	default 8
+	help
+	  Specify the number of static u-dma-buf devices to be
+	  created when the u-dma-buf driver module is loaded.
+
+	  These devices are created according to the module
+	  parameter U_DMA_BUF_STATIC_DEVICE.
+
+	  The value must be between 0 and 8.
+	  If 0 is specified, no static devices are created.
+
 config U_DMA_BUF_DEBUG
 	bool "u-dma-buf enable debug report"
 	depends on U_DMA_BUF_CONFIG
@@ -59,14 +75,15 @@ config U_DMA_BUF_IN_KERNEL_FUNCTIONS
 config U_DMA_BUF_IOCTL
 	bool "u-dma-buf enable ioctl"
 	depends on U_DMA_BUF_CONFIG
-	default y if U_DMA_BUF_EXPORT
+	default y
 	help
 	  Enable ioctl.
 
 config U_DMA_BUF_EXPORT
 	bool "u-dma-buf enable prime dma-buf export"
 	depends on U_DMA_BUF_CONFIG
-	select CONFIG_DMA_SHARED_BUFFER
+	select DMA_SHARED_BUFFER
+	select U_DMA_BUF_IOCTL
 	default y
 	help
 	  Enable exporting u-dma-buf as PRIME DMA-BUFs.
@@ -74,5 +91,5 @@ config U_DMA_BUF_EXPORT
 	  DMA buffer sharing API.
 	  It provides a general mechanism for sharing DMA buffers among multiple
 	  devices managed by different types of device drivers.
-	  To use this option, ioctl must be enabled.
+	  Enabling this option also enables ioctl.
 
