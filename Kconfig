@@ -59,14 +59,15 @@ config U_DMA_BUF_IN_KERNEL_FUNCTIONS
 config U_DMA_BUF_IOCTL
 	bool "u-dma-buf enable ioctl"
 	depends on U_DMA_BUF_CONFIG
-	default y if U_DMA_BUF_EXPORT
+	default y
 	help
 	  Enable ioctl.
 
 config U_DMA_BUF_EXPORT
 	bool "u-dma-buf enable prime dma-buf export"
 	depends on U_DMA_BUF_CONFIG
-	select CONFIG_DMA_SHARED_BUFFER
+	select DMA_SHARED_BUFFER
+	select U_DMA_BUF_IOCTL
 	default y
 	help
 	  Enable exporting u-dma-buf as PRIME DMA-BUFs.
@@ -74,5 +75,5 @@ config U_DMA_BUF_EXPORT
 	  DMA buffer sharing API.
 	  It provides a general mechanism for sharing DMA buffers among multiple
 	  devices managed by different types of device drivers.
-	  To use this option, ioctl must be enabled.
+	  Enabling this option also enables ioctl.
 
