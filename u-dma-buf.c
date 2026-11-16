@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.7.2-alpha.1"
+#define DRIVER_VERSION     "5.8.0-alpha.1"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -79,6 +79,22 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define UDMABUF_CONFIG      1
 #else   
 #define UDMABUF_CONFIG      0
+#endif
+
+#if     (UDMABUF_CONFIG == 0)
+#define STATIC_DEVICE_NUM   8
+#elif   defined(U_DMA_BUF_STATIC_DEVICE) && (U_DMA_BUF_STATIC_DEVICE >  8)
+#warning "U_DMA_BUF_STATIC_DEVICE must be 0 and 8"
+#define STATIC_DEVICE_NUM   8
+#elif   defined(U_DMA_BUF_STATIC_DEVICE) && (U_DMA_BUF_STATIC_DEVICE >= 0)
+#define STATIC_DEVICE_NUM   U_DMA_BUF_STATIC_DEVICE
+#elif   defined(CONFIG_U_DMA_BUF_STATIC_DEVICE) && (CONFIG_U_DMA_BUF_STATIC_DEVICE >  8)
+#warning "CONFIG_U_DMA_BUF_STATIC_DEVICE must be 0 and 8"
+#define STATIC_DEVICE_NUM   8
+#elif   defined(CONFIG_U_DMA_BUF_STATIC_DEVICE) && (CONFIG_U_DMA_BUF_STATIC_DEVICE >= 0)
+#define STATIC_DEVICE_NUM   CONFIG_U_DMA_BUF_STATIC_DEVICE
+#else
+#define STATIC_DEVICE_NUM   0
 #endif
 
 #if     (UDMABUF_CONFIG == 0)
@@ -3668,6 +3684,7 @@ static BUS_TYPE_T* udmabuf_find_available_bus_type(char* name, int name_len)
  * @device_name: pointer to store device_name found.
  * Return:       Success(=0) or error status(<0).
  */
+#if (STATIC_DEVICE_NUM > 0)
 static int udmabuf_static_parse_bind(char* bind, BUS_TYPE_T** bus_type, char** device_name)
 {
     int   retval   = 0;
@@ -3691,22 +3708,26 @@ static int udmabuf_static_parse_bind(char* bind, BUS_TYPE_T** bus_type, char** d
     }
     return retval;
 }
+#endif
 
 /**
  * udmabuf_static_device_param - Structure udmabuf static device parameter.
  */
+#if (STATIC_DEVICE_NUM > 0)
 typedef struct{
     char*          name;
     int            id;
     unsigned int   size;
     char*          bind_id;
 } udmabuf_static_device_param;
+#endif
 
 /**
  * udmabuf_static_device_create() - Create udmabuf static device and add to list.
  * @param:      Pointer to udmabuf static device parameter.
  * Return:      Success(=0) or error status(<0).
  */
+#if (STATIC_DEVICE_NUM > 0)
 static int udmabuf_static_device_create(udmabuf_static_device_param* param)
 {
     int            retval;
@@ -3748,6 +3769,7 @@ static int udmabuf_static_device_create(udmabuf_static_device_param* param)
     }
     return 0;
 }
+#endif
 
 #define DEFINE_UDMABUF_STATIC_DEVICE_PARAM(__num)                          \
     static ulong     udmabuf ## __num = 0;                                 \
@@ -3777,28 +3799,60 @@ static int udmabuf_static_device_create(udmabuf_static_device_param* param)
         ida_simple_get(&udmabuf_device_ida, __num, __num+1, GFP_KERNEL); \
     }
 
+#if (STATIC_DEVICE_NUM > 0)
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(0);
+#endif
+#if (STATIC_DEVICE_NUM > 1)
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(1);
+#endif
+#if (STATIC_DEVICE_NUM > 2)
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(2);
+#endif
+#if (STATIC_DEVICE_NUM > 3)
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(3);
+#endif
+#if (STATIC_DEVICE_NUM > 4)
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(4);
+#endif
+#if (STATIC_DEVICE_NUM > 5)
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(5);
+#endif
+#if (STATIC_DEVICE_NUM > 6)
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(6);
+#endif
+#if (STATIC_DEVICE_NUM > 7)
 DEFINE_UDMABUF_STATIC_DEVICE_PARAM(7);
+#endif
 
 /**
  * udmabuf_static_device_reserve_minor_number_all() - Reserve udmabuf static device's minor-number.
  */
 static void udmabuf_static_device_reserve_minor_number_all(void)
 {
+#if (STATIC_DEVICE_NUM > 0)
     CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(0);
+#endif
+#if (STATIC_DEVICE_NUM > 1)
     CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(1);
+#endif
+#if (STATIC_DEVICE_NUM > 2)
     CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(2);
+#endif
+#if (STATIC_DEVICE_NUM > 3)
     CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(3);
+#endif
+#if (STATIC_DEVICE_NUM > 4)
     CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(4);
+#endif
+#if (STATIC_DEVICE_NUM > 5)
     CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(5);
+#endif
+#if (STATIC_DEVICE_NUM > 6)
     CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(6);
+#endif
+#if (STATIC_DEVICE_NUM > 7)
     CALL_UDMABUF_STATIC_DEVICE_RESERVE_MINOR_NUMBER(7);
+#endif
 }
 
 /**
@@ -3807,14 +3861,30 @@ static void udmabuf_static_device_reserve_minor_number_all(void)
 static int udmabuf_static_device_create_all(void)
 {
     int  status = 0;
+#if (STATIC_DEVICE_NUM > 0)
     CALL_UDMABUF_STATIC_DEVICE_CREATE(0);
+#endif
+#if (STATIC_DEVICE_NUM > 1)
     CALL_UDMABUF_STATIC_DEVICE_CREATE(1);
+#endif
+#if (STATIC_DEVICE_NUM > 2)
     CALL_UDMABUF_STATIC_DEVICE_CREATE(2);
+#endif
+#if (STATIC_DEVICE_NUM > 3)
     CALL_UDMABUF_STATIC_DEVICE_CREATE(3);
+#endif
+#if (STATIC_DEVICE_NUM > 4)
     CALL_UDMABUF_STATIC_DEVICE_CREATE(4);
+#endif
+#if (STATIC_DEVICE_NUM > 5)
     CALL_UDMABUF_STATIC_DEVICE_CREATE(5);
+#endif
+#if (STATIC_DEVICE_NUM > 6)
     CALL_UDMABUF_STATIC_DEVICE_CREATE(6);
+#endif
+#if (STATIC_DEVICE_NUM > 7)
     CALL_UDMABUF_STATIC_DEVICE_CREATE(7);
+#endif
     return status;
 }
 
@@ -4214,7 +4284,8 @@ static int __init u_dma_buf_init(void)
                 "USE_OF_DMA_CONFIG="   NUM_TO_STR(USE_OF_DMA_CONFIG)   ","
                 "USE_DEV_PROPERTY="    NUM_TO_STR(USE_DEV_PROPERTY)    ","
                 "IN_KERNEL_FUNCTIONS=" NUM_TO_STR(IN_KERNEL_FUNCTIONS) ","
-                "IOCTL_VERSION="       NUM_TO_STR(IOCTL_VERSION)        );
+                "IOCTL_VERSION="       NUM_TO_STR(IOCTL_VERSION)       ","
+                "STATIC_DEVICE_NUM="   NUM_TO_STR(STATIC_DEVICE_NUM)    );
     }
 
     ida_init(&udmabuf_device_ida);
