@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.8.0"
+#define DRIVER_VERSION     "5.9.0"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -134,13 +134,13 @@ MODULE_LICENSE("Dual BSD/GPL");
 #endif
 
 #if     (UDMABUF_CONFIG == 0)
-#define IOCTL_VERSION       4
-#elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL >  4)
-#define IOCTL_VERSION       4
+#define IOCTL_VERSION       5
+#elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL >  5)
+#define IOCTL_VERSION       5
 #elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL >= 0)
 #define IOCTL_VERSION       U_DMA_BUF_IOCTL
 #elif   defined(CONFIG_U_DMA_BUF_IOCTL)
-#define IOCTL_VERSION       4
+#define IOCTL_VERSION       5
 #else
 #define IOCTL_VERSION       0
 #endif
@@ -203,7 +203,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 #endif
 
 #if     (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0))
-#define USE_DEV_PROPERTY    1
+#define USE_DEV_PROPERTY    2
 #else
 #define USE_DEV_PROPERTY    0
 #endif
@@ -405,7 +405,7 @@ static inline bool udmabuf_range_valid(struct udmabuf_object* this, u64 offset, 
 #define SYNC_MODE_WRITECOMBINE  (0x02)
 #define SYNC_MODE_DMACOHERENT   (0x03)
 #define SYNC_MODE_MASK          (0x03)
-#define SYNC_MODE_MIN           (0x01)
+#define SYNC_MODE_MIN           (0x00)
 #define SYNC_MODE_MAX           (0x03)
 #define SYNC_ALWAYS             (0x04)
 
@@ -1750,6 +1750,7 @@ DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_DMA_CONFIG  , u_dma_buf_ioctl_drv_info , 12,
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_RESERVED_MEM, u_dma_buf_ioctl_drv_info , 13, 13)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP     , u_dma_buf_ioctl_drv_info , 16, 16)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP_PAGE, u_dma_buf_ioctl_drv_info , 17, 17)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_DEV_PROPERTY   , u_dma_buf_ioctl_drv_info , 20, 21)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(STATIC_DEVICE_NUM  , u_dma_buf_ioctl_drv_info , 24, 31)
 
 typedef struct {
@@ -1801,6 +1802,8 @@ DEFINE_U_DMA_BUF_IOCTL_FLAGS(EXPORT_FD_FLAGS, u_dma_buf_ioctl_export_args,  0, 3
 #define U_DMA_BUF_IOCTL_GET_SYNC            _IOR (U_DMA_BUF_IOCTL_MAGIC, 8, u_dma_buf_ioctl_sync_args)
 #define U_DMA_BUF_IOCTL_SET_SYNC            _IOW (U_DMA_BUF_IOCTL_MAGIC, 9, u_dma_buf_ioctl_sync_args)
 #define U_DMA_BUF_IOCTL_EXPORT              _IOWR(U_DMA_BUF_IOCTL_MAGIC,10, u_dma_buf_ioctl_export_args)
+#define U_DMA_BUF_IOCTL_GET_SYNC_MODE       _IOR (U_DMA_BUF_IOCTL_MAGIC,11, uint32_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_MODE       _IOW (U_DMA_BUF_IOCTL_MAGIC,12, uint32_t)
 #endif /* #ifndef U_DMA_BUF_IOCTL_H */
 #endif /* #if (IOCTL_VERSION > 0) */
 
@@ -1829,6 +1832,9 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             SET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP_PAGE(&drv_info, USE_QUIRK_MMAP_PAGE);
 #if (IOCTL_VERSION >= 4)            
             SET_U_DMA_BUF_IOCTL_FLAGS_STATIC_DEVICE_NUM  (&drv_info, STATIC_DEVICE_NUM);
+#endif
+#if (IOCTL_VERSION >= 5)
+            SET_U_DMA_BUF_IOCTL_FLAGS_USE_DEV_PROPERTY   (&drv_info, USE_DEV_PROPERTY);
 #endif
             if (strscpy(&drv_info.version[0], DRIVER_VERSION, sizeof(drv_info.version)) < 0)
                 result = -EFAULT;
@@ -1984,7 +1990,9 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
                     case 2   : this->sync_direction = 2; break;
                     default  : /* none */                break;
                 }
+#if (IOCTL_VERSION <  5)
                 if (sync_mode > 0) {this->sync_mode = sync_mode;}
+#endif
                 switch(sync_command) {
                     case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU:
                         this->sync_for_cpu = 1;
@@ -2071,7 +2079,44 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
           export_failed:
             break;
         }
-#endif            
+#endif
+#if (IOCTL_VERSION >= 5)
+        case U_DMA_BUF_IOCTL_GET_SYNC_MODE: {
+            uint32_t sync_mode;
+            if (mutex_lock_interruptible(&this->sem) != 0) {
+                result = -ERESTARTSYS;
+                break;
+            }
+            sync_mode = (uint32_t)this->sync_mode;
+            mutex_unlock(&this->sem);
+            if (copy_to_user(argp, &sync_mode, sizeof(sync_mode)) != 0)
+                result = -EFAULT;
+            else 
+                result = 0;
+            break;
+        }
+        case U_DMA_BUF_IOCTL_SET_SYNC_MODE: {
+            uint32_t sync_mode;
+            if (copy_from_user(&sync_mode, argp, sizeof(sync_mode)) != 0) {
+                result = -EFAULT;
+                break;
+            }
+            if (((sync_mode & ~(SYNC_MODE_MASK | SYNC_ALWAYS)) != 0) ||
+                ((sync_mode & SYNC_MODE_MASK) < SYNC_MODE_MIN) ||
+                ((sync_mode & SYNC_MODE_MASK) > SYNC_MODE_MAX)) {
+                result = -EINVAL;
+                break;
+            }
+            if (mutex_lock_interruptible(&this->sem) != 0) {
+                result = -ERESTARTSYS;
+                break;
+            }
+            this->sync_mode = sync_mode;
+            mutex_unlock(&this->sem);
+            result = 0;
+            break;
+        }
+#endif
         default:
             result = -ENOTTY;
     }
@@ -2389,7 +2434,7 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
         this->pagecount = this->alloc_size >> PAGE_SHIFT;
         this->pages     = kmalloc_array(this->pagecount, sizeof(struct page*), GFP_KERNEL);
         if (IS_ERR_OR_NULL(this->pages)) {
-            int retval = PTR_ERR(this->pages);
+            int retval = (this->pages == NULL) ? -ENOMEM : PTR_ERR(this->pages);
             dev_warn(this->sys_dev, "allocate pages(pagecount=%lu) failed. return(%d)\n", (unsigned long)this->pagecount, retval);
             this->pagecount = 0;
             this->pages     = NULL;
@@ -2662,10 +2707,17 @@ static void udmabuf_object_put(struct udmabuf_object* this)
  * * udmabuf_device_list_cleanup()        - Remove all udmabuf device entry from list.
  * * udmabuf_device_list_search()         - Search udmabuf device entry from list by name or number.
  * * udmabuf_get_device_name_property()   - Get "device-name"  property from udmabuf device.
- * * udmabuf_get_size_property()          - Get "buffer-size"  property from udmabuf device.
  * * udmabuf_get_minor_number_property()  - Get "minor-number" property from udmabuf device.
+ * * udmabuf_get_size_property()          - Get "size"         property from udmabuf device.
  * * udmabuf_get_option_property()        - Get "option"       property from udmabuf device.
- * * udmabuf_get_quirk_mmap_property()    - Get "quirk_mmap"   property from "option" property.
+ * * udmabuf_property_read_device_name()  - Read "device-name"  property of a device.
+ * * udmabuf_property_read_minor_number() - Read "minor-number" property of a device.
+ * * udmabuf_property_read_size()         - Read "size"         property of a device.
+ * * udmabuf_property_read_quirk_mmap()   - Read "quirk_mmap"   property of a device.
+ * * udmabuf_property_read_sync_mode()    - Read "sync_mode"    property of a device.
+ * * udmabuf_property_read_u64()          - Read the u64     property specified by @propname.
+ * * udmabuf_property_read_u32()          - Read the u32     property specified by @propname.
+ * * udmabuf_property_read_bool()         - Read the boolean property specified by @propname.
  */
 
 #if (USE_DEV_PROPERTY != 0)
@@ -2703,6 +2755,76 @@ static DEFINE_MUTEX(udmabuf_device_list_lifecycle_lock);
 #endif
 
 /**
+ * udmabuf_property_read_u64()  - Read the u64 property specified by @propname.
+ * @dev:        handle to the device structure.
+ * @propname:   name of property to be searched.
+ * @out_value:  pointer to property value, modified only if return value is 0.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int udmabuf_property_read_u64(struct device* dev, const char* propname, u64* out_value)
+{
+    u32    u32_value;
+    u64    u64_value;
+    int    retval;
+#if (USE_DEV_PROPERTY == 2)
+    if ((retval = device_property_read_u64(dev, propname, &u64_value)) == 0) {
+        *out_value = u64_value;
+        return 0;
+    }
+    if ((retval = device_property_read_u32(dev, propname, &u32_value)) == 0) {
+        *out_value = (u64)u32_value;
+        return 0;
+    }
+#else
+    if ((retval = of_property_read_u64(dev->of_node, propname, &u64_value)) == 0) {
+        *out_value = u64_value;
+        return 0;
+    }
+    if ((retval = of_property_read_u32(dev->of_node, propname, &u32_value)) == 0) {
+        *out_value = (u64)u32_value;
+        return 0;
+    }
+#endif
+    return retval;
+}
+
+/**
+ * udmabuf_property_read_u32()  - Read the u32 property specified by @propname.
+ * @dev:        handle to the device structure.
+ * @propname:   name of property to be searched.
+ * @out_value:  pointer to property value, modified only if return value is 0.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int udmabuf_property_read_u32(struct device* dev, const char* propname, u32* out_value)
+{
+    u32    u32_value;
+    int    retval;
+#if (USE_DEV_PROPERTY == 2)
+    if ((retval = device_property_read_u32(dev, propname, &u32_value)) == 0)
+        *out_value = (u32)u32_value;
+#else
+    if ((retval = of_property_read_u32(dev->of_node, propname, &u32_value)) == 0)
+        *out_value = (u32)u32_value;
+#endif
+    return retval;
+}
+
+/**
+ * udmabuf_property_read_bool() - Read the boolean property specified by @propname.
+ * @dev:        handle to the device structure.
+ * @propname:   name of property to be searched.
+ * Return:      true if property @propname is present. Otherwise, returns false.
+ */
+static bool udmabuf_property_read_bool(struct device* dev, const char* propname)
+{
+#if (USE_DEV_PROPERTY == 2)
+    return device_property_read_bool(dev, propname);
+#else
+    return of_property_read_bool(dev->of_node, propname);
+#endif
+}
+
+/**
  * udmabuf_get_device_name_property()  - Get "device-name"  property from udmabuf device.
  * @dev:        handle to the device structure.
  * @name:       address of device name.
@@ -2737,7 +2859,32 @@ static int  udmabuf_get_device_name_property(struct device *dev, const char** na
 }
 
 /**
- * udmabuf_get_size_property()         - Get "buffer-size"  property from udmabuf device.
+ * udmabuf_property_read_device_name() - Read "device-name" property of a device.
+ * @dev:        handle to the device structure.
+ * @out_value:  pointer to device name, modified only if return value is 0.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int  udmabuf_property_read_device_name(struct device *dev, const char** out_value)
+{
+    const char* device_name = NULL;
+    int         status;
+    status = udmabuf_get_device_name_property(dev, &device_name, true);
+#if (USE_DEV_PROPERTY != 2)
+    if (status != 0) {
+        device_name = of_get_property(dev->of_node, "device-name", NULL);
+        if (device_name == NULL)
+            status = -EINVAL;
+        else
+            status = 0;
+    }
+#endif
+    if (status == 0)
+        *out_value = device_name;
+    return status;
+}
+
+/**
+ * udmabuf_get_size_property()  - Get "size" property from udmabuf device.
  * @dev:        handle to the device structure.
  * @value:      address of buffer size value.
  * @lock:       use mutex_lock()/mutex_unlock()
@@ -2764,6 +2911,22 @@ static int  udmabuf_get_size_property(struct device *dev, u64* value, bool lock)
 #else
     return device_property_read_u64(dev, "size", value);
 #endif
+}
+
+/**
+ * udmabuf_property_read_size()  - Read "size" property of a device.
+ * @dev:        handle to the device structure.
+ * @out_value:  pointer to buffer size value, modified only if return value is 0.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int  udmabuf_property_read_size(struct device *dev, u64* out_value)
+{
+    u64 size;
+    if (udmabuf_get_size_property(dev, &size, true) == 0) {
+        *out_value = size;
+        return 0;
+    }
+    return udmabuf_property_read_u64(dev, "size", out_value);
 }
 
 /**
@@ -2797,13 +2960,28 @@ static int  udmabuf_get_minor_number_property(struct device *dev, u32* value, bo
 }
 
 /**
+ * udmabuf_property_read_minor_number() - Read "minor-number" property of a device.
+ * @dev:        handle to the device structure.
+ * @out_value:  pointer to minor number value, modified only if return value is 0.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int  udmabuf_property_read_minor_number(struct device *dev, u32* out_value)
+{
+    u32 minor_number;
+    if (udmabuf_get_minor_number_property(dev, &minor_number, true) == 0) {
+        *out_value = minor_number;
+        return 0;
+    }
+    return udmabuf_property_read_u32(dev, "minor-number", out_value);
+}
+
+/**
  * udmabuf_get_option_property() - Get "option" property from udmabuf device.
  * @dev:        handle to the device structure.
  * @value:      address of option value.
  * @lock:       use mutex_lock()/mutex_unlock()
  * Return:      Success(=0) or error status(<0).
  */
-#if (USE_QUIRK_MMAP == 1)
 static int  udmabuf_get_option_property(struct device *dev, u64* value, bool lock)
 {
 #if (USE_DEV_PROPERTY == 0)
@@ -2826,14 +3004,19 @@ static int  udmabuf_get_option_property(struct device *dev, u64* value, bool loc
     return device_property_read_u64(dev, "option", value);
 #endif
 }
-#endif
 
 /**
  * udmabuf_get_option_dma_mask_size()   - Get dma mask size   from option.
  * udmabuf_get_option_quirk_mmap_mode() - Get quirk-mmap mode from option.
+ * udmabuf_get_option_sync_mode()       - Get sync-mode       from option.
+ * udmabuf_get_option_sync_always()     - Get sync-always     from option.
+ * udmabuf_get_option_set_sync_mode()   - Get set sync-mode   from option.
  *
- * @option:     option. dma_mask   = option[ 7: 0]
- *                      quirk_mmap = option[12:10]
+ * @option:     option. dma_mask      = option[ 7: 0]
+ *                      quirk_mmap    = option[12:10]
+ *                      sync_mode     = option[17:16]
+ *                      sync_always   = option[18:18]
+ *                      set_sync_mode = option[19:19]
  */
 #define DEFINE_UDMABUF_OPTION(name,type,lo,hi)             \
 static inline type udmabuf_get_option_ ## name(u64 option) \
@@ -2845,19 +3028,21 @@ static inline type udmabuf_get_option_ ## name(u64 option) \
 }
 DEFINE_UDMABUF_OPTION(dma_mask_size   ,u64, 0, 7)
 DEFINE_UDMABUF_OPTION(quirk_mmap_mode ,int,10,12)
+DEFINE_UDMABUF_OPTION(sync_mode       ,int,16,17)
+DEFINE_UDMABUF_OPTION(sync_always     ,int,18,18)
+DEFINE_UDMABUF_OPTION(set_sync_mode   ,int,19,19)
 
 /**
- * udmabuf_get_quirk_mmap_property()    - Get "quirk_mmap" property from "option" property.
+ * udmabuf_property_read_quirk_mmap() - Read "quirk_mmap" property of a device.
  * @dev:        handle to the device structure.
  * @value:      address of quirk_mmap value.
- * @lock:       use mutex_lock()/mutex_unlock()
  * Return:      Success(=0) or error status(<0).
  */
 #if (USE_QUIRK_MMAP == 1)
-static int  udmabuf_get_quirk_mmap_property(struct device *dev, int* value, bool lock)
+static int  udmabuf_property_read_quirk_mmap(struct device *dev, int* value)
 {
     u64 option;
-    int status = udmabuf_get_option_property(dev, &option, lock);
+    int status = udmabuf_get_option_property(dev, &option, true);
     if (status == 0) {
         int quirk_mmap_mode = udmabuf_get_option_quirk_mmap_mode(option);
         if (udmabuf_check_quirk_mmap_mode(quirk_mmap_mode) == true)
@@ -2868,6 +3053,65 @@ static int  udmabuf_get_quirk_mmap_property(struct device *dev, int* value, bool
     return status;
 }
 #endif
+
+/**
+ * udmabuf_property_read_sync_mode() - Read "sync_mode" and "sync_always" property of a device.
+ * @dev:        handle to the device structure.
+ * @value:      address of sync_mode value.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int  udmabuf_property_read_sync_mode(struct device *dev, int* value)
+{
+    u64 option;
+    u32 u32_value;
+    int sync_mode = *value;
+    int update    = 0;
+    int status    = 0;
+    /*
+     * sync-mode, sync_always in option property of a device
+     */
+    if (udmabuf_get_option_property(dev, &option, true) == 0) {
+        int set_sync_mode = udmabuf_get_option_set_sync_mode(option);
+        int sync_always   = udmabuf_get_option_sync_always(option);
+        int new_sync_mode = udmabuf_get_option_sync_mode(option);
+        if (set_sync_mode != 0) {
+            if ((new_sync_mode < SYNC_MODE_MIN) || (new_sync_mode > SYNC_MODE_MAX)) {
+                dev_err(dev, "invalid option property sync-mode value=%u\n", new_sync_mode);
+                status = -EINVAL;
+                goto done;
+            }
+            sync_mode &= ~(SYNC_ALWAYS | SYNC_MODE_MASK);
+            sync_mode |= (new_sync_mode & SYNC_MODE_MASK);
+            if (sync_always)
+                sync_mode |= SYNC_ALWAYS;
+            update |= 0x01;
+        }
+    }
+    /*
+     * sync-mode property of a device
+     */
+    if (udmabuf_property_read_u32(dev, "sync-mode", &u32_value) == 0) {
+        if ((u32_value < SYNC_MODE_MIN) || (u32_value > SYNC_MODE_MAX)) {
+            dev_err(dev, "invalid sync-mode property value=%u\n", u32_value);
+            status = -EINVAL;
+            goto done;
+        }
+        sync_mode &= ~SYNC_MODE_MASK;
+        sync_mode |= (int)u32_value;
+        update |= 0x02;
+    }
+    /*
+     * sync-always property of a device
+     */
+    if (udmabuf_property_read_bool(dev, "sync-always")) {
+        sync_mode |= SYNC_ALWAYS;
+        update |= 0x04;
+    }
+    if (update != 0)
+        *value = sync_mode;
+ done:
+    return status;
+}
 
 /**
  * udmabuf_device_list_search()    - Search udmabuf device entry from list by name or number.
@@ -3227,32 +3471,6 @@ static int udmabuf_platform_device_remove(struct device *dev, struct udmabuf_obj
 }
 
 /**
- * of_property_read_ulong() -  Find and read a unsigned long intger from a property.
- * @node:       device node which the property value is to be read.
- * @propname:   name of property to be searched.
- * @out_value:  pointer to return value, modified only if return value is 0.
- * Return:      Success(=0) or error status(<0).
- */
-static int of_property_read_ulong(const struct device_node* node, const char* propname, u64* out_value)
-{
-    u32    u32_value;
-    u64    u64_value;
-    int    retval;
-
-    if ((retval = of_property_read_u64(node, propname, &u64_value)) == 0) {
-        *out_value = u64_value;
-        return 0;
-    }
-      
-    if ((retval = of_property_read_u32(node, propname, &u32_value)) == 0) {
-        *out_value = (u64)u32_value;
-        return 0;
-    }
-      
-    return retval;
-}
-
-/**
  * udmabuf_platform_device_probe()  - Probe call for the platform device driver.
  * @dev:        handle to the device structure.
  * Return:      Success(=0) or error status(<0).
@@ -3273,9 +3491,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
     /*
      * size property
      */
-    if        ((prop_status = udmabuf_get_size_property(dev, &u64_value, true)) == 0) {
-        size = u64_value;
-    } else if ((prop_status = of_property_read_ulong(dev->of_node, "size", &u64_value)) == 0) {
+    if ((prop_status = udmabuf_property_read_size(dev, &u64_value)) == 0) {
         size = u64_value;
     } else {
         dev_err(dev, "invalid property size. status=%d\n", prop_status);
@@ -3290,9 +3506,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
     /*
      * minor-number property
      */
-    if        (udmabuf_get_minor_number_property(dev, &u32_value, true) == 0) {
-        minor_number = u32_value;
-    } else if (of_property_read_u32(dev->of_node, "minor-number", &u32_value) == 0) {
+    if (udmabuf_property_read_minor_number(dev, &u32_value) == 0) {
         minor_number = u32_value;
     } else {
         minor_number = -1;
@@ -3300,9 +3514,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
     /*
      * device-name property
      */
-    if (udmabuf_get_device_name_property(dev, &device_name, true) != 0)
-        device_name = of_get_property(dev->of_node, "device-name", NULL);
-    if (IS_ERR_OR_NULL(device_name)) {
+    if (udmabuf_property_read_device_name(dev, &device_name) != 0) {
         if (minor_number < 0)
             device_name = dev_name(dev);
         else
@@ -3333,7 +3545,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
      * Because dma_set_mask_and_coherent() will fail unless dev->dma_ops is set.
      * When dma_set_mask_and_coherent() fails, it is forcefuly setting the dma-mask value.
      */
-    if (of_property_read_u32(dev->of_node, "dma-mask", &u32_value) == 0) {
+    if (udmabuf_property_read_u32(dev, "dma-mask", &u32_value) == 0) {
         if ((u32_value > 64) || (u32_value < 12)) {
             dev_err(dev, "invalid dma-mask property value=%u\n", u32_value);
             retval = -EINVAL;
@@ -3396,58 +3608,46 @@ static int udmabuf_platform_device_probe(struct device *dev)
 #if (USE_QUIRK_MMAP == 1)
     {
         int quirk_mmap_mode;
-        if (udmabuf_get_quirk_mmap_property(dev, &quirk_mmap_mode, true) == 0)
+        if (udmabuf_property_read_quirk_mmap(dev, &quirk_mmap_mode) == 0)
             udmabuf_set_quirk_mmap_mode(obj, quirk_mmap_mode);
         /*
          * quirk-mmap-on  property
          */
-        if (of_property_read_bool(dev->of_node, "quirk-mmap-on")) {
+        if (udmabuf_property_read_bool(dev, "quirk-mmap-on")) {
             udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_ALWAYS_ON);
         }
         /*
          * quirk-mmap-off property
          */
-        if (of_property_read_bool(dev->of_node, "quirk-mmap-off")) {
+        if (udmabuf_property_read_bool(dev, "quirk-mmap-off")) {
             udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_ALWAYS_OFF);
         }
         /*
          * quirk-mmap-auto property
          */
-        if (of_property_read_bool(dev->of_node, "quirk-mmap-auto")) {
+        if (udmabuf_property_read_bool(dev, "quirk-mmap-auto")) {
             udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_AUTO);
         }
 #if (USE_QUIRK_MMAP_PAGE == 1)
         /*
          * quirk-mmap-page property
          */
-        if (of_property_read_bool(dev->of_node, "quirk-mmap-page")) {
+        if (udmabuf_property_read_bool(dev, "quirk-mmap-page")) {
             udmabuf_set_quirk_mmap_mode(obj, QUIRK_MMAP_MODE_PAGE);
         }
 #endif
     }
 #endif
     /*
-     * sync-mode property
+     * sync-mode/sync_always property
      */
-    if (of_property_read_u32(dev->of_node, "sync-mode", &u32_value) == 0) {
-        if ((u32_value < SYNC_MODE_MIN) || (u32_value > SYNC_MODE_MAX)) {
-            dev_err(dev, "invalid sync-mode property value=%u\n", u32_value);
-            retval = -EINVAL;
-            goto failed;
-        }
-        obj->sync_mode &= ~SYNC_MODE_MASK;
-        obj->sync_mode |= (int)u32_value;
-    }
-    /*
-     * sync-always property
-     */
-    if (of_property_read_bool(dev->of_node, "sync-always")) {
-        obj->sync_mode |= SYNC_ALWAYS;
+    if ((retval = udmabuf_property_read_sync_mode(dev, &obj->sync_mode)) != 0) {
+        goto failed;
     }
     /*
      * sync-direction property
      */
-    if (of_property_read_u32(dev->of_node, "sync-direction", &u32_value) == 0) {
+    if (udmabuf_property_read_u32(dev, "sync-direction", &u32_value) == 0) {
         if (u32_value > 2) {
             dev_err(dev, "invalid sync-direction property value=%u\n", u32_value);
             retval = -EINVAL;
@@ -3458,7 +3658,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
     /*
      * sync-offset property
      */
-    if (of_property_read_ulong(dev->of_node, "sync-offset", &u64_value) == 0) {
+    if (udmabuf_property_read_u64(dev, "sync-offset", &u64_value) == 0) {
         if (u64_value >= obj->size) {
             dev_err(dev, "invalid sync-offset property value=%llu\n", (unsigned long long)u64_value);
             retval = -EINVAL;
@@ -3469,7 +3669,7 @@ static int udmabuf_platform_device_probe(struct device *dev)
     /*
      * sync-size property
      */
-    if (of_property_read_ulong(dev->of_node, "sync-size", &u64_value) == 0) {
+    if (udmabuf_property_read_u64(dev, "sync-size", &u64_value) == 0) {
         if ((u64_value > SIZE_MAX) ||
             !udmabuf_range_valid(obj, obj->sync_offset, u64_value)) {
             dev_err(dev, "invalid sync-size property value=%llu\n", (unsigned long long)u64_value);
