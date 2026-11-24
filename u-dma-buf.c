@@ -2714,6 +2714,7 @@ static void udmabuf_object_put(struct udmabuf_object* this)
  * * udmabuf_property_read_minor_number() - Read "minor-number" property of a device.
  * * udmabuf_property_read_size()         - Read "size"         property of a device.
  * * udmabuf_property_read_quirk_mmap()   - Read "quirk_mmap"   property of a device.
+ * * udmabuf_property_read_sync_mode()    - Read "sync_mode"    property of a device.
  * * udmabuf_property_read_u64()          - Read the u64     property specified by @propname.
  * * udmabuf_property_read_u32()          - Read the u32     property specified by @propname.
  * * udmabuf_property_read_bool()         - Read the boolean property specified by @propname.
@@ -2981,7 +2982,6 @@ static int  udmabuf_property_read_minor_number(struct device *dev, u32* out_valu
  * @lock:       use mutex_lock()/mutex_unlock()
  * Return:      Success(=0) or error status(<0).
  */
-#if (USE_QUIRK_MMAP == 1)
 static int  udmabuf_get_option_property(struct device *dev, u64* value, bool lock)
 {
 #if (USE_DEV_PROPERTY == 0)
@@ -3004,14 +3004,19 @@ static int  udmabuf_get_option_property(struct device *dev, u64* value, bool loc
     return device_property_read_u64(dev, "option", value);
 #endif
 }
-#endif
 
 /**
  * udmabuf_get_option_dma_mask_size()   - Get dma mask size   from option.
  * udmabuf_get_option_quirk_mmap_mode() - Get quirk-mmap mode from option.
+ * udmabuf_get_option_sync_mode()       - Get sync-mode       from option.
+ * udmabuf_get_option_sync_always()     - Get sync-always     from option.
+ * udmabuf_get_option_set_sync_mode()   - Get set sync-mode   from option.
  *
- * @option:     option. dma_mask   = option[ 7: 0]
- *                      quirk_mmap = option[12:10]
+ * @option:     option. dma_mask      = option[ 7: 0]
+ *                      quirk_mmap    = option[12:10]
+ *                      sync_mode     = option[17:16]
+ *                      sync_always   = option[18:18]
+ *                      set_sync_mode = option[19:19]
  */
 #define DEFINE_UDMABUF_OPTION(name,type,lo,hi)             \
 static inline type udmabuf_get_option_ ## name(u64 option) \
@@ -3023,9 +3028,12 @@ static inline type udmabuf_get_option_ ## name(u64 option) \
 }
 DEFINE_UDMABUF_OPTION(dma_mask_size   ,u64, 0, 7)
 DEFINE_UDMABUF_OPTION(quirk_mmap_mode ,int,10,12)
+DEFINE_UDMABUF_OPTION(sync_mode       ,int,17,16)
+DEFINE_UDMABUF_OPTION(sync_always     ,int,18,18)
+DEFINE_UDMABUF_OPTION(set_sync_mode   ,int,19,19)
 
 /**
- * udmabuf_property_read_quirk_mmap() - Return "quirk_mmap" property of a device.
+ * udmabuf_property_read_quirk_mmap() - Read "quirk_mmap" property of a device.
  * @dev:        handle to the device structure.
  * @value:      address of quirk_mmap value.
  * Return:      Success(=0) or error status(<0).
@@ -3045,6 +3053,65 @@ static int  udmabuf_property_read_quirk_mmap(struct device *dev, int* value)
     return status;
 }
 #endif
+
+/**
+ * udmabuf_property_read_sync_mode() - Read "sync_mode" and "sync_always" property of a device.
+ * @dev:        handle to the device structure.
+ * @value:      address of sync_mode value.
+ * Return:      Success(=0) or error status(<0).
+ */
+static int  udmabuf_property_read_sync_mode(struct device *dev, int* value)
+{
+    u64 option;
+    u32 u32_value;
+    int sync_mode = *value;
+    int update    = 0;
+    int status    = 0;
+    /*
+     * sync-mode, sync_always in option property of a device
+     */
+    if (udmabuf_get_option_property(dev, &option, true) == 0) {
+        int set_sync_mode = udmabuf_get_option_set_sync_mode(option);
+        int sync_always   = udmabuf_get_option_sync_always(option);
+        int new_sync_mode = udmabuf_get_option_sync_mode(option);
+        if (set_sync_mode != 0) {
+            if ((new_sync_mode < SYNC_MODE_MIN) || (new_sync_mode > SYNC_MODE_MAX)) {
+                dev_err(dev, "invalid option property sync-mode value=%u\n", new_sync_mode);
+                status = -EINVAL;
+                goto done;
+            }
+            sync_mode &= ~(SYNC_ALWAYS | SYNC_MODE_MASK);
+            sync_mode |= (new_sync_mode & SYNC_MODE_MASK);
+            if (sync_always)
+                sync_mode |= SYNC_ALWAYS;
+            update |= 0x01;
+        }
+    }
+    /*
+     * sync-mode property of a device
+     */
+    if (udmabuf_property_read_u32(dev, "sync-mode", &u32_value) == 0) {
+        if ((u32_value < SYNC_MODE_MIN) || (u32_value > SYNC_MODE_MAX)) {
+            dev_err(dev, "invalid sync-mode property value=%u\n", u32_value);
+            status = -EINVAL;
+            goto done;
+        }
+        sync_mode &= ~SYNC_MODE_MASK;
+        sync_mode |= (int)u32_value;
+        update |= 0x02;
+    }
+    /*
+     * sync-always property of a device
+     */
+    if (udmabuf_property_read_bool(dev, "sync-always")) {
+        sync_mode |= SYNC_ALWAYS;
+        update |= 0x04;
+    }
+    if (update != 0)
+        *value = sync_mode;
+ done:
+    return status;
+}
 
 /**
  * udmabuf_device_list_search()    - Search udmabuf device entry from list by name or number.
@@ -3572,22 +3639,10 @@ static int udmabuf_platform_device_probe(struct device *dev)
     }
 #endif
     /*
-     * sync-mode property
+     * sync-mode/sync_always property
      */
-    if (udmabuf_property_read_u32(dev, "sync-mode", &u32_value) == 0) {
-        if ((u32_value < SYNC_MODE_MIN) || (u32_value > SYNC_MODE_MAX)) {
-            dev_err(dev, "invalid sync-mode property value=%u\n", u32_value);
-            retval = -EINVAL;
-            goto failed;
-        }
-        obj->sync_mode &= ~SYNC_MODE_MASK;
-        obj->sync_mode |= (int)u32_value;
-    }
-    /*
-     * sync-always property
-     */
-    if (udmabuf_property_read_bool(dev, "sync-always")) {
-        obj->sync_mode |= SYNC_ALWAYS;
+    if ((retval = udmabuf_property_read_sync_mode(dev, &obj->sync_mode)) != 0) {
+        goto failed;
     }
     /*
      * sync-direction property
