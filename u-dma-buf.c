@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.9.0-alpha.1"
+#define DRIVER_VERSION     "5.9.0-alpha.2"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -134,13 +134,13 @@ MODULE_LICENSE("Dual BSD/GPL");
 #endif
 
 #if     (UDMABUF_CONFIG == 0)
-#define IOCTL_VERSION       4
-#elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL >  4)
-#define IOCTL_VERSION       4
+#define IOCTL_VERSION       5
+#elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL >  5)
+#define IOCTL_VERSION       5
 #elif   defined(U_DMA_BUF_IOCTL) && (U_DMA_BUF_IOCTL >= 0)
 #define IOCTL_VERSION       U_DMA_BUF_IOCTL
 #elif   defined(CONFIG_U_DMA_BUF_IOCTL)
-#define IOCTL_VERSION       4
+#define IOCTL_VERSION       5
 #else
 #define IOCTL_VERSION       0
 #endif
@@ -1750,6 +1750,7 @@ DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_DMA_CONFIG  , u_dma_buf_ioctl_drv_info , 12,
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_RESERVED_MEM, u_dma_buf_ioctl_drv_info , 13, 13)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP     , u_dma_buf_ioctl_drv_info , 16, 16)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP_PAGE, u_dma_buf_ioctl_drv_info , 17, 17)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_DEV_PROPERTY   , u_dma_buf_ioctl_drv_info , 20, 21)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(STATIC_DEVICE_NUM  , u_dma_buf_ioctl_drv_info , 24, 31)
 
 typedef struct {
@@ -1829,6 +1830,9 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
             SET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP_PAGE(&drv_info, USE_QUIRK_MMAP_PAGE);
 #if (IOCTL_VERSION >= 4)            
             SET_U_DMA_BUF_IOCTL_FLAGS_STATIC_DEVICE_NUM  (&drv_info, STATIC_DEVICE_NUM);
+#endif
+#if (IOCTL_VERSION >= 5)
+            SET_U_DMA_BUF_IOCTL_FLAGS_USE_DEV_PROPERTY   (&drv_info, USE_DEV_PROPERTY);
 #endif
             if (strscpy(&drv_info.version[0], DRIVER_VERSION, sizeof(drv_info.version)) < 0)
                 result = -EFAULT;
