@@ -166,7 +166,7 @@ The configurable range is 0 to 8, and the default value is 8.
 
 ```console
 zynq$ insmod u-dma-buf.ko udmabuf0=1048576
-u-dma-buf udmabuf0: driver version = 5.8.0
+u-dma-buf udmabuf0: driver version = 5.9.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -250,7 +250,7 @@ For example, to designate "0000:00:15.0" under the pci bus as the parent device 
 
 ```console
 shell$ sudo insmod u-dma-buf.ko udmabuf0=0x10000 info_enable=3 udmabuf0_bind="pci/0000:00:15.0" 
-[13422.022482] u-dma-buf udmabuf0: driver version = 5.8.0
+[13422.022482] u-dma-buf udmabuf0: driver version = 5.9.0
 [13422.022483] u-dma-buf udmabuf0: major number   = 238
 [13422.022483] u-dma-buf udmabuf0: minor number   = 0
 [13422.022484] u-dma-buf udmabuf0: phys address   = 0x0000000070950000
@@ -310,7 +310,7 @@ allocate buffers and create device drivers when loaded by `insmod`.
 
 ```console
 zynq$ insmod u-dma-buf.ko
-u-dma-buf udmabuf0: driver version = 5.8.0
+u-dma-buf udmabuf0: driver version = 5.9.0
 u-dma-buf udmabuf0: major number   = 248
 u-dma-buf udmabuf0: minor number   = 0
 u-dma-buf udmabuf0: phys address   = 0x1e900000
@@ -891,6 +891,8 @@ The ioctl can do the following
  * `U_DMA_BUF_IOCTL_GET_SYNC`
  * `U_DMA_BUF_IOCTL_SET_SYNC`
  * `U_DMA_BUF_IOCTL_EXPORT`
+ * `U_DMA_BUF_IOCTL_GET_SYNC_MODE`
+ * `U_DMA_BUF_IOCTL_SET_SYNC_MODE`
 
 ### u-dma-buf-ioctl.h
 
@@ -931,6 +933,7 @@ DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_DMA_CONFIG  , u_dma_buf_ioctl_drv_info , 12,
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_OF_RESERVED_MEM, u_dma_buf_ioctl_drv_info , 13, 13)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP     , u_dma_buf_ioctl_drv_info , 16, 16)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_QUIRK_MMAP_PAGE, u_dma_buf_ioctl_drv_info , 17, 17)
+DEFINE_U_DMA_BUF_IOCTL_FLAGS(USE_DEV_PROPERTY   , u_dma_buf_ioctl_drv_info , 20, 21)
 DEFINE_U_DMA_BUF_IOCTL_FLAGS(STATIC_DEVICE_NUM  , u_dma_buf_ioctl_drv_info , 24, 31)
 
 typedef struct {
@@ -982,6 +985,8 @@ DEFINE_U_DMA_BUF_IOCTL_FLAGS(EXPORT_FD_FLAGS, u_dma_buf_ioctl_export_args,  0, 3
 #define U_DMA_BUF_IOCTL_GET_SYNC            _IOR (U_DMA_BUF_IOCTL_MAGIC, 8, u_dma_buf_ioctl_sync_args)
 #define U_DMA_BUF_IOCTL_SET_SYNC            _IOW (U_DMA_BUF_IOCTL_MAGIC, 9, u_dma_buf_ioctl_sync_args)
 #define U_DMA_BUF_IOCTL_EXPORT              _IOWR(U_DMA_BUF_IOCTL_MAGIC,10, u_dma_buf_ioctl_export_args)
+#define U_DMA_BUF_IOCTL_GET_SYNC_MODE       _IOR (U_DMA_BUF_IOCTL_MAGIC,11, uint32_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_MODE       _IOW (U_DMA_BUF_IOCTL_MAGIC,12, uint32_t)
 #endif /* #ifndef U_DMA_BUF_IOCTL_H */
 ```
 
@@ -1011,6 +1016,7 @@ The driver information obtained by this ioctl includes the driver support and ve
         int use_of_dma_config   = GET_U_DMA_BUF_IOCTL_FLAGS_USE_OF_DMA_CONFIG(&drv_info);
         int use_of_reserved_mem = GET_U_DMA_BUF_IOCTL_FLAGS_USE_OF_RESERVED_MEM(&drv_info);
         int use_quirk_mmap      = GET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP(&drv_info);
+	int use_dev_property    = GET_U_DMA_BUF_IOCTL_FLAGS_USE_DEV_PROPERTY(&drv_info);
         int use_quirk_mmap_page = GET_U_DMA_BUF_IOCTL_FLAGS_USE_QUIRK_MMAP_PAGE(&drv_info);
         char* drv_version       = strdup(&drv_info.version[0]);
         close(fd);
@@ -1166,7 +1172,7 @@ This ioctl is for get sync_offset/sync_size/sync_direction/sync_owner/sync_mode.
 
 ### `U_DMA_BUF_IOCTL_SET_SYNC`
 
-This ioctl is for set sync_offset/sync_size/sync_direction/sync_mode.
+This ioctl is for set sync_offset/sync_size/sync_direction.
 
 ```C:u-dma-buf-ioctl-test.c
     if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
@@ -1284,6 +1290,30 @@ An example is shown below.
         /* Do some read/write access to buf */
         struct dma_buf_sync sync_end   = {.flags = DMA_BUF_SYNC_END   | DMA_BUF_SYNC_RW};
         status = ioctl(export_args.fd, DMA_BUF_IOCTL_SYNC, &sync_end  );
+        close(fd);
+    }
+```
+
+### `U_DMA_BUF_IOCTL_GET_SYNC_MODE`
+
+This ioctl is for get sync_mode.
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        uint32_t sync_mode;
+        status = ioctl(fd, U_DMA_BUF_IOCTL_GET_SYNC_MODE, &sync_mode);
+        close(fd);
+    }
+```
+
+### `U_DMA_BUF_IOCTL_SET_SYNC_MODE`
+
+This ioctl is for set sync_mode.
+
+```C:u-dma-buf-ioctl-test.c
+    if ((fd = open("/dev/udmabuf0", O_RDWR)) != -1) {
+        uint32_t sync_mode = 2;
+        status = ioctl(fd, U_DMA_BUF_IOCTL_SET_SYNC_MODE, &sync_mode);
         close(fd);
     }
 ```
@@ -1823,7 +1853,7 @@ Install u-dma-buf. In this example, 8MiB DMA buffer is reserved as "udmabuf0".
 
 ```console
 zynq# insmod u-dma-buf.ko udmabuf0=8388608
-[ 1183.911189] u-dma-buf udmabuf0: driver version = 5.8.0
+[ 1183.911189] u-dma-buf udmabuf0: driver version = 5.9.0
 [ 1183.921238] u-dma-buf udmabuf0: major number   = 240
 [ 1183.931275] u-dma-buf udmabuf0: minor number   = 0
 [ 1183.936063] u-dma-buf udmabuf0: phys address   = 0x0000000041600000
