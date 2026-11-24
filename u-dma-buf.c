@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.9.0-alpha.4"
+#define DRIVER_VERSION     "5.9.0-alpha.5"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -2434,7 +2434,7 @@ static int udmabuf_object_setup(struct udmabuf_object* this)
         this->pagecount = this->alloc_size >> PAGE_SHIFT;
         this->pages     = kmalloc_array(this->pagecount, sizeof(struct page*), GFP_KERNEL);
         if (IS_ERR_OR_NULL(this->pages)) {
-            int retval = PTR_ERR(this->pages);
+            int retval = (this->pages == NULL) ? -ENOMEM : PTR_ERR(this->pages);
             dev_warn(this->sys_dev, "allocate pages(pagecount=%lu) failed. return(%d)\n", (unsigned long)this->pagecount, retval);
             this->pagecount = 0;
             this->pages     = NULL;
