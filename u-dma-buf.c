@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.9.0-alpha.2"
+#define DRIVER_VERSION     "5.9.0-alpha.3"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -1802,6 +1802,8 @@ DEFINE_U_DMA_BUF_IOCTL_FLAGS(EXPORT_FD_FLAGS, u_dma_buf_ioctl_export_args,  0, 3
 #define U_DMA_BUF_IOCTL_GET_SYNC            _IOR (U_DMA_BUF_IOCTL_MAGIC, 8, u_dma_buf_ioctl_sync_args)
 #define U_DMA_BUF_IOCTL_SET_SYNC            _IOW (U_DMA_BUF_IOCTL_MAGIC, 9, u_dma_buf_ioctl_sync_args)
 #define U_DMA_BUF_IOCTL_EXPORT              _IOWR(U_DMA_BUF_IOCTL_MAGIC,10, u_dma_buf_ioctl_export_args)
+#define U_DMA_BUF_IOCTL_GET_SYNC_MODE       _IOR (U_DMA_BUF_IOCTL_MAGIC,11, uint32_t)
+#define U_DMA_BUF_IOCTL_SET_SYNC_MODE       _IOW (U_DMA_BUF_IOCTL_MAGIC,12, uint32_t)
 #endif /* #ifndef U_DMA_BUF_IOCTL_H */
 #endif /* #if (IOCTL_VERSION > 0) */
 
@@ -1988,7 +1990,9 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
                     case 2   : this->sync_direction = 2; break;
                     default  : /* none */                break;
                 }
+#if (IOCTL_VERSION <  5)
                 if (sync_mode > 0) {this->sync_mode = sync_mode;}
+#endif
                 switch(sync_command) {
                     case U_DMA_BUF_IOCTL_FLAGS_SYNC_CMD_FOR_CPU:
                         this->sync_for_cpu = 1;
@@ -2075,7 +2079,44 @@ static long udmabuf_device_file_ioctl(struct file* file, unsigned int cmd, unsig
           export_failed:
             break;
         }
-#endif            
+#endif
+#if (IOCTL_VERSION >= 5)
+        case U_DMA_BUF_IOCTL_GET_SYNC_MODE: {
+            uint32_t sync_mode;
+            if (mutex_lock_interruptible(&this->sem) != 0) {
+                result = -ERESTARTSYS;
+                break;
+            }
+            sync_mode = (uint32_t)this->sync_mode;
+            mutex_unlock(&this->sem);
+            if (copy_to_user(argp, &sync_mode, sizeof(sync_mode)) != 0)
+                result = -EFAULT;
+            else 
+                result = 0;
+            break;
+        }
+        case U_DMA_BUF_IOCTL_SET_SYNC_MODE: {
+            uint32_t sync_mode;
+            if (copy_from_user(&sync_mode, argp, sizeof(sync_mode)) != 0) {
+                result = -EFAULT;
+                break;
+            }
+            if (((sync_mode & ~(SYNC_MODE_MASK | SYNC_ALWAYS)) != 0) ||
+                ((sync_mode & SYNC_MODE_MASK) < SYNC_MODE_MIN) ||
+                ((sync_mode & SYNC_MODE_MASK) > SYNC_MODE_MAX)) {
+                result = -EINVAL;
+                break;
+            }
+            if (mutex_lock_interruptible(&this->sem) != 0) {
+                result = -ERESTARTSYS;
+                break;
+            }
+            this->sync_mode = sync_mode;
+            mutex_unlock(&this->sem);
+            result = 0;
+            break;
+        }
+#endif
         default:
             result = -ENOTTY;
     }
