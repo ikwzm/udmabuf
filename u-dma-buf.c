@@ -66,7 +66,7 @@ MODULE_DESCRIPTION("User space mappable DMA buffer device driver");
 MODULE_AUTHOR("ikwzm");
 MODULE_LICENSE("Dual BSD/GPL");
 
-#define DRIVER_VERSION     "5.9.0-alpha.5"
+#define DRIVER_VERSION     "5.9.0-alpha.6"
 #define DRIVER_NAME        "u-dma-buf"
 #define DEVICE_NAME_FORMAT "udmabuf%d"
 #define DEVICE_MAX_NUM      256
@@ -3028,7 +3028,7 @@ static inline type udmabuf_get_option_ ## name(u64 option) \
 }
 DEFINE_UDMABUF_OPTION(dma_mask_size   ,u64, 0, 7)
 DEFINE_UDMABUF_OPTION(quirk_mmap_mode ,int,10,12)
-DEFINE_UDMABUF_OPTION(sync_mode       ,int,17,16)
+DEFINE_UDMABUF_OPTION(sync_mode       ,int,16,17)
 DEFINE_UDMABUF_OPTION(sync_always     ,int,18,18)
 DEFINE_UDMABUF_OPTION(set_sync_mode   ,int,19,19)
 
